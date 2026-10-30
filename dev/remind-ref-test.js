@@ -91,7 +91,7 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   eq('月底加月份：5/31 + 5 個月 = 10/31（今天到期）',await ev({records:[rec('thy_lab','2026-05-31',{interval:5})]}),'家琳今天還沒記：晚上體重；甲狀腺抽血 10/31 到期');
   r=await run('evening',E(),st(need,{records:[rec('thy_lab','2026-05-07',{interval:6}),rec('gi_colo','2016-01-01',{interval:120,nextDue:'2026-11-02'})]}),{pageSize:1});
   eq('records 分頁：每頁 1 筆也會讀完',r.push,'家琳今天還沒記：晚上體重；大腸鏡 11/2 到期、甲狀腺抽血 11/7 到期');
-  eq('records 分頁：2 筆、每頁 1 筆，照 next_cursor 讀 2 次就停',r.fake.calls.filter(c=>c.action==='list').length,2);
+  eq('records 分頁：2 筆、每頁 1 筆，照 next_cursor 讀 2 次就停',r.fake.calls.filter(c=>c.action==='list'&&c.path==='records').length,2);
 
   /* 週報 */
   const wk={},WD=['2026-10-26','2026-10-27','2026-10-28','2026-10-29','2026-10-30','2026-10-31',SUN];
@@ -259,6 +259,31 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   {const {fakeApi,contract,URL}=require('./fake-artifact-data');
     eq('替身拒絕不合 schema 的參數（get 沒有 doc_id、list 帶 doc_id、錯的 url、limit 超過）',[contract({action:'get',url:URL,collection:'days'}).length>0,contract({action:'list',url:URL,collection:'days',doc_id:'x'}).length>0,contract({action:'get',url:'https://x',collection:'days',doc_id:'a'}).length>0,contract({action:'list',url:URL,collection:'days',query:{limit:5000}}).length>0],[true,true,true,true]);
     eq('替身接受合 schema 的參數',contract({action:'query',url:URL,collection:'exercise',query:{limit:1000,where:[['date','>=','2026-10-26']],cursor:'2'}}),[])}
+
+  /* B6：服藥成立看 med.taken；TSH 複查加進晚上推播與週報 */
+  eq('早上：只有細節、沒有 taken 的 med 算缺',(await run('morning',M(),st({[SAT]:day({am:full.am,med:{interfere:{coffee:true}}})}))).push,'家琳今天還沒記：服藥');
+  eq('週報：沒有 taken 的 med 不算服藥天數',(await run('weekly',W(),st({[SUN]:{date:SUN,med:{mode:'bedtime'}}},{profile:{lastExport:'2026/10/30'}}))).push.match(/服藥 [^、]+/)[0],'服藥 0/7 天');
+  const MDZ=(o={})=>({id:'m2',kind:'dose',date:'2026-10-01',dose:75,createdAt:1,...o});
+  const tsh=(date,v,ctx)=>({exam:'thy_lab',date,interval:6,labs:{TSH:v},drawCtx:ctx,createdAt:9});
+  eq('晚上：TSH 複查 7 天內到期，附在同一行',(await run('evening',E(),st(need,{meddose:[MDZ()],profile:{tshRecheckWeeks:5}}))).push,'家琳今天還沒記：晚上體重；TSH 複查（劑量變更後） 11/5 到期');
+  eq('晚上：TSH 複查已逾期',(await run('evening',E(),st(need,{meddose:[MDZ()],profile:{tshRecheckWeeks:4}}))).push,'家琳今天還沒記：晚上體重；TSH 複查（劑量變更後）已逾期');
+  eq('晚上：手動複查日優先',(await run('evening',E(),st(need,{meddose:[MDZ({recheckDue:'2026-11-03'})],profile:{tshRecheckWeeks:12}}))).push,'家琳今天還沒記：晚上體重；TSH 複查（劑量變更後） 11/3 到期');
+  eq('晚上：週數未設定、沒有手動日期：不列',(await run('evening',E(),st(need,{meddose:[MDZ()]}))).push,'家琳今天還沒記：晚上體重');
+  eq('晚上：明確連結、晚於生效日、有 TSH 的抽血：已完成，不列',(await run('evening',E(),st(need,{meddose:[MDZ()],records:[tsh('2026-10-29','2.1',{recheckOf:'m2'})],profile:{tshRecheckWeeks:4}}))).push,'家琳今天還沒記：晚上體重');
+  eq('晚上：同日基準抽血不算完成',(await run('evening',E(),st(need,{meddose:[MDZ()],records:[tsh('2026-10-01','4.8',{recheckOf:'m2'})],profile:{tshRecheckWeeks:4}}))).push.includes('TSH 複查'),true);
+  eq('晚上：沒有缺時，TSH 複查到期也不推播（8.2）',(await run('evening',E(),st({[SAT]:day(full)},{meddose:[MDZ()],profile:{tshRecheckWeeks:4}}))).push,null);
+  eq('週報：30 天內到期列入 TSH 複查',(await run('weekly',W(),st({},{meddose:[MDZ()],profile:{tshRecheckWeeks:6,lastExport:'2026/10/30'}}))).push.split('；')[1],'30 天內到期：TSH 複查（劑量變更後） 11/12');
+  r=await run('evening',E(),st(need,{meddose:[MDZ()],profile:{tshRecheckWeeks:5}}),{failList:{meddose:2}});
+  eq('晚上：meddose 讀不到：讀取失敗',[r.entry.skipped,r.push],['error','提醒檢查失敗：讀不到資料']);
+  {const fs2=require('fs'),html2=fs2.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');
+    const blk=n=>html2.match(new RegExp('\\/\\* ---- '+n+' helpers: begin[^*]*\\*\\/([\\s\\S]*?)\\/\\* ---- '+n+' helpers: end ---- \\*\\/'))[1];
+    const P=new Function(blk('date')+blk('med')+';return{recheckState}')();
+    const {recheckDue}=require('./remind-ref');
+    const L=[MDZ({id:'a',date:'2026-09-01'}),MDZ({id:'b',date:'2026-10-01'}),MDZ({id:'c',date:'2026-10-01',createdAt:0}),MDZ({id:'f',date:'2026-12-01'}),MDZ({id:'x',date:'2026-10-20',deleted:true}),MDZ({id:'n',date:'2026-02-30'})];
+    const cases=[[L,[],6],[L,[],undefined],[[...L,MDZ({id:'z',date:'2026-10-15',noRecheck:true})],[],6],[[...L.slice(0,2),MDZ({id:'b2',date:'2026-10-01',createdAt:5,recheckDue:'2026-11-20'})],[],6],
+      [L,[tsh('2026-10-20','2.1',{recheckOf:'b'})],6],[L,[tsh('2026-10-01','2.1',{recheckOf:'b'})],6],[L,[tsh('2026-10-20','待報',{recheckOf:'b'})],6],[L,[tsh('2026-10-20','<0.01',{recheckOf:'b'})],6],[L,[tsh('2026-11-20','2',{recheckOf:'b'})],6],[L,[],53]];
+    const pageDue=([l,r,w])=>{const x=P.recheckState(l,r,SAT,w);return x.st==='manual'||x.st==='auto'?x.due:null};
+    eq('TSH 複查：參考實作和頁面 recheckState 一致（10 種情況）',cases.map(c=>recheckDue(c[0],c[1],SAT,c[2])),cases.map(pageDue))}
 
   /* 檢查表和 src/index.html 一致：名稱、預設間隔、不追蹤的分類 */
   const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');

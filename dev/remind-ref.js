@@ -64,13 +64,32 @@ function examsWithin(records,intervals,date,days){
   return Object.values(latestByExam(records)).map(r=>{const d=dueOf(r,intervals);if(!d)return null;const dd=d.asap?-Infinity:daysFrom(date,d.due);return{name:EXAM_NAMES[r.exam],due:d.due,asap:!!d.asap,dd}})
     .filter(x=>x&&x.dd<=days).sort((a,b)=>a.dd-b.dd||(a.name<b.name?-1:1));
 }
+/* TSH 複查（B 階段 3.4，和頁面 recheckState 同一套規則）：最新一筆生效的劑量或製劑變更，沒有明確連結的完成抽血，就依手動日期或週數排出到期日 */
+const RECHECK_NAME='TSH 複查（劑量變更後）';
+const validDate=s=>typeof s==='string'&&/^\d{4}-\d\d-\d\d$/.test(s)&&D.addDays(s,0)===s;
+const validDose=v=>typeof v==='number'&&Number.isFinite(v)&&v>=1&&v<=1000;
+const cmpS=(a,b)=>a<b?-1:a>b?1:0;
+function recheckDue(meddose,records,date,weeks){
+  const list=(meddose||[]).filter(m=>m&&m.deleted!==true&&validDate(m.date)&&validDose(m.dose)).sort((a,b)=>cmpS(a.date,b.date)||((a.createdAt||0)-(b.createdAt||0))||cmpS(String(a.id),String(b.id)));
+  let t=null;for(const m of list){if(m.date<=date)t=m;else break}
+  if(!t||t.noRecheck===true)return null;
+  const done=(records||[]).some(r=>r.exam==='thy_lab'&&r.drawCtx?.recheckOf===t.id&&validDate(r.date)&&r.date>t.date&&r.date<=date&&typeof r.labs?.TSH==='string'&&/\d/.test(r.labs.TSH));
+  if(done)return null;
+  if(validDate(t.recheckDue))return t.recheckDue;
+  if(Number.isInteger(weeks)&&weeks>=1&&weeks<=52)return D.addDays(t.date,weeks*7);
+  return null}
+function dueItems(data,date,days){
+  const x=examsWithin(data.records,data.intervals,date,days);
+  const due=recheckDue(data.meddose,data.records,date,data.profile?.tshRecheckWeeks);
+  if(due){const dd=daysFrom(date,due);if(dd<=days)x.push({name:RECHECK_NAME,due,asap:false,dd})}
+  return x.sort((a,b)=>a.dd-b.dd||(a.name<b.name?-1:1))}
 const examPhrase=(x,withWord)=>x.asap?x.name+'待安排':x.dd<0?x.name+'已逾期':x.name+' '+mdShort(x.due)+(withWord?' 到期':'');
 
 /* ArtifactData 呼叫，參數照工具的形狀 */
 const T={
   get:(api,collection,doc_id)=>api.call({action:'get',url:URL,collection,doc_id}),
   set:(api,collection,doc_id,data,if_version)=>api.call({action:'set',url:URL,collection,doc_id,data,...(if_version!=null?{if_version}:{})}),
-  async all(api,action,collection,where){const out=[];let cursor;for(let i=0;i<100;i++){const q={limit:1000,...(where?{where}:{}),...(cursor?{cursor}:{})};const r=await api.call({action,url:URL,collection,query:q});out.push(...r.docs.map(d=>d.data));if(!r.next_cursor)return out;cursor=r.next_cursor}throw new Error('too many pages')},
+  async all(api,action,collection,where,withId){const out=[];let cursor;for(let i=0;i<100;i++){const q={limit:1000,...(where?{where}:{}),...(cursor?{cursor}:{})};const r=await api.call({action,url:URL,collection,query:q});out.push(...r.docs.map(d=>withId?{...d.data,id:d.id}:d.data));if(!r.next_cursor)return out;cursor=r.next_cursor}throw new Error('too many pages')},
 };
 async function retry(fn){try{return await fn()}catch(e){return fn()}} // 讀取失敗重試一次
 
@@ -79,12 +98,12 @@ function weeklyLine(data,date,nowMs,recent){
   const ws=range.map(d=>data.days[d]?.am?.w).filter(v=>typeof v==='number'&&Number.isFinite(v));
   const wPart=ws.length?'早上平均 '+(Math.round(ws.reduce((a,b)=>a+b,0)/ws.length*10)/10).toFixed(1)+' kg（'+ws.length+' 天）':'早上體重 0 天';
   const active=range.filter(d=>!isPaused(data.profile,d));
-  const med=active.filter(d=>data.days[d]?.med).length;
+  const med=active.filter(d=>data.days[d]?.med?.taken===true).length; // 和頁面相同：只有 taken 是 true 才算服藥
   const ex=data.exercise.filter(e=>e.deleted!==true&&e.date>=start&&e.date<=date).reduce((a,e)=>a+(Number(e.min)||0),0);
   let runs='排程讀不到';
   if(recent){const seen=new Set();for(const r of recent){const ms=atMs(r.at);if((r.kind==='morning'||r.kind==='evening')&&ms>nowMs-7*864e5&&ms<=nowMs)seen.add(r.kind+r.date)}runs='排程 '+seen.size+'/14'}
   let line='週報 '+mdShort(start)+'–'+mdShort(date)+'：'+wPart+'、服藥 '+med+'/'+active.length+' 天、運動 '+ex+' 分、'+runs;
-  const exams=examsWithin(data.records,data.intervals,date,WINDOW_DAYS.weekly);
+  const exams=dueItems(data,date,WINDOW_DAYS.weekly);
   if(exams.length)line+='；30 天內到期：'+exams.map(x=>examPhrase(x,false)).join('、');
   const le=data.profile?.lastExport,ok=typeof le==='string'&&/^\d{4}\/\d\d\/\d\d$/.test(le);
   if(!ok||daysFrom(le.replace(/\//g,'-'),date)>30)line+='；該備份了';
@@ -127,20 +146,21 @@ async function execute(kind,api,mode){
     /* 4. 讀其他資料，組訊息 */
     let data=null;
     try{
-      data={profile,days:{},records:[],exercise:[],intervals:{}};
+      data={profile,days:{},records:[],exercise:[],intervals:{},meddose:[]};
       const dates=kind==='weekly'?[...Array(7)].map((_,i)=>D.addDays(date,i-6)):[date];
       for(const d of dates){const r=await retry(()=>T.get(api,'days',d));if(r.exists)data.days[d]=r.data}
-      if(kind!=='morning'){data.records=await retry(()=>T.all(api,'list','records'));const iv=await retry(()=>T.get(api,'settings','intervals'));data.intervals=iv.exists?iv.data:{}}
+      if(kind!=='morning'){data.records=await retry(()=>T.all(api,'list','records'));const iv=await retry(()=>T.get(api,'settings','intervals'));data.intervals=iv.exists?iv.data:{};
+        data.meddose=await retry(()=>T.all(api,'list','meddose',null,true))} // 文件 id 要留著：抽血紀錄用 id 連結到變更
       if(kind==='weekly')data.exercise=await retry(()=>T.all(api,'query','exercise',[['date','>=',dates[0]],['date','<=',date]]));
     }catch(e){data=null}
     if(!data){entry.ok=false;entry.skipped='error';entry.msg=ERR_MSG}
     else if(kind==='weekly')entry.msg=weeklyLine(data,date,t0,hb.ok?hb.recent:null);
     else{
       const d=data.days[date]||{};
-      entry.missing=ITEMS.filter(([k])=>CHECK[kind].includes(k)&&!d[k]).map(([,l])=>l); // 和頁面相同：沒有值（不存在、null、false、0、空字串）就是缺
+      entry.missing=ITEMS.filter(([k])=>CHECK[kind].includes(k)&&(k==='med'?d.med?.taken!==true:!d[k])).map(([,l])=>l); // 和頁面相同：服藥看 med.taken；體重沒有值就是缺
       if(entry.missing.length){
         entry.msg='家琳今天還沒記：'+entry.missing.join('、');
-        if(kind==='evening'){const x=examsWithin(data.records,data.intervals,date,WINDOW_DAYS.evening);if(x.length)entry.msg+='；'+x.map(y=>examPhrase(y,true)).join('、')}
+        if(kind==='evening'){const x=dueItems(data,date,WINDOW_DAYS.evening);if(x.length)entry.msg+='；'+x.map(y=>examPhrase(y,true)).join('、')}
       }
     }
   }
@@ -177,6 +197,7 @@ function storeDocs(store){
   for(const[d,v]of Object.entries(store.days||{}))docs['days/'+d]=v;
   (store.exercise||[]).forEach((e,i)=>docs['exercise/e'+i]=e);
   (store.records||[]).forEach((r,i)=>docs['records/r'+i]=r);
+  (store.meddose||[]).forEach((m,i)=>docs['meddose/'+(m.id||'m'+i)]=m);
   return docs;
 }
 async function run(kind,nowIso,store={},opt={}){
@@ -187,4 +208,4 @@ async function run(kind,nowIso,store={},opt={}){
   return{...out,push:out.msg||null,heartbeat:f.doc('system/heartbeat'),fake:f};
 }
 
-module.exports={execute,run,storeDocs,EXAMS,EXAM_NAMES,NO_FOLLOW,dueOf,normalizeRecent,normalizeSent,RECENT_MAX};
+module.exports={execute,run,storeDocs,EXAMS,EXAM_NAMES,NO_FOLLOW,dueOf,recheckDue,normalizeRecent,normalizeSent,RECENT_MAX};

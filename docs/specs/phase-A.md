@@ -98,7 +98,7 @@ system/heartbeat {
 |---|---|---|
 | 早上體重 | `days/{date}.am` | 沒有值：文件或欄位不存在，或值是 `null`、`false`、`0`、空字串。和頁面的 `needed()` 相同 |
 | 晚上體重 | `days/{date}.pm` | 同上 |
-| 服藥 | `days/{date}.med` | 同上（撤銷服藥時會寫成 `med:null`） |
+| 服藥 | `days/{date}.med` | `med.taken` 不是 `true`（B 階段起：只有細節、沒有 `taken` 的物件也算缺；舊紀錄都有 `taken:true`，結果不變） |
 | 暫停 | `settings/profile.pauseFrom`、`pauseTo` | 兩個都有值，而且 `pauseFrom ≤ date ≤ pauseTo`（字串比較，含頭尾兩天），和頁面的 `isPaused` 相同 |
 | 上次匯出 | `settings/profile.lastExport` | 格式是 `YYYY/MM/DD`（斜線，不是連字號）。沒有這個欄位就視為從未匯出 |
 | 運動 | `exercise/*` | `date` 在範圍內，而且 `deleted` 不是 `true`；加總 `min`。讀完所有分頁 |
@@ -203,6 +203,7 @@ system/heartbeat {
   - 已逾期寫「名稱已逾期」，`interval` 0 寫「名稱待安排」。
   - 只有檢查到期、沒有缺漏時，不推播（8.2）。
 - `remind.food` 的檢查等 C 階段再加。現在的提示詞不讀 `meals`。
+- B 階段起（`docs/specs/phase-B.md` 3.4、9.4）：多讀 `meddose`，劑量或製劑變更後的「TSH 複查（劑量變更後）」當成一項檢查，一起列入 7 天內到期；週報同樣列入 30 天內到期。
 
 ### 3.4 週報（每週日 20:1x）
 
