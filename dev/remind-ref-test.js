@@ -110,7 +110,7 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   eq('上次匯出 31 天前：該備份了',(await run('weekly',W(),wst({profile:{lastExport:'2026/10/01'}}))).push.endsWith('；該備份了'),true);
   eq('從未匯出：該備份了',(await run('weekly',W(),wst({profile:{}}))).push.endsWith('；該備份了'),true);
   eq('lastExport 格式不對：當作沒匯出',(await run('weekly',W(),wst({profile:{lastExport:'2026-10-20'}}))).push.endsWith('；該備份了'),true);
-  eq('沒有任何紀錄的一週',(await run('weekly',W(),st({},{profile:{lastExport:'2026/10/30'}}))).push,'週報 10/26–11/1：早上體重 0 天、服藥 0/7 天、運動 0 分、排程 0/14');
+  eq('沒有任何紀錄的一週',(await run('weekly',W(),st({},{profile:{lastExport:'2026/10/30'}}))).push,'週報 10/26–11/1：早上體重 0 天、服藥還沒有紀錄、運動 0 分、排程 0/14'); // 週報分母和頁面 countable 一致後的寫法
   r=await run('weekly',W(),wst({profile:{lastExport:'2026/10/30',pauseFrom:'2026-10-27',pauseTo:'2026-10-28'}}));
   eq('暫停日不算在服藥分母',r.push.match(/服藥 [^、]+/)[0],'服藥 5/5 天');
   r=await run('weekly',W(),wst({profile:{lastExport:'2026/10/30'},records:[rec('breast_us','2025-11-12'),rec('thy_lab','2026-05-30',{interval:6}),rec('lung_ldct','2025-12-10')]}));
@@ -262,7 +262,7 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
 
   /* B6：服藥成立看 med.taken；TSH 複查加進晚上推播與週報 */
   eq('早上：只有細節、沒有 taken 的 med 算缺',(await run('morning',M(),st({[SAT]:day({am:full.am,med:{interfere:{coffee:true}}})}))).push,'家琳今天還沒記：服藥');
-  eq('週報：沒有 taken 的 med 不算服藥天數',(await run('weekly',W(),st({[SUN]:{date:SUN,med:{mode:'bedtime'}}},{profile:{lastExport:'2026/10/30'}}))).push.match(/服藥 [^、]+/)[0],'服藥 0/7 天');
+  eq('週報：沒有 taken 的 med 不算服藥，也不算追蹤起點',(await run('weekly',W(),st({[SUN]:{date:SUN,med:{mode:'bedtime'}}},{profile:{lastExport:'2026/10/30'}}))).push.match(/服藥[^、]+/)[0],'服藥還沒有紀錄');
   const MDZ=(o={})=>({id:'m2',kind:'dose',date:'2026-10-01',dose:75,createdAt:1,...o});
   const tsh=(date,v,ctx)=>({exam:'thy_lab',date,interval:6,labs:{TSH:v},drawCtx:ctx,createdAt:9});
   eq('晚上：TSH 複查 7 天內到期，附在同一行',(await run('evening',E(),st(need,{meddose:[MDZ()],profile:{tshRecheckWeeks:5}}))).push,'家琳今天還沒記：晚上體重；TSH 複查（劑量變更後） 11/5 到期');
@@ -284,6 +284,36 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
       [L,[tsh('2026-10-20','2.1',{recheckOf:'b'})],6],[L,[tsh('2026-10-01','2.1',{recheckOf:'b'})],6],[L,[tsh('2026-10-20','待報',{recheckOf:'b'})],6],[L,[tsh('2026-10-20','<0.01',{recheckOf:'b'})],6],[L,[tsh('2026-11-20','2',{recheckOf:'b'})],6],[L,[],53]];
     const pageDue=([l,r,w])=>{const x=P.recheckState(l,r,SAT,w);return x.st==='manual'||x.st==='auto'?x.due:null};
     eq('TSH 複查：參考實作和頁面 recheckState 一致（10 種情況）',cases.map(c=>recheckDue(c[0],c[1],SAT,c[2])),cases.map(pageDue))}
+
+  /* 週報分母和頁面 countable() 一致：追蹤起點、今天還沒服藥先不算 */
+  {const T7=['2026-10-26','2026-10-27','2026-10-28','2026-10-29','2026-10-30',SAT,SUN];
+    const tk={taken:true,at:'07:00',dose:50},wk2={};T7.slice(3).forEach(d=>wk2[d]={date:d,am:{w:52},med:tk});wk2['2026-10-27']={date:'2026-10-27',period:true};
+    const run2=(days,o={})=>run('weekly',W(),st(days,{profile:{lastExport:'2026/10/30',...(o.profile||{})}}));
+    eq('週報分母：追蹤起點之前的日子不算（只有月經標記不算起點）',(await run2(wk2)).push.match(/服藥 [^、]+/)?.[0],'服藥 4/4 天');
+    const wk3={...wk2,[SUN]:{date:SUN,am:{w:52}}};
+    eq('週報分母：今天（週日）還沒服藥先不算',(await run2(wk3)).push.match(/服藥 [^、]+/)?.[0],'服藥 3/3 天');
+    const wk4={...wk3,'2026-09-30':{date:'2026-09-30',am:{w:51}}};
+    eq('週報分母：本週一之前已開始追蹤，整週都算（除了今天還沒服藥）',(await run2(wk4)).push.match(/服藥 [^、]+/)?.[0],'服藥 3/6 天');
+    eq('週報：完全沒有紀錄：服藥還沒有紀錄',(await run2({})).push,'週報 10/26–11/1：早上體重 0 天、服藥還沒有紀錄、運動 0 分、排程 0/14');
+    const wk5={...wk4};
+    eq('週報分母：暫停日分子分母都不算',(await run2(wk5,{profile:{pauseFrom:'2026-10-29',pauseTo:'2026-10-30'}})).push.match(/服藥 [^、]+/)?.[0],'服藥 1/4 天');
+    const r6=await run2(wk4);
+    eq('週報：查本週一之前最早的 31 筆日紀錄（依日期排序、單頁）',r6.fake.calls.filter(c=>c.action==='query'&&c.path==='days').length,1);
+    /* 和頁面 countable 比對 */
+    const fs3=require('fs'),html3=fs3.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');
+    const blk3=n=>html3.match(new RegExp('\\/\\* ---- '+n+' helpers: begin[^*]*\\*\\/([\\s\\S]*?)\\/\\* ---- '+n+' helpers: end ---- \\*\\/'))[1];
+    const P3=new Function(blk3('date')+blk3('med')+';return{countable}')();
+    const fixtures=[[wk2,null],[wk3,null],[wk4,null],[{},null],[wk5,{from:'2026-10-29',to:'2026-10-30'}],[{...wk4,'2026-10-26':{date:'2026-10-26',med:{interfere:{coffee:true}}}},null]];
+    const got=[],want=[];
+    for(const [days,pz] of fixtures){const r=await run('weekly',W(),st(days,{profile:{lastExport:'2026/10/30',...(pz?{pauseFrom:pz.from,pauseTo:pz.to}:{})}}));
+      got.push(r.push.match(/服藥 ?([^、]+)/)[1]);const c=P3.countable(days,'2026-10-26',SUN,SUN,pz);want.push(c.b?`${c.a}/${c.b} 天`:'還沒有紀錄')}
+    eq('週報服藥天數：和頁面 countable 一致（6 種情況）',got,want)}
+
+  /* 推播工具回傳「Mobile push requested.」算已送出（DEPLOYED.md 的一次性測試：手機收得到） */
+  {const r=await run('morning',M(),st({}),{push:'requested'});
+    eq('推播工具回傳 Mobile push requested.：tool_sent、回覆已推播',[r.delivery,r.reply],['tool_sent','（已推播）']);
+    const again=await run('morning',M('07:40'),st({},{heartbeat:r.heartbeat}),{push:'requested'});
+    eq('Mobile push requested. 之後再跑：duplicate',again.entry.skipped,'duplicate')}
 
   /* 檢查表和 src/index.html 一致：名稱、預設間隔、不追蹤的分類 */
   const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');

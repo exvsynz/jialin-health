@@ -20,6 +20,7 @@ const ITEMS=[['am','早上體重'],['med','服藥'],['pm','晚上體重']];
 const CHECK={morning:['am','med'],evening:['am','med','pm']};
 const KINDS=['morning','evening','weekly'],FIELDS=['run','at','kind','date','missing','paused','ok','skipped','shouldPush','delivery','msg'];
 const SENT_AS=['tool_sent','tool_error','platform']; // 可能已經送出的結果都算送出：寧可少一則，不重複
+const PUSH_REQUESTED='Mobile push requested.'; // 正式排程的 PushNotification 回傳這句，手機收得到（ops/scheduled/DEPLOYED.md 一次性測試）
 const RECENT_MAX=21,SENT_DAYS=7,WINDOW_DAYS={evening:7,weekly:30},ERR_MSG='提醒檢查失敗：讀不到資料';
 
 const remindOf=(profile,k)=>{const v=profile?.remind?.[k];return typeof v==='boolean'?v:k!=='food'};
@@ -97,12 +98,14 @@ function weeklyLine(data,date,nowMs,recent){
   const start=D.addDays(date,-6),range=[...Array(7)].map((_,i)=>D.addDays(start,i));
   const ws=range.map(d=>data.days[d]?.am?.w).filter(v=>typeof v==='number'&&Number.isFinite(v));
   const wPart=ws.length?'早上平均 '+(Math.round(ws.reduce((a,b)=>a+b,0)/ws.length*10)/10).toFixed(1)+' kg（'+ws.length+' 天）':'早上體重 0 天';
-  const active=range.filter(d=>!isPaused(data.profile,d));
-  const med=active.filter(d=>data.days[d]?.med?.taken===true).length; // 和頁面相同：只有 taken 是 true 才算服藥
+  /* 服藥天數和頁面 countable() 同一套規則：追蹤起點之前不算、暫停日不算、今天還沒服藥先不算 */
+  const has=d=>!!(d&&(d.am||d.pm||d.med?.taken===true));
+  const trackFrom=data.preStart||range.find(d=>has(data.days[d]))||null;
+  let a=0,b=0;for(const d of range){if(!trackFrom||d<trackFrom||isPaused(data.profile,d))continue;const t=data.days[d]?.med?.taken===true;if(d===date&&!t)continue;b++;if(t)a++}
   const ex=data.exercise.filter(e=>e.deleted!==true&&e.date>=start&&e.date<=date).reduce((a,e)=>a+(Number(e.min)||0),0);
   let runs='排程讀不到';
   if(recent){const seen=new Set();for(const r of recent){const ms=atMs(r.at);if((r.kind==='morning'||r.kind==='evening')&&ms>nowMs-7*864e5&&ms<=nowMs)seen.add(r.kind+r.date)}runs='排程 '+seen.size+'/14'}
-  let line='週報 '+mdShort(start)+'–'+mdShort(date)+'：'+wPart+'、服藥 '+med+'/'+active.length+' 天、運動 '+ex+' 分、'+runs;
+  let line='週報 '+mdShort(start)+'–'+mdShort(date)+'：'+wPart+'、'+(b?'服藥 '+a+'/'+b+' 天':'服藥還沒有紀錄')+'、運動 '+ex+' 分、'+runs;
   const exams=dueItems(data,date,WINDOW_DAYS.weekly);
   if(exams.length)line+='；30 天內到期：'+exams.map(x=>examPhrase(x,false)).join('、');
   const le=data.profile?.lastExport,ok=typeof le==='string'&&/^\d{4}\/\d\d\/\d\d$/.test(le);
@@ -151,7 +154,10 @@ async function execute(kind,api,mode){
       for(const d of dates){const r=await retry(()=>T.get(api,'days',d));if(r.exists)data.days[d]=r.data}
       if(kind!=='morning'){data.records=await retry(()=>T.all(api,'list','records'));const iv=await retry(()=>T.get(api,'settings','intervals'));data.intervals=iv.exists?iv.data:{};
         data.meddose=await retry(()=>T.all(api,'list','meddose',null,true))} // 文件 id 要留著：抽血紀錄用 id 連結到變更
-      if(kind==='weekly')data.exercise=await retry(()=>T.all(api,'query','exercise',[['date','>=',dates[0]],['date','<=',date]]));
+      if(kind==='weekly'){data.exercise=await retry(()=>T.all(api,'query','exercise',[['date','>=',dates[0]],['date','<=',date]]));
+        /* 追蹤起點：本週一之前最早的 31 筆日紀錄裡，第一天有體重或服藥的日子 */
+        const pre=await retry(()=>api.call({action:'query',url:URL,collection:'days',query:{where:[['date','<',dates[0]]],order_by:{field:'date',direction:'asc'},limit:31}}));
+        data.preStart=(pre.docs||[]).map(d=>({...d.data,id:d.id})).find(d=>d.am||d.pm||d.med?.taken===true)?.id||null}
     }catch(e){data=null}
     if(!data){entry.ok=false;entry.skipped='error';entry.msg=ERR_MSG}
     else if(kind==='weekly')entry.msg=weeklyLine(data,date,t0,hb.ok?hb.recent:null);
@@ -172,7 +178,7 @@ async function execute(kind,api,mode){
   if(entry.msg){
     if(mode==='platform')entry.delivery='platform';
     else if(!api.hasPush)entry.delivery='tool_missing';
-    else{try{const res=await api.push(entry.msg);entry.delivery=res==='sent'?'tool_sent':res==='not_sent'?'tool_not_sent':'tool_error'}catch(e){entry.delivery='tool_error'}} // 只有明確沒送出才是 not_sent；看不出結果算可能已送出
+    else{try{const res=await api.push(entry.msg);entry.delivery=res==='sent'||res===PUSH_REQUESTED?'tool_sent':res==='not_sent'?'tool_not_sent':'tool_error'}catch(e){entry.delivery='tool_error'}} // 只有明確沒送出才是 not_sent；看不出結果算可能已送出
   }
   entry.shouldPush=!!entry.msg;
   /* 6. 寫心跳：讀不到舊心跳就不寫 */

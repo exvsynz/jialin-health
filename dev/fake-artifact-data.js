@@ -6,7 +6,7 @@
    語意：寫入已存在的文件必須帶 if_version 而且等於目前版本；建立新文件不帶 if_version；有下一頁才回 next_cursor。
    失敗注入：failGet {路徑:次數}、failList {collection:次數}、failSet（提交前失敗的次數）、failSetAfterCommit（提交後才回報失敗的次數）、
    beforeSet(path, store, nextVer)：模擬另一個工作階段搶先寫入。
-   推播工具：push 是 'sent' | 'not_sent' | 'throw' | 'unknown'（不丟錯，但回傳看不出結果）；null 表示沒有推播工具。pushAttempts 是呼叫紀錄，pushAccepted 只記回報已送出的。 */
+   推播工具：push 是 'sent' | 'not_sent' | 'throw' | 'unknown'（不丟錯，但回傳看不出結果）| 'requested'（回傳正式環境的「Mobile push requested.」）；null 表示沒有推播工具。pushAttempts 是呼叫紀錄，pushAccepted 只記回報已送出的。 */
 const URL='https://claude.ai/artifact/LJViyfLqXv2VdD5krdJahh';
 const SEG='(?!\\.\\.?(?:\\/|$))[A-Za-z0-9_\\-.~:@+]{1,200}';
 const COL_RE=new RegExp('^'+SEG+'(?:\\/'+SEG+'){0,14}$'),ID_RE=new RegExp('^'+SEG+'$');
@@ -30,6 +30,8 @@ function contract(a){
     for(const k of Object.keys(q||{}))if(!['limit','cursor','where','order_by'].includes(k))e.push('query 未知參數 '+k);
     if('limit' in q&&!(Number.isInteger(q.limit)&&q.limit>=1&&q.limit<=1000))e.push('query.limit 要在 1–1000');
     if('cursor' in q&&typeof q.cursor!=='string')e.push('query.cursor 要是字串');
+    if('order_by' in q&&(!q.order_by||typeof q.order_by.field!=='string'||('direction' in q.order_by&&!['asc','desc'].includes(q.order_by.direction))))e.push('query.order_by 格式不對');
+    if('order_by' in q&&a.action!=='query')e.push('只有 query 能帶 order_by');
     if('where' in q){if(a.action!=='query')e.push('只有 query 能帶 where');if(!Array.isArray(q.where)||q.where.length>10||q.where.some(w=>!Array.isArray(w)||w.length!==3||typeof w[0]!=='string'||!OPS.includes(w[1])))e.push('query.where 格式不對')}}
   return e;
 }
@@ -51,8 +53,11 @@ function fakeApi({docs={},times=[],failGet={},failList={},failSet=0,failSetAfter
       if(bad.length){contractErrors.push(...bad);throw err('contract',{detail:bad})}
       if(a.action==='get'){if(take(failGet,path))throw err('unavailable');const d=store.get(path);return d?{exists:true,data:clone(d.data),version:d.version}:{exists:false}}
       if(a.action==='list'||a.action==='query'){if(take(failList,a.collection))throw err('unavailable');
-        const ok=d=>(a.query?.where||[]).every(([f,op,v])=>op==='>='||op==='gte'?d[f]>=v:op==='<='||op==='lte'?d[f]<=v:op==='=='||op==='eq'?d[f]===v:true);
-        return page(colItems(a.collection).filter(x=>ok(x.data)),a.query)}
+        const ok=d=>(a.query?.where||[]).every(([f,op,v])=>op==='>='||op==='gte'?d[f]>=v:op==='<='||op==='lte'?d[f]<=v:op==='<'||op==='lt'?d[f]<v:op==='=='||op==='eq'?d[f]===v:true);
+        const items=colItems(a.collection).filter(x=>ok(x.data));
+        if(a.query?.order_by){const {field,direction}=a.query.order_by,sgn=direction==='desc'?-1:1;items.sort((x,y)=>sgn*(x.data[field]<y.data[field]?-1:x.data[field]>y.data[field]?1:0));
+          return{docs:items.slice(0,Math.min(a.query.limit||pageSize,pageSize))}} // 工具說明：有 order_by 的 query 只有一頁，沒有 next_cursor
+        return page(items,a.query)}
       if(a.action==='set'){
         if(beforeSet)beforeSet(path,store,()=>ver++);
         if(failSet>0){failSet--;throw err('unavailable')}
@@ -65,7 +70,7 @@ function fakeApi({docs={},times=[],failGet={},failList={},failSet=0,failSetAfter
         return{version:store.get(path).version}}
       throw err('unsupported_in_fake');
     },
-    async push(message){pushAttempts.push(message);if(push==='throw')throw err('push_failed');if(push==='sent')pushAccepted.push(message);return push==='unknown'?undefined:push},
+    async push(message){pushAttempts.push(message);if(push==='throw')throw err('push_failed');if(push==='sent'||push==='requested')pushAccepted.push(message);return push==='unknown'?undefined:push==='requested'?'Mobile push requested.':push},
   };
   return{api,store,calls,contractErrors,pushAttempts,pushAccepted,doc:p=>store.get(p)?.data,URL,contract};
 }

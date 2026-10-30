@@ -150,7 +150,7 @@
 3. **交付**（只送一次，不重試），照開頭的通知管道：
    - `msg` 是空字串：不要呼叫任何推播工具。`delivery` 維持 `"none"`。
    - 通知管道是 `tool`：
-     - 有送推播通知的工具（例如 PushNotification）：用它送出 `msg` 這一行。工具回報已送出 → `delivery` = `"tool_sent"`；明確回報沒有送出 → `"tool_not_sent"`；出錯、看不出結果或其他回應 → `"tool_error"`。
+     - 有送推播通知的工具（例如 PushNotification）：用它送出 `msg` 這一行。工具回報已送出（正式環境回傳的「Mobile push requested.」也算已送出）→ `delivery` = `"tool_sent"`；明確回報沒有送出 → `"tool_not_sent"`；出錯、看不出結果或其他回應 → `"tool_error"`。
      - 沒有這種工具 → `delivery` = `"tool_missing"`。不要改用最終回覆代送。
    - 通知管道是 `platform`：就算有推播工具也不要呼叫。`delivery` = `"platform"`。
 4. `shouldPush`：`msg` 不是空字串就是 `true`。

@@ -67,6 +67,7 @@
 | 文件 | ArtifactData 呼叫 |
 |---|---|
 | `days`，本週 7 天 | 對週一到今天的 7 個日期各做一次 `get`，collection `days`，doc_id 是那天的日期。不要用 `date` 欄位查詢，舊文件可能沒有這個欄位 |
+| `days`，本週一之前最早的 31 筆 | `query`，collection `days`，`query.where` `[["date","<",週一]]`，`query.order_by` `{"field":"date","direction":"asc"}`，`query.limit` 31。有 `order_by` 的查詢只有一頁，不用再翻頁。每份文件都記下文件 id（就是那天的日期） |
 | `exercise` | `query`，collection `exercise`，`query.where` `[["date",">=",週一],["date","<=",今天]]`，`query.limit` 1000；有 `next_cursor` 就把它放進 `query.cursor` 再讀，直到沒有 `next_cursor` |
 | `records` | `list`，collection `records`，`query.limit` 1000；有 `next_cursor` 就把它放進 `query.cursor` 再讀，直到沒有 `next_cursor` |
 | `settings/intervals` | `get`，collection `settings`，doc_id `intervals`。不存在就當成 `{}` |
@@ -78,7 +79,10 @@
 
 - 開頭：「週報 M/D–M/D：」，是週一到今天的日期（月、日不補零，例如 10/26–11/1）。
 - 早上體重：本週每天 `am.w` 是數字的天數記為 n。n > 0 時寫「早上平均 X.X kg（n 天）」，平均四捨五入到小數 1 位，一定寫一位小數；n = 0 時寫「早上體重 0 天」。
-- 「、服藥 a/b 天」：b 是本週不在暫停期間的天數（暫停判斷同第 3 步，逐日判斷）；a 是這些天裡 `med.taken` 是 `true` 的天數。
+- 「、服藥 a/b 天」：和頁面用藥頁的算法相同。
+  - **追蹤起點**：在「本週一之前最早的 31 筆」裡，依日期由早到晚，第一筆有 `am`、有 `pm`，或 `med.taken` 是 `true` 的文件，它的文件 id 就是起點。沒有的話，起點是本週 7 天裡第一個這樣的日子。都沒有就是沒有起點。
+  - 本週一到今天逐日判斷：沒有起點、早於起點，或在暫停期間（暫停判斷同第 3 步）→ 不算；今天（週日）而且 `med.taken` 不是 `true` → 先不算；其他的日子算進 b，其中 `med.taken` 是 `true` 的也算進 a。
+  - b 是 0 時，這段改寫「、服藥還沒有紀錄」。
 - 「、運動 N 分」：`exercise` 裡 `date` 在本週、`deleted` 不是 `true` 的紀錄，把 `min` 加總。
 - 「、排程 k/14」：整理過的舊 `recent` 裡，`kind` 是 `"morning"` 或 `"evening"`、`at` 在過去 7×24 小時內（晚於現在減 168 小時，不晚於現在）的筆數。同一個 `kind` 加同一個 `date` 只算一次。第 2 步心跳讀不到時，這段改寫「、排程讀不到」。
 - 30 天內到期的檢查：照下面兩段算法（檢查到期日、TSH 複查），列出「待安排」或剩餘天數 ≤ 30（含已逾期）的項目。有的話加「；30 天內到期：」，再加上各項用「、」接起來：
@@ -92,7 +96,7 @@
 
 範例（今天是 2026-11-01，週日；「」內是 `msg`）：
 - [例 w-full] 週一到週日每天都有 `med`；`am.w` 有 6 天（52.1、52.4、52.3、52.0、52.6、52.5）；運動 60、50、70 分；過去 7×24 小時內有 14 次早晚檢查；乳房超音波 2025-11-12、`interval` 12；甲狀腺抽血 2026-05-30、`interval` 6；`lastExport` 是 2026/09/20 →「週報 10/26–11/1：早上平均 52.3 kg（6 天）、服藥 7/7 天、運動 180 分、排程 14/14；30 天內到期：乳房超音波 11/12、甲狀腺抽血 11/30；該備份了」
-- [例 w-empty] 這週什麼都沒有，`lastExport` 是 2026/10/30 →「週報 10/26–11/1：早上體重 0 天、服藥 0/7 天、運動 0 分、排程 0/14」
+- [例 w-empty] 這週和之前都沒有紀錄，`lastExport` 是 2026/10/30 →「週報 10/26–11/1：早上體重 0 天、服藥還沒有紀錄、運動 0 分、排程 0/14」
 - [例 err] `settings/profile` 讀兩次都失敗（在時段內）→「提醒檢查失敗：讀不到資料」
 
 ### 檢查到期日的算法
@@ -146,7 +150,7 @@
 3. **交付**（只送一次，不重試），照開頭的通知管道：
    - `msg` 是空字串：不要呼叫任何推播工具。`delivery` 維持 `"none"`。
    - 通知管道是 `tool`：
-     - 有送推播通知的工具（例如 PushNotification）：用它送出 `msg` 這一行。工具回報已送出 → `delivery` = `"tool_sent"`；明確回報沒有送出 → `"tool_not_sent"`；出錯、看不出結果或其他回應 → `"tool_error"`。
+     - 有送推播通知的工具（例如 PushNotification）：用它送出 `msg` 這一行。工具回報已送出（正式環境回傳的「Mobile push requested.」也算已送出）→ `delivery` = `"tool_sent"`；明確回報沒有送出 → `"tool_not_sent"`；出錯、看不出結果或其他回應 → `"tool_error"`。
      - 沒有這種工具 → `delivery` = `"tool_missing"`。不要改用最終回覆代送。
    - 通知管道是 `platform`：就算有推播工具也不要呼叫。`delivery` = `"platform"`。
 4. `shouldPush`：`msg` 不是空字串就是 `true`。

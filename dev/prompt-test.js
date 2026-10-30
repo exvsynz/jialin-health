@@ -23,7 +23,7 @@ const COMMON=[
   ['通知管道固定','**通知管道：`'],['工具模式不改走平台','不要改用最終回覆代送'],['平台模式不呼叫工具','就算有推播工具也不要呼叫'],
   ['交付結果分開記錄','"tool_sent"'],['工具缺席','"tool_missing"'],['平台代送','"platform"'],['不代表手機收到','不代表手機一定收到'],['去重策略','寧可少一則，也不要重複'],
   ['只有明確沒送出才算未送出','明確回報沒有送出'],['sent 的值要驗證','`delivery` 是 `"tool_sent"`、`"tool_error"` 或 `"platform"`。\n    - 每一項只保留'],['sent 保留 7 個日期','在今天往前 6 天到今天之間（共 7 個日期，未來的日期不留）'],['時段外 profile 讀不到記 ok:false','同時記 `ok` = `false`（仍然不通知）'],
-  ['結果未確認的回覆','「（推播結果未確認）」'],['完整初始化','delivery: "none", msg: "" }'],['msg 未送出也保留','推播沒有送出時也保留原文'],['run 重試沿用','重試寫入也一樣'],
+  ['結果未確認的回覆','「（推播結果未確認）」'],['正式環境推播回應算已送出','「Mobile push requested.」也算已送出'],['完整初始化','delivery: "none", msg: "" }'],['msg 未送出也保留','推播沒有送出時也保留原文'],['run 重試沿用','重試寫入也一樣'],
   ['心跳寫進 system/heartbeat','system/heartbeat'],['寫入帶 if_version','if_version'],['用 set 不用 update','用 `set` 整份取代'],
   ['recent 依時間排序留 21 筆','依 `at` 由新到舊排序，只留前 21 筆'],['執行識別碼','`run`'],['只能寫 system/heartbeat','只能寫一份文件：`system/heartbeat`'],
   ['推播只寫一行','只寫一行'],['沒有推播的回覆','「（無需提醒）」'],['不推播時不呼叫推播工具','不要呼叫任何推播工具'],
@@ -44,8 +44,9 @@ for(const [kind,spec] of Object.entries(KINDS)){
   if(!spec.docs.includes('exercise'))check(`${kind}：不讀 exercise`,!s.includes('collection `exercise`'));
   if(!spec.docs.includes('records'))check(`${kind}：不讀 records`,!s.includes('collection `records`'));
   if(kind!=='weekly')check(`${kind}：沒有值的定義`,s.includes('`null`、`false`、`0`、空字串'));
-  check(`${kind}：服藥看 med.taken`,kind==='weekly'?s.includes('`med.taken` 是 `true` 的天數'):s.includes('`med.taken` 不是 `true` 就是缺'));
-  if(kind==='weekly')check('weekly：days 依日期 ID 讀，不用 date 欄位查詢',s.includes('各做一次 `get`，collection `days`')&&!s.includes('collection `days`，`query'));
+  check(`${kind}：服藥看 med.taken`,kind==='weekly'?s.includes('其中 `med.taken` 是 `true` 的也算進 a'):s.includes('`med.taken` 不是 `true` 就是缺'));
+  if(kind==='weekly')check('weekly：服藥分母和頁面一致（追蹤起點、今天還沒服藥先不算、還沒有紀錄的寫法）',s.includes('| `days`，本週一之前最早的 31 筆 |')&&s.includes('**追蹤起點**')&&s.includes('今天（週日）而且 `med.taken` 不是 `true` → 先不算')&&s.includes('「、服藥還沒有紀錄」'));
+  if(kind==='weekly')check('weekly：本週 7 天依日期 ID 讀；days 只有本週一之前那一次查詢',s.includes('各做一次 `get`，collection `days`')&&s.split('collection `days`，`query').length===2&&s.includes('`query.where` `[["date","<",週一]]`'));
   const tbl=(s.split('| 代號 | 名稱 | 預設間隔（月） |')[1]||'').split(/\n\s*\n/)[0];
   const rows=[...tbl.matchAll(/^\| `([a-z_]+)` \| ([^|]+?) \| (\d+) \|$/gm)].map(x=>[x[1],x[2],+x[3]]);
   if(spec.exams){
