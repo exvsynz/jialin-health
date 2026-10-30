@@ -25,11 +25,11 @@ exercise/{autoId}      { date, type:"yoga"|"pilates"|"other", label, min, note, 
 records/{autoId}       { exam, cat, date, preset, interval, nextDue, report, place, doctor, note, labs:{}, createdAt, updatedAt }
 settings/profile       { medName, medDose, medNote, yogaMin, pilatesMin, pauseFrom, pauseTo, pauseNote, lastExport, remind }
 settings/intervals     { <examId>: months }
-system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shouldPush, delivery, msg, recent:[…最多 21 筆] }
+system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shouldPush, delivery, msg, recent:[…最多 21 筆], sent:{…7 天內可能已送出的通知} }
 ```
 
 - `remind`：`{ morning, evening, weekly, food }`。欄位不存在時，前三個視為開啟，`food` 視為關閉。頁面只寫改動的那個 key。
-- `system/heartbeat`：只由排程任務寫入，頁面只讀。格式與規則見 `docs/specs/phase-A.md`；排程提示詞在 `ops/scheduled/`。匯出與匯入不包含它。
+- `system/heartbeat`：只由排程任務寫入，頁面只讀。格式與規則見 `docs/specs/phase-A.md`；排程提示詞在 `ops/scheduled/`，開頭的「通知管道」要在建立排程任務前設定。匯出與匯入不包含它。
 
 - 日期以台北時間計算，凌晨 4 點前算前一天。
 - `days` 的寫入用 `update` 合併欄位，避免多裝置互相覆蓋。
@@ -53,7 +53,7 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 - `dev/data-test.js`、`dev/render-test.js`、`dev/weight-test.js`：資料寫入情境、重繪不打斷輸入、體重面板。
 - `dev/heartbeat-test.js`：從 `src/index.html` 抽出 `heartbeat helpers` 區塊，測試「上次檢查」的文字與 26 小時警示的邊界。
 - `dev/remind-test.js`：設定頁提醒區塊（開關寫入、撤銷、多裝置、停用狀態、寫入失敗）、心跳即時更新、今天頁的「提醒可能停了」、版面與截圖。
-- `dev/remind-ref.js`、`dev/fake-artifact-data.js`、`dev/remind-ref-test.js`：照排程提示詞的步驟，對 ArtifactData 測試替身（版本條件、分頁、失敗注入、推播工具）實際執行的參考實作與情境測試，並和頁面的 `dueOf` 比對。
+- `dev/remind-ref.js`、`dev/fake-artifact-data.js`、`dev/remind-ref-test.js`：照排程提示詞的步驟，對 ArtifactData 測試替身（參數照工具 schema 檢查、版本條件、分頁、失敗注入、推播工具）實際執行的參考實作與情境測試，並和頁面的 `dueOf` 比對。
 - `dev/prompt-test.js`：檢查 `ops/scheduled/*.md` 寫到規格要求的每一項，檢查名稱表和頁面一致，範例推播句和參考實作的輸出一字不差（情境在 `dev/prompt-cases.js`）。
 - `dev/e2e.js`：跑主要流程，並在 380／1280 寬 × 淺色／深色下截圖到 `dev/screenshots/`（不進版控），同時檢查水平捲動、觸控目標與文字對比。
 - `dev/mock-claude.js`：記憶體版的 `window.claude`，可切換寫入延遲、「自寫立即可見」、首筆快照延遲、監聽失敗等情境。只用合成資料。
