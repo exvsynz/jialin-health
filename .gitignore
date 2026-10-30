@@ -2,3 +2,5 @@
 *.json
 .DS_Store
 node_modules/
+
+dev/screenshots/
