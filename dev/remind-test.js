@@ -7,7 +7,7 @@ const SHOTS=path.join(__dirname,'screenshots');
 const T='2026-10-30',NOW=T+'T20:30:00+08:00';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const hoursAgo=(h,iso=NOW)=>new Date(Date.parse(iso)-h*36e5).toISOString().replace('Z','+00:00');
-const hbDoc=(h,extra={})=>({at:hoursAgo(h),kind:'morning',date:T,missing:['服藥'],paused:false,ok:true,skipped:null,pushed:true,msg:'家琳今天還沒記：服藥',recent:[],...extra});
+const hbDoc=(h,extra={})=>({at:hoursAgo(h),kind:'morning',date:T,missing:['服藥'],paused:false,ok:true,skipped:null,shouldPush:true,delivery:'tool_sent',msg:'家琳今天還沒記：服藥',recent:[],...extra});
 const seed=(extra={})=>({...sampleSeed(T),...extra});
 const sw=(page,k)=>page.evaluate(k=>{const i=document.querySelector(`[data-remind="${k}"]`);return{checked:i.checked,disabled:i.disabled}},k);
 const txt=(page,s)=>page.evaluate(s=>{const e=document.querySelector(s);return e.hidden?null:e.textContent},s);

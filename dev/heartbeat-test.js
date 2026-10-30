@@ -12,10 +12,10 @@ const H=36e5,ago=h=>new Date(NOW-h*H).toISOString(); // ISO 字串（UTC 表示�
 const st=(hb,now=NOW)=>f.hbStatus(hb,now);
 
 eq('沒有心跳：提示尚未收到，不警示',[st(null).text,st(null).warn],['還沒有收到排程檢查。',false]);
-const m={at:'2026-10-31T07:23:05+08:00',kind:'morning',date:'2026-10-31',missing:['服藥'],paused:false,ok:true,skipped:null,pushed:true};
+const m={at:'2026-10-31T07:23:05+08:00',kind:'morning',date:'2026-10-31',missing:['服藥'],paused:false,ok:true,skipped:null,shouldPush:true,delivery:'tool_sent'};
 eq('早上、缺服藥',[st(m).text,st(m).warn],['上次檢查 10/31（六）07:23・早上・缺服藥',false]);
 eq('早上、兩項都缺',st({...m,missing:['早上體重','服藥']}).text,'上次檢查 10/31（六）07:23・早上・缺早上體重、服藥');
-eq('晚上、都記了',st({...m,at:'2026-10-30T22:21:00+08:00',kind:'evening',missing:[],pushed:false}).text,'上次檢查 10/30（五）22:21・晚上・都記了');
+eq('晚上、都記了',st({...m,at:'2026-10-30T22:21:00+08:00',kind:'evening',missing:[],shouldPush:false,delivery:'none'}).text,'上次檢查 10/30（五）22:21・晚上・都記了');
 eq('週報只寫週報',st({...m,at:'2026-11-01T20:14:00+08:00',kind:'weekly',missing:[]},Date.parse('2026-11-01T21:00:00+08:00')).text,'上次檢查 11/01（日）20:14・週報');
 eq('暫停中',st({...m,missing:[],skipped:'paused',paused:true}).text,'上次檢查 10/31（六）07:23・早上・暫停中，未推播');
 eq('提醒關閉',st({...m,missing:[],skipped:'off'}).text,'上次檢查 10/31（六）07:23・早上・提醒關閉，未推播');
