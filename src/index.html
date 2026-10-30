@@ -58,7 +58,15 @@ button:disabled{opacity:.45;cursor:not-allowed}
 input,select,textarea{font:inherit;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0;min-height:44px}
 textarea{min-height:110px;resize:vertical}
 .notice{background:var(--accent-soft);border-radius:12px;padding:10px 14px;font-size:.88rem}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+/* subpages use today's vocabulary: a small label above a rounded block, hairline rows inside */
+.sect{display:flex;flex-direction:column;gap:8px;min-width:0}
+.sect-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.grp{padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.kv{list-style:none;margin:0;padding:0}
+.kv li{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid var(--line)}
+.kv li:first-child{border-top:0;padding-top:0}
+.kv li:last-child{padding-bottom:0}
+.kv .v{font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:1.05rem}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .grow{flex:1;min-width:0}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
@@ -184,10 +192,6 @@ dialog.sheet[open]{animation:up .24s ease-out}
 .bandrect{fill:var(--band)}
 .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.82rem;color:var(--muted)}
 .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
-.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
-.stat .v{font-family:var(--f-num);font-size:1.25rem;font-variant-numeric:tabular-nums}
-.stat .k{font-size:.8rem;color:var(--muted)}
 .bar-yoga{fill:var(--ex-yoga)} .bar-pilates{fill:var(--ex-pilates)} .bar-other{fill:var(--ex-other)}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:.82rem}
 .cal .h{color:var(--muted);font-size:.75rem}
@@ -197,12 +201,12 @@ dialog.sheet[open]{animation:up .24s ease-out}
 .cal button .m{font-family:var(--f-mono);font-size:.68rem;color:var(--muted)}
 .loglist{list-style:none;margin:0;padding:0}
 .loglist li{display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:.9rem;flex-wrap:wrap}
-.loglist li:first-child{border-top:0}
+.loglist li:first-child{border-top:0;padding-top:0}
+.loglist li:last-child{padding-bottom:0}
 
 /* exams */
-.next{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.next-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.next-head .tally{font-size:.85rem;color:var(--muted)}
+.next{overflow:hidden}
+.tally{font-size:.82rem;color:var(--muted)}
 .next ol{list-style:none;margin:0;padding:0}
 .next li{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:10px 16px;border-top:1px solid var(--line)}
 .next li:first-child{border-top:0}
@@ -214,7 +218,7 @@ section.cat{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
 .cat-head{display:flex;align-items:center;gap:10px}
 .cat-head .bar{width:4px;height:22px;border-radius:2px;background:var(--cat)}
 .cat-head .en{font-size:.78rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
-.exam{background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.exam{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
 .exam-main{display:grid;grid-template-columns:1fr auto;gap:8px 16px;padding:14px 16px}
 .exam-name{font-weight:700}
 .exam-sub{font-size:.85rem;color:var(--muted)}
@@ -228,7 +232,7 @@ section.cat{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
 .pill.none{color:var(--st-none);background:var(--st-none-bg)}
 .chip{display:inline-block;font-size:.78rem;padding:1px 8px;border-radius:6px;border:1px solid var(--line);background:var(--sunk)}
 .exam-foot{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding:4px 8px;flex-wrap:wrap}
-.hist{border-top:1px solid var(--line);background:var(--sunk);padding:8px 16px 14px;border-radius:0 0 12px 12px}
+.hist{border-top:1px solid var(--line);background:var(--sunk);padding:8px 16px 14px;border-radius:0 0 var(--r) var(--r)}
 .hist ol{list-style:none;margin:0;padding:0}
 .hist li{padding:10px 0;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:4px;min-width:0}
 .hist li:first-child{border-top:0}
@@ -240,13 +244,13 @@ section.cat{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
 .labtable th,.labtable td{padding:5px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
 .labtable th:first-child,.labtable td:first-child{text-align:left}
 .labtable th{font-weight:500;color:var(--muted)}
-details.refbox{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+details.refbox{padding:4px 16px 12px}
 details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
 .ref{font-size:.85rem}
 .ref table{border-collapse:collapse;width:100%}
 .ref td,.ref th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
 .ref th{color:var(--muted);font-weight:500}
-.dlg{display:flex;flex-direction:column;max-height:calc(100dvh - 26px)}
+.dlg{display:flex;flex-direction:column;max-height:calc(92dvh - env(safe-area-inset-bottom,0px))}
 .dlg-head{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
 .dlg-body{padding:16px 18px;overflow:auto;display:flex;flex-direction:column;gap:14px}
 .dlg-foot{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
@@ -308,43 +312,41 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
   <!-- WEIGHT -->
   <section class="panel" id="p-weight" hidden>
     <div class="row"><span class="grow"></span><div class="seg" role="group" aria-label="期間" id="wRange"><button type="button" data-days="30" aria-pressed="true">30 天</button><button type="button" data-days="90" aria-pressed="false">90 天</button><button type="button" data-days="365" aria-pressed="false">1 年</button></div></div>
-    <div class="stats" id="wStats"></div>
-    <div class="card">
+    <div class="blk grp"><ul class="kv" id="wStats"></ul></div>
+    <div class="sect"><h2 class="lbl">體重</h2><div class="blk grp">
       <div class="legend"><span><i style="background:var(--w-am)"></i>早上 7 日平均</span><span><i style="background:var(--w-am);opacity:.4;height:8px;width:8px;border-radius:50%"></i>早上</span><span><i style="background:transparent;border:1.5px solid var(--w-pm);height:8px;width:8px;border-radius:50%"></i>晚上</span><span><i style="background:var(--band);height:10px"></i>月經</span></div>
       <div class="chart" id="wChart"></div>
-    </div>
-    <div class="card">
-      <h3>體脂（早上 7 日平均）</h3>
+    </div></div>
+    <div class="sect"><h2 class="lbl">體脂（早上 7 日平均）</h2><div class="blk grp">
       <div class="chart" id="bfChart"></div>
       <p class="hint" style="margin:0">家用體脂計只適合看同一台、同時段的長期方向。</p>
-    </div>
-    <div class="card"><h3>最近紀錄</h3><ul class="loglist" id="wLog"></ul></div>
+    </div></div>
+    <div class="sect"><h2 class="lbl">最近紀錄</h2><div class="blk grp"><ul class="loglist" id="wLog"></ul></div></div>
   </section>
 
   <!-- EXERCISE -->
   <section class="panel" id="p-exercise" hidden>
-    <div class="stats" id="exStats"></div>
-    <div class="card">
-      <h3>每週分鐘數（近 12 週）</h3>
+    <div class="blk grp"><ul class="kv" id="exStats"></ul></div>
+    <div class="sect"><h2 class="lbl">每週分鐘數（近 12 週）</h2><div class="blk grp">
       <div class="legend"><span><i style="background:var(--ex-yoga);height:10px"></i>瑜珈</span><span><i style="background:var(--ex-pilates);height:10px"></i>皮拉提斯</span><span><i style="background:var(--ex-other);height:10px"></i>其他</span></div>
       <div class="chart" id="exChart"></div>
-    </div>
-    <div class="card" style="padding-inline:12px">
-      <div class="row"><button type="button" id="calPrev" aria-label="上個月" style="min-width:44px">‹</button><h3 class="grow" id="calTitle" style="text-align:center"></h3><button type="button" id="calNext" aria-label="下個月" style="min-width:44px">›</button></div>
+    </div></div>
+    <div class="blk grp" style="padding-inline:12px">
+      <div class="row"><button type="button" id="calPrev" aria-label="上個月" style="min-width:44px">‹</button><h2 class="grow" id="calTitle" style="text-align:center;font-size:1rem"></h2><button type="button" id="calNext" aria-label="下個月" style="min-width:44px">›</button></div>
       <div class="cal" id="cal"></div>
     </div>
-    <div class="card"><h3>最近紀錄</h3><ul class="loglist" id="exLog"></ul></div>
+    <div class="sect"><h2 class="lbl">最近紀錄</h2><div class="blk grp"><ul class="loglist" id="exLog"></ul></div></div>
   </section>
 
   <!-- EXAMS -->
   <section class="panel" id="p-exams" hidden>
     <div class="row"><span class="grow"></span><button class="primary" id="btnAdd" type="button">＋ 新增檢查紀錄</button></div>
-    <div class="next" aria-labelledby="nextTitle">
-      <div class="next-head"><h3 id="nextTitle">接下來要做的檢查</h3><span class="tally" id="tally"></span></div>
-      <ol id="nextList"><li class="empty">還沒有任何紀錄。按「新增檢查紀錄」輸入最近一次檢查，這裡就會依到期日排出順序。</li></ol>
+    <div class="sect">
+      <div class="sect-head"><h2 class="lbl" id="nextTitle">接下來要做的檢查</h2><span class="tally" id="tally"></span></div>
+      <div class="blk next" aria-labelledby="nextTitle"><ol id="nextList"><li class="empty">還沒有任何紀錄。按「新增檢查紀錄」輸入最近一次檢查，這裡就會依到期日排出順序。</li></ol></div>
     </div>
     <div id="cats"></div>
-    <details class="refbox">
+    <details class="blk refbox">
       <summary>追蹤間隔的依據</summary>
       <div class="ref" id="refTable"></div>
       <p class="muted" style="font-size:.82rem;margin:10px 0 0">指引區間取下限作為預設值，以免延遲。這些是一般族群的建議；家琳若有個人病史、家族史或醫師另有安排，請以主治醫師的建議為準，並在紀錄中直接改寫間隔或指定日期。</p>
@@ -353,44 +355,48 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
 
   <!-- SETUP -->
   <section class="panel" id="p-setup" hidden>
-    <form class="card" id="profForm" novalidate>
-      <h2>服藥</h2>
-      <div class="grid2">
-        <div class="field"><label for="sMed">藥名</label><input id="sMed" autocomplete="off"></div>
-        <div class="field"><label for="sDose">劑量 mcg</label><input id="sDose" type="number" inputmode="numeric" min="1" max="500"></div>
-      </div>
-      <div class="field"><label for="sMedNote">服用方式</label><input id="sMedNote" autocomplete="off" placeholder="例如：半顆，早上空腹"></div>
-      <h2>運動預設時間</h2>
-      <div class="grid2">
-        <div class="field"><label for="sYoga">瑜珈（分鐘）</label><input id="sYoga" type="number" inputmode="numeric" min="5" max="300"></div>
-        <div class="field"><label for="sPil">皮拉提斯（分鐘）</label><input id="sPil" type="number" inputmode="numeric" min="5" max="300"></div>
-      </div>
-      <p class="hint" style="margin:0">快捷鍵先帶上次同類運動的時間，沒有紀錄才用這裡的預設。</p>
-      <h2>暫停模式</h2>
-      <p class="hint" style="margin:0">出差、生病、手術週等期間不算漏記。</p>
-      <div class="grid2">
-        <div class="field"><label for="sPFrom">開始日</label><input id="sPFrom" type="date"></div>
-        <div class="field"><label for="sPTo">結束日</label><input id="sPTo" type="date"></div>
-      </div>
-      <div class="field"><label for="sPNote">原因（選填）</label><input id="sPNote" autocomplete="off"></div>
+    <form class="panel" id="profForm" novalidate>
+      <div class="sect"><h2 class="lbl">服藥</h2><div class="blk grp">
+        <div class="grid2">
+          <div class="field"><label for="sMed">藥名</label><input id="sMed" autocomplete="off"></div>
+          <div class="field"><label for="sDose">劑量 mcg</label><input id="sDose" type="number" inputmode="numeric" min="1" max="500"></div>
+        </div>
+        <div class="field"><label for="sMedNote">服用方式</label><input id="sMedNote" autocomplete="off" placeholder="例如：半顆，早上空腹"></div>
+      </div></div>
+      <div class="sect"><h2 class="lbl">運動預設時間</h2><div class="blk grp">
+        <div class="grid2">
+          <div class="field"><label for="sYoga">瑜珈（分鐘）</label><input id="sYoga" type="number" inputmode="numeric" min="5" max="300"></div>
+          <div class="field"><label for="sPil">皮拉提斯（分鐘）</label><input id="sPil" type="number" inputmode="numeric" min="5" max="300"></div>
+        </div>
+        <p class="hint" style="margin:0">快捷鍵先帶上次同類運動的時間，沒有紀錄才用這裡的預設。</p>
+      </div></div>
+      <div class="sect"><h2 class="lbl">暫停模式</h2><div class="blk grp">
+        <p class="hint" style="margin:0">出差、生病、手術週等期間不算漏記。</p>
+        <div class="grid2">
+          <div class="field"><label for="sPFrom">開始日</label><input id="sPFrom" type="date"></div>
+          <div class="field"><label for="sPTo">結束日</label><input id="sPTo" type="date"></div>
+        </div>
+        <div class="field"><label for="sPNote">原因（選填）</label><input id="sPNote" autocomplete="off"></div>
+      </div></div>
       <div class="row"><span class="grow"></span><button type="button" id="sPClear">清除暫停</button><button type="submit" class="primary">儲存設定</button></div>
     </form>
 
-    <form class="card" id="ivForm" novalidate>
-      <h2>定期檢查的固定間隔</h2>
-      <p class="hint" style="margin:0">報告分類沒有對應建議時使用。改這裡不會變動已存的紀錄。</p>
-      <div id="setRows"></div>
+    <form class="sect" id="ivForm" novalidate>
+      <h2 class="lbl">定期檢查的固定間隔</h2>
+      <div class="blk grp">
+        <p class="hint" style="margin:0">報告分類沒有對應建議時使用。改這裡不會變動已存的紀錄。</p>
+        <div id="setRows"></div>
+      </div>
       <div class="row"><span class="grow"></span><button type="submit" class="primary">儲存間隔</button></div>
     </form>
 
-    <div class="card">
-      <h2>資料備份</h2>
+    <div class="sect"><h2 class="lbl">資料備份</h2><div class="blk grp">
       <p class="small" style="margin:0">所有紀錄只存在這個頁面的資料庫裡。建議每個月匯出一次，存到雲端硬碟；匯出的檔案可以在這裡匯入還原。</p>
       <div class="row"><button type="button" class="primary" id="btnExport">匯出全部（JSON）</button><label class="small" for="impFile" style="display:flex;gap:8px;align-items:center"><span>匯入還原</span><input type="file" id="impFile" accept=".json,application/json" style="width:auto"></label></div>
       <div id="impPreview" hidden class="preview"></div>
       <div class="row" id="impActions" hidden><span class="grow"></span><button type="button" id="impCancel">取消</button><button type="button" class="danger" id="impGo">確認匯入</button></div>
       <p class="hint" style="margin:0" id="lastExport"></p>
-    </div>
+    </div></div>
   </section>
 </div>
 </main>
@@ -424,8 +430,9 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
   </div>
 </dialog>
 
-<dialog id="dlgRec" aria-labelledby="recTitle">
+<dialog class="sheet" id="dlgRec" data-keep aria-labelledby="recTitle">
   <form class="dlg" id="recForm" novalidate>
+    <div class="grab"></div>
     <div class="dlg-head"><h2 id="recTitle">新增檢查紀錄</h2><button type="button" class="ghost" data-close>關閉</button></div>
     <div class="dlg-body">
       <div class="field"><label for="fExam">檢查項目</label><select id="fExam" required></select></div>
@@ -749,6 +756,7 @@ $('#exToday').addEventListener('change',ev=>{
 /* ================= charts ================= */
 function niceStep(range,maxTicks){const steps=[0.1,0.2,0.5,1,2,5,10,20,50,100,200];for(const s of steps)if(range/s<=maxTicks)return s;return 500}
 const fmtN=(v,s)=>s<1?v.toFixed(1):String(Math.round(v));
+const kvRows=rows=>rows.map(([k,v])=>`<li><span class="muted">${k}</span><span class="v">${v}</span></li>`).join('');
 function rolling(pts,win){const out=[];let j=0;let sum=0;for(let i=0;i<pts.length;i++){sum+=pts[i].v;while(pts[j].d<pts[i].d-win+1){sum-=pts[j].v;j++}const n=i-j+1;if(n>=2)out.push({d:pts[i].d,v:sum/n})}return out}
 function drawLineChart(el,{start,end,dots=[],hollow=[],line=[],bands=[],unit=''}){
   const W=Math.max(300,el.clientWidth||600),H=Math.round(Math.min(260,Math.max(190,W*0.42)));
@@ -782,7 +790,7 @@ function renderWeight(){
   const mean=(a,b)=>{const v=am.filter(p=>p.d>=a&&p.d<=b).map(p=>p.v);return v.length?v.reduce((x,y)=>x+y,0)/v.length:null};
   const m1=mean(end-6,end),m0=mean(end-13,end-7),m30=mean(end-29,end);const diff=m1!=null&&m0!=null?r1(m1-m0):null;
   const cnt=keys.filter(k=>dnum(k)>end-7&&days[k].am).length;
-  $('#wStats').innerHTML=`<div class="stat"><div class="k">近 7 天早上平均</div><div class="v">${m1!=null?m1.toFixed(1)+' kg':'—'}</div></div><div class="stat"><div class="k">和前 7 天相比</div><div class="v">${diff!=null?(diff>0?'+':'')+diff.toFixed(1)+' kg':'—'}</div></div><div class="stat"><div class="k">近 30 天平均</div><div class="v">${m30!=null?m30.toFixed(1)+' kg':'—'}</div></div><div class="stat"><div class="k">近 7 天早上有量</div><div class="v">${cnt} / 7</div></div>`;
+  $('#wStats').innerHTML=kvRows([['近 7 天早上平均',m1!=null?m1.toFixed(1)+' kg':'—'],['和前 7 天相比',diff!=null?(diff>0?'+':'')+diff.toFixed(1)+' kg':'—'],['近 30 天平均',m30!=null?m30.toFixed(1)+' kg':'—'],['近 7 天早上有量',cnt+' / 7 天']]);
   const recent=keys.filter(k=>days[k].am||days[k].pm).reverse().slice(0,20);
   $('#wLog').innerHTML=recent.length?recent.map(k=>{const d=days[k];const f=s=>d[s]?`${d[s].w}${d[s].bf!=null?'・'+d[s].bf+'%':''}`:'—';return`<li><button type="button" class="ghost num" data-go="${k}">${fmt(k)}（${wd(k)}）</button><span>早 <span class="num">${f('am')}</span></span><span class="muted">晚 <span class="num">${f('pm')}</span></span>${d.period?'<span class="chip">月經</span>':''}</li>`}).join(''):'<li class="muted">還沒有紀錄。</li>';
 }
@@ -795,7 +803,7 @@ function renderExercise(){
   const weeks=[];for(let i=11;i>=0;i--)weeks.push(wk0-7*i);
   const sums=weeks.map(w=>{const s={yoga:0,pilates:0,other:0};for(const e of ex){const n=dnum(e.date);if(n>=w&&n<w+7)s[EXT[e.type]?e.type:'other']+=(+e.min||0)}return s});
   const tw=sums[11].yoga+sums[11].pilates+sums[11].other;const avg4=sums.slice(7,11).reduce((a,s)=>a+s.yoga+s.pilates+s.other,0)/4;const sess=ex.filter(e=>dnum(e.date)>=wk0).length;
-  $('#exStats').innerHTML=`<div class="stat"><div class="k">本週分鐘</div><div class="v">${tw}</div></div><div class="stat"><div class="k">本週次數</div><div class="v">${sess}</div></div><div class="stat"><div class="k">前 4 週平均每週</div><div class="v">${Math.round(avg4)} 分</div></div>`;
+  $('#exStats').innerHTML=kvRows([['本週',tw+' 分・'+sess+' 次'],['前 4 週平均每週',Math.round(avg4)+' 分']]);
   const el=$('#exChart');const W=Math.max(300,el.clientWidth||600),H=200,padL=40,padR=10,padT=12,padB=28,pw=W-padL-padR,ph=H-padT-padB;
   const mx=Math.max(60,...sums.map(s=>s.yoga+s.pilates+s.other));const step=niceStep(mx,4);const top=Math.ceil(mx/step)*step;const bw=pw/12;const y=v=>padT+ph-(v/top)*ph;
   let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="每週運動分鐘">`;
@@ -922,7 +930,7 @@ function openRecord(examId,rec){editing=rec||null;$('#recTitle').textContent=rec
   $('#btnDel').hidden=!rec;updatePreview();dlg.showModal()}
 /* the one document-level click router: sheet backdrops, day links, exam buttons, dialog close */
 document.addEventListener('click',ev=>{const t=ev.target;
-  if(t.matches('dialog.sheet')){t.close();return}
+  if(t.matches('dialog.sheet')){if(!t.hasAttribute('data-keep'))t.close();return} // a half-typed exam report must not vanish on a stray tap
   const g=t.closest('[data-go]');if(g){setView(g.dataset.go);go('today');return}
   const b=t.closest('button');if(!b)return;
   if(b.dataset.add)openRecord(b.dataset.add);

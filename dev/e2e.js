@@ -28,6 +28,7 @@ async function shots(){
     const title=await page.evaluate(()=>document.querySelector('#subTitle').textContent);
     check(label+'：直接載入顯示正確頁面',p==='today'?title==='':title.length>0,title);
     await layout(page,label);
+    check(label+'：沒有舊的卡片與統計方框',!(await page.$('.card,.stat')));
     await page.screenshot({path:path.join(SHOTS,`${tag}-${scheme}-${p}.png`),fullPage:true});
     if(p==='today'){
       await page.click('[data-wslot="pm"]');await wait(350);await layout(page,label+' 體重面板');
@@ -48,6 +49,9 @@ async function shots(){
       await page.click('[data-hist="thy_lab"]');await wait(200);await layout(page,label+' 歷史');
       await page.click('[data-edit="r3"]');await wait(300);await layout(page,label+' 編輯對話框');
       await page.screenshot({path:path.join(SHOTS,`${tag}-${scheme}-exam-dialog.png`)});
+      check(label+'：檢查紀錄是底部 sheet',await page.evaluate(()=>document.querySelector('#dlgRec').classList.contains('sheet')));
+      await page.mouse.click(10,10);await wait(200);
+      check(label+'：點背景不會關掉檢查紀錄',await page.evaluate(()=>document.querySelector('#dlgRec').open));
     }
     check(label+'：沒有 JS 錯誤',!errors.length,errors);
     await page.context().close();
