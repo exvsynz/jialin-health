@@ -1202,7 +1202,7 @@ let formCtx={},rcTouched=false,rcTargetId=null;
 function renderCtx(){const isThy=$('#fExam').value==='thy_lab';$('#ctxWrap').hidden=!isThy;if(!isThy)return;
   $$('#ctxWrap [data-ctx]').forEach(g=>g.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(formCtx[g.dataset.ctx]===b.dataset.v))));
   const today=logicalToday(),rc=recheckState(meddose,records.filter(x=>!editing||x.id!==editing.id),today,profile.tshRecheckWeeks);
-  const target=formCtx.recheckOf?meddose.find(m=>m.id===formCtx.recheckOf):(rc.st!=='none'&&rc.st!=='done'?rc.target:null);
+  const target=formCtx.recheckOf?meddose.find(m=>m.id===formCtx.recheckOf):(rc.st!=='none'?rc.target:null); // a second draw may belong to the same change
   rcTargetId=target?.id||null;$('#rcRow').hidden=!target;if(!target){$('#rcHint').textContent='';return}
   const date=$('#fDate').value,ok=validDate(date)&&date>target.date&&date<=today;
   $('#rcLabel').textContent=`這次是 ${md(target.date)} 變更後的複查`;
@@ -1224,7 +1224,9 @@ const noFollowPicked=()=>!!EX[$('#fExam').value].presets?.find(x=>x.k===$('#fPre
 function updatePreview(){const date=$('#fDate').value,due=$('#fDue').value,m=$('#fInterval').value;let t;
   if(!date)t='填入檢查日期後會顯示下次日期';else if(due)t='下次檢查：'+fmt(due)+'（醫師指定）';else if(m==='')t=noFollowPicked()?'不排例行追蹤；醫師有安排再填間隔或日期':'請填追蹤間隔';else if(Number(m)===0)t='待安排（依報告處置），不排定期追蹤';else t='下次檢查：'+fmt(addMonths(date,Number(m)))+'（'+intervalText(Number(m))+'後）';
   $('#duePreview').textContent=t}
-$('#fExam').addEventListener('change',()=>{fillPresets($('#fExam').value);updatePreview();renderCtx()});
+$('#fExam').addEventListener('change',()=>{fillPresets($('#fExam').value);updatePreview();
+  if($('#fExam').value!=='thy_lab'){formCtx={};rcTouched=false;rcTargetId=null;$('#fRecheck').checked=false} // the draw context does not survive a switch to another exam
+  renderCtx()});
 $('#fPreset').addEventListener('change',applyPreset);
 ['#fDate','#fDue','#fInterval'].forEach(s=>$(s).addEventListener('input',updatePreview));
 $('#fDate').addEventListener('input',renderCtx);
@@ -1252,8 +1254,11 @@ $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
   const body={exam,cat:EX[exam].cat,date:$('#fDate').value,preset:$('#fPreset').value||null,interval:$('#fInterval').value===''?null:Number($('#fInterval').value),nextDue:$('#fDue').value||null,report:$('#fReport').value.trim(),place:$('#fPlace').value.trim(),doctor:$('#fDoctor').value.trim(),note:$('#fNote').value.trim(),labs,createdAt:editing?.createdAt||Date.now(),updatedAt:Date.now()};
   /* fields this form does not show are kept; the draw context exists only on thyroid draws */
   const {id:_omit,...kept}=editing?(records.find(x=>x.id===editing.id)||editing):{};const full={...kept,...body};
-  if(exam==='thy_lab'){const c={};if(formCtx.medBeforeDraw)c.medBeforeDraw=formCtx.medBeforeDraw;if(formCtx.biotin7d)c.biotin7d=formCtx.biotin7d;
-    if(rcTargetId&&$('#fRecheck').checked&&!$('#fRecheck').disabled)c.recheckOf=rcTargetId;
+  /* nested objects too: only the keys this form manages change; a lab the user emptied is removed, others stay */
+  const lab={...(kept.labs||{})};$$('[data-lab]').forEach(i=>{const k=i.dataset.lab,v=i.value.trim();if(v)lab[k]=v;else delete lab[k]});full.labs=lab;
+  if(exam==='thy_lab'){const c={...(kept.drawCtx||{})};
+    for(const k of ['medBeforeDraw','biotin7d']){if(formCtx[k])c[k]=formCtx[k];else delete c[k]}
+    if(!$('#rcRow').hidden){if(rcTargetId&&$('#fRecheck').checked&&!$('#fRecheck').disabled)c.recheckOf=rcTargetId;else delete c.recheckOf}
     if(Object.keys(c).length)full.drawCtx=c;else delete full.drawCtx}
   $('#btnSave').disabled=true;
   try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(full);dlg.close();toast(editing?'已更新':'已儲存');openHist.add(exam);if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{$('#btnSave').disabled=false}});
