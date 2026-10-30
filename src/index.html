@@ -134,6 +134,10 @@ textarea{min-height:110px;resize:vertical}
 .tl .when{font-family:var(--f-num);font-size:.85rem;color:var(--muted)}
 .tl .flag{font-size:.78rem;color:var(--muted)}
 .wrapline{overflow-wrap:anywhere}
+.summary{overflow-wrap:anywhere}
+.summary h1{font-size:1.05rem}
+.summary h2{font-size:.95rem;margin-top:6px}
+.summary ul{margin:4px 0 0;padding-left:1.2em}
 /* exercise */
 .exblk{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
 .pills{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -397,6 +401,21 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
     <details class="blk refbox"><summary>依據</summary><div class="ref" id="medRef"></div></details>
   </section>
 
+  <!-- SUMMARY -->
+  <section class="panel" id="p-summary" hidden>
+    <div class="blk grp">
+      <div class="grid2">
+        <div class="field"><label for="smFrom">開始日</label><input type="date" id="smFrom"></div>
+        <div class="field"><label for="smTo">結束日</label><input type="date" id="smTo"></div>
+      </div>
+      <p class="hint" style="margin:0" id="smErr" hidden></p>
+      <div class="row"><button type="button" class="primary" id="smCopy">複製文字</button><button type="button" id="smMd">存成 .md</button><button type="button" id="smHtml">存成 .html</button></div>
+      <textarea id="smText" readonly hidden aria-label="摘要文字"></textarea>
+      <div class="row"><button type="button" class="ghost" id="smVisit">把結束日設為這次回診日</button></div>
+    </div>
+    <div class="blk grp summary" id="smPreview"></div>
+  </section>
+
   <!-- SETUP -->
   <section class="panel" id="p-setup" hidden>
     <div class="sect" id="remindSect"><h2 class="lbl">提醒</h2><div class="blk grp">
@@ -507,6 +526,7 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
       <button type="button" data-nav="exercise">運動紀錄<span class="chev" aria-hidden="true">›</span></button>
       <button type="button" data-nav="exams">定期檢查<span class="chev" aria-hidden="true">›</span></button>
       <button type="button" data-nav="meds">用藥<span class="chev" aria-hidden="true">›</span></button>
+      <button type="button" data-nav="summary">回診摘要<span class="chev" aria-hidden="true">›</span></button>
       <button type="button" data-nav="setup">設定與備份<span class="chev" aria-hidden="true">›</span></button>
     </div>
     <div class="field"><label for="dPick">選擇日期補登</label><input type="date" id="dPick"></div>
@@ -630,6 +650,81 @@ function recheckState(list,recs,today,weeks){let target=null;for(const m of sort
   if(validDate(target.recheckDue))return{st:'manual',target,due:target.recheckDue};
   if(Number.isInteger(weeks)&&weeks>=1&&weeks<=52)return{st:'auto',target,due:addDays(target.date,weeks*7),weeks};
   return{st:'unset',target}}
+/* labels shared by the today page and the visit summary */
+const MED_MODES=[['fasting_am','早餐前空腹'],['bedtime','睡前'],['with_food','隨餐'],['unsure','不確定']];
+const MED_INTF=[['coffee','咖啡'],['calcium','鈣片'],['iron','鐵劑'],['ppi','胃藥（PPI）'],['soy','豆漿／大豆'],['fiber','高纖']];
+const CTX_LABEL={yes:'是',no:'否',unsure:'不確定'};
+/* next due date of an exam record: doctor's date, interval 0 (to arrange), interval in months, no-follow class, else the fixed interval */
+function dueWith(r,info,ivs){if(r.nextDue)return r.nextDue;if(r.interval===0)return r.date;const e=info[r.exam];
+  if(!Number.isFinite(r.interval)&&e?.noFollow?.includes(r.preset))return null;
+  return addMonths(r.date,Number.isFinite(r.interval)?r.interval:Number.isFinite(ivs?.[r.exam])?ivs[r.exam]:e.def)}
+/* visit summary: facts only, every section present, nothing after `to` used. c = { days, exercise, records, meddose, settingDose, pause, weeks, info, intervals } */
+function summarize(c,from,to,today){
+  if(!validDate(from)||!validDate(to))return{error:'請填開始日和結束日。'};
+  if(from>to)return{error:'開始日要在結束日之前。'};
+  if(to>today)return{error:'結束日不能晚於今天。'};
+  const n=dnum(to)-dnum(from)+1,inR=ds=>validDate(ds)&&ds>=from&&ds<=to,days=c.days||{},S=[];
+  const dIn=from.slice(0,4)===to.slice(0,4)?md:fmt; // dates inside the period carry the year only when it spans two years
+  const amIn=(a,b)=>Object.keys(days).filter(k=>k>=a&&k<=b&&inR(k)).map(k=>days[k]?.am?.w).filter(v=>typeof v==='number'&&Number.isFinite(v));
+  const avg=v=>Math.round(v.reduce((x,y)=>x+y,0)/v.length*10)/10;
+  /* weight */
+  {const L=[],all=amIn(from,to);
+    if(n<14){L.push(all.length>=3?`期間平均 ${avg(all).toFixed(1)} kg（${all.length} 筆）`:`期間內早上體重不足 3 筆（${all.length} 筆），不算平均`)}
+    else{const a=amIn(from,addDays(from,6)),b=amIn(addDays(to,-6),to);
+      L.push(a.length>=3?`期初 7 天平均 ${avg(a).toFixed(1)} kg（${a.length} 筆）`:`期初 7 天：資料不足（${a.length} 筆）`);
+      L.push(b.length>=3?`期末 7 天平均 ${avg(b).toFixed(1)} kg（${b.length} 筆）`:`期末 7 天：資料不足（${b.length} 筆）`);
+      if(a.length>=3&&b.length>=3){const d=Math.round((avg(b)-avg(a))*10)/10;L.push(`差值 ${d>0?'+':d<0?'−':'±'}${Math.abs(d).toFixed(1)} kg`)}}
+    L.push(all.length?`早上有量 ${all.length}／${n} 天`:'期間內沒有紀錄');S.push(['體重（早上）',L])}
+  /* doses taken */
+  {const L=[],cn=countable(days,from,to,today,c.pause);
+    if(!cn.b&&!cn.paused)L.push('期間內沒有紀錄');
+    else{L.push(`已記錄服藥 ${cn.a}/${cn.b} 天${cn.paused?`（暫停 ${cn.paused} 天不計）`:''}`);if(cn.missing.length)L.push('未記錄的日子：'+cn.missing.map(dIn).join('、'))}
+    const taken=Object.keys(days).filter(k=>inR(k)&&tookMed(days[k])).sort();
+    if(taken.length){const cnt={};for(const k of taken){const m=days[k].med.mode;const key=MED_MODES.some(([v])=>v===m)?m:'';cnt[key]=(cnt[key]||0)+1}
+      L.push('服藥方式：'+[...MED_MODES.map(([v,l])=>cnt[v]?`${l} ${cnt[v]} 天`:''),cnt['']?`未填 ${cnt['']} 天`:''].filter(Boolean).join('、'));
+      const im=MED_INTF.map(([k,l])=>{const d=taken.filter(x=>days[x].med.interfere?.[k]===true).length;return d?`${l} ${d} 天`:''}).filter(Boolean);
+      L.push('自行標記為「有」：'+(im.length?im.join('、'):'沒有'))}
+    S.push(['服藥',L])}
+  /* doses */
+  {const L=[],d0=doseOn(from,c.meddose,c.settingDose),sorted=sortMeddose(c.meddose);
+    L.push(`期初劑量：${d0?d0.dose+' mcg'+(d0.src==='setting'?'（依設定推定）':''):'未設定'}`);
+    const last={};for(const m of sorted)last[m.date]=m.id;
+    const ch=sorted.filter(m=>inR(m.date)&&last[m.date]===m.id);
+    if(ch.length)for(const m of ch)L.push(`${dIn(m.date)} ${m.kind==='product'?'換製劑':'劑量變更'} ${m.dose} mcg`+[m.tablet,m.brand,m.reason].filter(Boolean).map(x=>'・'+x).join(''));
+    else L.push('期間內沒有變更');S.push(['劑量',L])}
+  /* thyroid draws */
+  {const L=[],labs=(c.records||[]).filter(r=>r.exam==='thy_lab'&&inR(r.date)).sort((a,b)=>cmpStr(a.date,b.date));
+    if(labs.length){L.push('數值照輸入的原文；單位依表單欄位：TSH μIU/mL、Free T4 ng/dL');
+      for(const r of labs){const x=r.labs||{},t=r.drawCtx||{};
+        L.push(`${dIn(r.date)} TSH ${x.TSH||'未填'}・Free T4 ${x['Free T4']||'未填'}・抽血前服藥：${CTX_LABEL[t.medBeforeDraw]||'未填'}・近一週生物素：${CTX_LABEL[t.biotin7d]||'未填'}${t.recheckOf?'・變更後複查':''}`)}}
+    else L.push('期間內沒有紀錄');S.push(['甲狀腺抽血',L])}
+  /* exercise */
+  {const ex=(c.exercise||[]).filter(e=>e&&e.deleted!==true&&inR(e.date)&&typeof e.min==='number'&&Number.isFinite(e.min)&&e.min>0),tot=ex.reduce((a,e)=>a+e.min,0);
+    S.push(['運動',[!ex.length?'期間內沒有運動紀錄':n>=7?`每週平均 ${Math.round(tot/(n/7))} 分（共 ${tot} 分）`:`共 ${tot} 分`]])}
+  /* period marks */
+  {const marked=Object.keys(days).filter(k=>inR(k)&&days[k]?.period===true).sort(),runs=[];
+    for(const k of marked){const lr=runs[runs.length-1];if(lr&&addDays(lr[1],1)===k)lr[1]=k;else runs.push([k,k])}
+    S.push(['月經標記',runs.length?runs.map(([a,b])=>(a===b?dIn(a):dIn(a)+'–'+dIn(b))+(a===from||b===to?'（期間外可能還有）':'')):['期間內沒有標記']])}
+  /* pending and upcoming, as of `to` */
+  {const recs=(c.records||[]).filter(r=>validDate(r.date)&&r.date<=to&&c.info[r.exam]),latest={};
+    for(const r of recs){const p=latest[r.exam];if(!p||r.date>p.date||(r.date===p.date&&(r.createdAt||0)>(p.createdAt||0)))latest[r.exam]=r}
+    const pend=[],next=[],lim=addDays(to,180);
+    for(const r of Object.values(latest)){const name=c.info[r.exam].name;
+      if(r.interval===0&&!r.nextDue){pend.push(['',name+' 待安排']);continue} // to-arrange first, as on the page
+      const due=dueWith(r,c.info,c.intervals);if(!due)continue;
+      if(due<=to)pend.push([due,`${name} ${fmt(due)} 到期`]);else if(due<=lim)next.push([due,`${name} ${fmt(due)}`])}
+    const rc=recheckState((c.meddose||[]).filter(m=>validDate(m.date)&&m.date<=to),recs,to,c.weeks);
+    if(rc.st==='manual'||rc.st==='auto'){if(rc.due<=to)pend.push([rc.due,`TSH 複查（劑量變更後）${fmt(rc.due)} 到期`]);else if(rc.due<=lim)next.push([rc.due,`TSH 複查（劑量變更後）${fmt(rc.due)}`])}
+    const ord=a=>a.sort((x,y)=>cmpStr(x[0],y[0])).map(x=>x[1]);
+    S.push(['檢查',[`截至 ${fmt(to)} 仍待處理：`+(pend.length?ord(pend).join('、'):'沒有'),'之後 180 天內到期：'+(next.length?ord(next).join('、'):'沒有')]])}
+  return{title:`家琳回診摘要 ${fmt(from)}–${fmt(to)}（共 ${n} 天）`,sections:S}}
+/* three renderings of one summary; user text is escaped for each format, and nothing becomes a link or an image */
+const escMd=t=>String(t).replace(/[\\`*_[\]()<>!#|~]/g,'\\$&');
+const summaryText=sm=>[sm.title,'',...sm.sections.flatMap(([h,L])=>[h,...L.map(l=>'・'+l),''])].join('\n').trim();
+const summaryMd=sm=>['# '+escMd(sm.title),'',...sm.sections.flatMap(([h,L])=>['## '+escMd(h),...L.map(l=>'- '+escMd(l)),''])].join('\n').trim()+'\n';
+const escH=t=>String(t).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const summaryBody=sm=>`<h1>${escH(sm.title)}</h1>`+sm.sections.map(([h,L])=>`<h2>${escH(h)}</h2><ul>${L.map(l=>`<li>${escH(l)}</li>`).join('')}</ul>`).join('');
+const summaryHtml=sm=>`<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escH(sm.title)}</title><style>body{font-family:system-ui,sans-serif;max-width:42em;margin:2em auto;padding:0 1em;line-height:1.6;color:#16222a}h1{font-size:1.3em}h2{font-size:1.05em;margin-top:1.4em}</style></head><body>${summaryBody(sm)}</body></html>`;
 /* ---- med helpers: end ---- */
 
 /* toast with optional actions */
@@ -646,7 +741,7 @@ let db=null, canWrite=true;
 let days={}, exercises=[], records=[], intervals={}, profile={}, meddose=[];
 let hb=null, hbLoaded=false, hbErr=false; // system/heartbeat, written only by the scheduled checks
 let viewDate=logicalToday(), wDays=30, calMonth=logicalToday().slice(0,7), openHist=new Set(), editing=null, openEx=null, ready=false;
-const loaded={days:false,profile:false,intervals:false,meddose:false};
+const loaded={days:false,profile:false,intervals:false,meddose:false,records:false,exercise:false};
 /* a snapshot never rebuilds a block while someone is typing in it; the block is redrawn once focus leaves */
 let heldRender=false;
 const typingIn=el=>{const a=document.activeElement;return !!(a&&el.contains(a)&&a.matches('input,textarea,select'))};
@@ -687,11 +782,12 @@ function writeErr(e){if(e&&e.message==='nodb')return;toast(e&&e.code==='invalid_
 function isPaused(date){const f=profile.pauseFrom,t=profile.pauseTo;return !!(f&&t&&date>=f&&date<=t)}
 
 /* ================= navigation ================= */
-const PAGES={today:'',weight:'體重與體脂',exercise:'運動紀錄',exams:'定期檢查',meds:'用藥',setup:'設定與備份'};
+const PAGES={today:'',weight:'體重與體脂',exercise:'運動紀錄',exams:'定期檢查',meds:'用藥',summary:'回診摘要',setup:'設定與備份'};
 let cur='today';
 function show(p){
   if(!(p in PAGES))p='today';
   if(p==='setup'&&cur!=='setup'){formDirty.profForm=false;formDirty.ivForm=false}
+  if(p==='summary'&&cur!=='summary')smUser=false; // each visit starts from the default period
   cur=p;
   Object.keys(PAGES).forEach(k=>$('#p-'+k).hidden=k!==p);
   $('#subbar').hidden=p==='today';$('#subTitle').textContent=PAGES[p];
@@ -704,7 +800,7 @@ $('#backBtn').addEventListener('click',()=>go('today'));
 $('#moreBtn').addEventListener('click',()=>{$('#dPick').value=viewDate;$('#dPick').max=logicalToday();$('#moreSheet').showModal()});
 $$('[data-nav]').forEach(b=>b.addEventListener('click',()=>{$('#moreSheet').close();go(b.dataset.nav)}));
 $('#dPick').addEventListener('change',e=>{if(e.target.value){$('#moreSheet').close();setView(e.target.value);go('today')}});
-function renderCur(){({today:renderToday,weight:renderWeight,exercise:renderExercise,exams:renderExams,meds:renderMeds,setup:renderSetup})[cur]()}
+function renderCur(){({today:renderToday,weight:renderWeight,exercise:renderExercise,exams:renderExams,meds:renderMeds,summary:renderSummary,setup:renderSetup})[cur]()}
 
 /* ================= TODAY ================= */
 function isAfterEvening(date){if(date<logicalToday())return true;const h=tpeNow().h;return h>=18||h<4}
@@ -890,8 +986,7 @@ $('#medBtn').addEventListener('click',async()=>{
 });
 $('#medCancel').addEventListener('click',async()=>{const date=viewDate;const prev=(days[date]||{}).med;medOpen=false;renderMedMore();try{await writeDay(date,{med:null});toast('已取消服藥紀錄',[['復原',()=>writeDay(date,{med:prev}).catch(writeErr)]])}catch(e){writeErr(e)}});
 /* dose details: each tap writes one key, so taps on two devices or quick taps here never overwrite each other */
-const MODES=[['fasting_am','早餐前空腹'],['bedtime','睡前'],['with_food','隨餐'],['unsure','不確定']];
-const INTF=[['coffee','咖啡'],['calcium','鈣片'],['iron','鐵劑'],['ppi','胃藥（PPI）'],['soy','豆漿／大豆'],['fiber','高纖']];
+const MODES=MED_MODES,INTF=MED_INTF;
 let medOpen=false;const medPending={},medSeq={};
 const medVal=(date,key,saved)=>(date+'|'+key) in medPending?medPending[date+'|'+key]:saved;
 function lastMode(before){const ks=Object.keys(days).filter(k=>k<before).sort().reverse();for(const k of ks){const m=days[k]?.med;if(tookMed(days[k])&&MODES.some(([v])=>v===m.mode))return m.mode}return null}
@@ -1068,7 +1163,8 @@ const CAT=Object.fromEntries(CATS.map(c=>[c.id,c]));
 function daysFrom(a,b){return dnum(b)-dnum(a)}
 function intervalText(m){if(m===0)return'待安排';if(m==null)return'—';if(m%12===0)return(m/12)+' 年';return m+' 個月'}
 function defInterval(id){const v=intervals[id];return Number.isFinite(v)?v:EX[id].def}
-function dueOf(r){if(r.nextDue)return r.nextDue;if(r.interval===0)return r.date;if(!Number.isFinite(r.interval)&&presetOf(r)?.noFollow)return null;const m=Number.isFinite(r.interval)?r.interval:defInterval(r.exam);return addMonths(r.date,m)}
+const EXINFO=Object.fromEntries(EXAMS.map(e=>[e.id,{name:e.name,def:e.def,noFollow:(e.presets||[]).filter(p=>p.noFollow).map(p=>p.k)}]));
+function dueOf(r){return dueWith(r,EXINFO,intervals)}
 function statusOf(due){if(due==null)return{c:'none',t:'不需例行追蹤',d:Infinity};const d=daysFrom(logicalToday(),due);if(d<0)return{c:'late',t:'已逾期 '+(-d)+' 天',d};if(d<=60)return{c:'soon',t:d===0?'今天到期':d+' 天後到期',d};return{c:'ok',t:'還有 '+Math.round(d/30.4)+' 個月',d}}
 function presetOf(r){const e=EX[r.exam];return e&&e.presets?e.presets.find(p=>p.k===r.preset):null}
 function latestByExam(){const m={};for(const r of records){if(!EX[r.exam])continue;if(!m[r.exam]||r.date>m[r.exam].date||(r.date===m[r.exam].date&&(r.createdAt||0)>(m[r.exam].createdAt||0)))m[r.exam]=r}return m}
@@ -1246,6 +1342,34 @@ $('#doseForm').addEventListener('submit',async ev=>{ev.preventDefault();if(!canS
 $('#dDel').addEventListener('click',async()=>{if(!editingDose||!canSave())return;const ref=db.doc('meddose/'+editingDose.id);
   try{await retry1(()=>ref.update({deleted:true,updatedAt:Date.now()}));dlgD.close();toast('已刪除變更',[['撤銷',()=>retry1(()=>ref.update({deleted:false,updatedAt:Date.now()})).catch(writeErr)]])}catch(e){writeErr(e)}});
 
+/* ================= SUMMARY ================= */
+let smUser=false; // the dates stay as the user set them for this visit to the page
+function summaryCtx(){return{days,exercise:exercises,records,meddose,settingDose:prof('medDose'),pause:{from:profile.pauseFrom,to:profile.pauseTo},weeks:profile.tshRecheckWeeks,info:EXINFO,intervals}}
+const smLoaded=()=>['days','profile','intervals','meddose','records','exercise'].every(k=>loaded[k]);
+let smCur=null;
+function renderSummary(){const today=logicalToday();
+  if(!smUser){const lv=profile.lastVisit;$('#smFrom').value=validDate(lv)&&lv<=today?lv:addDays(today,-89);$('#smTo').value=today}
+  $('#smFrom').max=today;$('#smTo').max=today;
+  const btns=['#smCopy','#smMd','#smHtml','#smVisit'];
+  if(!smLoaded()){smCur=null;$('#smErr').hidden=true;$('#smPreview').textContent='資料載入中…';btns.forEach(b=>$(b).disabled=true);return}
+  const sm=summarize(summaryCtx(),$('#smFrom').value,$('#smTo').value,today);
+  $('#smErr').hidden=!sm.error;$('#smErr').textContent=sm.error||'';smCur=sm.error?null:sm;
+  btns.forEach(b=>$(b).disabled=!smCur);$('#smVisit').disabled=!smCur||!canWrite||!loaded.profile;
+  $('#smPreview').innerHTML=smCur?summaryBody(smCur):'';$('#smText').hidden=true}
+['#smFrom','#smTo'].forEach(q=>$(q).addEventListener('change',()=>{smUser=true;renderSummary()}));
+$('#smCopy').addEventListener('click',async()=>{if(!smCur)return;const t=summaryText(smCur);
+  try{await navigator.clipboard.writeText(t);toast('已複製')}
+  catch(e){const ta=$('#smText');ta.value=t;ta.hidden=false;ta.focus();ta.select();toast('已選取，請長按複製')}});
+async function saveSummary(ext){if(!smCur)return;const sm=smCur;
+  const dl=await window.claude?.use?.('downloads');if(!dl){toast('這個檢視無法下載檔案，請在 claude.ai 開啟頁面');return}
+  const name='家琳回診摘要-'+$('#smFrom').value.replace(/-/g,'')+'-'+$('#smTo').value.replace(/-/g,'')+'.'+ext;
+  try{await dl.save({filename:name,data:ext==='md'?summaryMd(sm):summaryHtml(sm)});toast('已存成 .'+ext)}
+  catch(e){toast(e&&e.code==='declined'?'已取消下載':'下載失敗，請再試一次')}}
+$('#smMd').addEventListener('click',()=>saveSummary('md'));
+$('#smHtml').addEventListener('click',()=>saveSummary('html'));
+$('#smVisit').addEventListener('click',async()=>{if(!smCur)return;const prev=profile.lastVisit??null,to=$('#smTo').value;
+  if(await saveProfile({lastVisit:to}))toast('這次回診日：'+fmt(to),[['撤銷',()=>saveProfile({lastVisit:prev})]])});
+
 /* ================= SETUP ================= */
 function renderSetup(){
   if(typingIn($('#profForm'))||typingIn($('#ivForm')))heldRender=true; // redraw untouched fields once focus leaves
@@ -1331,8 +1455,8 @@ setInterval(()=>{if(clockTick())renderCur();else renderHb()},60000); // the 26-h
     /* a cached first snapshot may lack data the server has (e.g. the dose): show it, but only the server's answer opens writing */
     const arrived=(k,s)=>{if(!loaded[k]&&!s.metadata?.fromCache){loaded[k]=true;ready=loaded.days&&loaded.profile&&loaded.meddose}};
     db.collection('days').onSnapshot(s=>{const o={};s.docs.forEach(x=>o[x.id]=x.data());days=o;arrived('days',s);renderCur()},fail);
-    db.collection('exercise').onSnapshot(s=>{exercises=s.docs.map(x=>({id:x.id,...x.data()}));renderCur()},fail);
-    db.collection('records').onSnapshot(s=>{records=s.docs.map(x=>({id:x.id,...x.data()}));renderCur()},fail);
+    db.collection('exercise').onSnapshot(s=>{exercises=s.docs.map(x=>({id:x.id,...x.data()}));arrived('exercise',s);renderCur()},fail);
+    db.collection('records').onSnapshot(s=>{records=s.docs.map(x=>({id:x.id,...x.data()}));arrived('records',s);renderCur()},fail);
     db.collection('meddose').onSnapshot(s=>{meddose=s.docs.map(x=>({id:x.id,...x.data()}));arrived('meddose',s);renderCur()},fail);
     db.doc('settings/intervals').onSnapshot(s=>{intervals=s.exists?{...s.data()}:{};arrived('intervals',s);renderCur()},fail);
     db.doc('settings/profile').onSnapshot(s=>{profile=s.exists?{...s.data()}:{};arrived('profile',s);renderCur()},fail);

@@ -6,7 +6,8 @@
    設定：在載入前指定 window.__mockCfg = {
      seed:{path:body}, latency:ms, latencyComp:bool, firstSnapDelay:ms, snapDelay:{path:ms},
      cacheFirst:{path:body|null}（先送 fromCache:true 的快照，serverDelay 毫秒後才送伺服器快照）, serverDelay:ms,
-     failListen:[path], denyWrites:bool, failNext:{code,count}, canWrite:bool, noDb:bool }
+     failListen:[path], denyWrites:bool, failNext:{code,count}, canWrite:bool, noDb:bool,
+     noDownloads:bool（沒有下載能力）, downloadError:code（下載時丟出這個錯誤，例如 'declined'） }
    acquire() 依 db.d.ts 的租約語意：沒有人持有或已過期才給；不會自己建立文件。 */
 (function(){
   const cfg=window.__mockCfg||{};
@@ -61,11 +62,11 @@
   };return q}
   const db={doc:docRef,collection:colRef};
   const user={can:async()=>cfg.canWrite===false?false:true,canEdit:async()=>cfg.canWrite!==false,isOwner:async()=>true,id:async()=>'u1',me:async()=>({id:'u1',name:''})};
-  const downloads={async save(f){window.__lastDownload=f}};
+  const downloads={async save(f){if(cfg.downloadError)throw err(cfg.downloadError);window.__lastDownload=f}};
   for(const[p,b]of Object.entries(cfg.seed||{}))store.set(p,clone(b));
   /* 測試用：不經過 onSnapshot 直接改資料，模擬另一台裝置的寫入尚未送達 */
   window.__mock={store,writes,cfg,leases,holdLease:(p,ms)=>leases.set(p,{holder:'other-device',exp:Date.now()+ms}),releaseLease:p=>leases.delete(p),silentSet:(p,b)=>store.set(p,clone(b)),silentDelete:p=>store.delete(p),externalSet:(p,b)=>{store.set(p,clone(b));notify(p)},
     /* 送出一份帶舊內容的快照給文件監聽者，不改 store：模擬另一台裝置延遲送達的舊快照 */
     staleSnapshot:(p,b)=>{for(const l of listeners)if(!l.dead&&l.kind==='doc'&&l.path===p)setTimeout(()=>!l.dead&&l.next(docSnap(p,meta,clone(b))),0)}};
-  window.claude={use:async name=>{await sleep(cfg.useDelay??20);if(cfg.noDb&&name==='db')return null;return name==='db'?db:name==='user'?user:name==='downloads'?downloads:null}};
+  window.claude={use:async name=>{await sleep(cfg.useDelay??20);if(cfg.noDb&&name==='db')return null;return name==='db'?db:name==='user'?user:name==='downloads'?(cfg.noDownloads?null:downloads):null}};
 })();

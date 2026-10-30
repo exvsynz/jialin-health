@@ -253,6 +253,64 @@ const txt=(page,s)=>page.evaluate(s=>{const e=document.querySelector(s);return e
     }
     await page.context().close()}
 
+  /* B4：回診摘要 */
+  const clipOK="Object.defineProperty(navigator,'clipboard',{value:{writeText:async t=>{window.__clip=t}},configurable:true})";
+  const clipNO="Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw new Error('NotAllowedError')}},configurable:true})";
+  {const {page,errors}=await open({time:NOW,init:clipOK,cfg:{latencyComp:true,seed:seed()}});await wait(500);
+    await page.click('#moreBtn');await wait(200);await page.click('[data-nav="summary"]');await wait(400);
+    check('更多 → 回診摘要：頁面與標題',await page.isVisible('#p-summary')&&(await page.textContent('#subTitle'))==='回診摘要');
+    check('沒有上次回診日：預設今天往前 89 天到今天',(await page.inputValue('#smFrom'))==='2026-08-02'&&(await page.inputValue('#smTo'))===T,[await page.inputValue('#smFrom'),await page.inputValue('#smTo')]);
+    const pv=await txt(page,'#smPreview');
+    check('預覽：七段都在',['體重（早上）','服藥','劑量','甲狀腺抽血','運動','月經標記','檢查'].every(h=>pv.includes(h)),pv.slice(0,200));
+    await page.click('#smCopy');await wait(200);
+    const clip=await page.evaluate(()=>window.__clip);
+    check('複製文字：剪貼簿拿到摘要文字',typeof clip==='string'&&clip.startsWith('家琳回診摘要 2026/08/02–2026/10/30')&&(await page.textContent('#toastText'))==='已複製');
+    await page.click('#smMd');await wait(200);let dl=await page.evaluate(()=>window.__lastDownload);
+    check('存成 .md：檔名與內容',dl.filename==='家琳回診摘要-20260802-20261030.md'&&dl.data.startsWith('# 家琳回診摘要'),dl.filename);
+    const mdData=dl.data;
+    await page.click('#smHtml');await wait(200);dl=await page.evaluate(()=>window.__lastDownload);
+    check('存成 .html：完整文件、不連外部資源',dl.filename.endsWith('.html')&&dl.data.startsWith('<!doctype html>')&&!/(src|href)=/i.test(dl.data),dl.filename);
+    const line=pv.match(/已記錄服藥 \d+\/\d+ 天/)[0];
+    check('預覽、複製、.md、.html 內容一致',[clip,mdData,dl.data].every(x=>x.includes(line)),line);
+    await page.fill('#smFrom','2026-10-31');await page.dispatchEvent('#smFrom','change');await wait(200);
+    check('期間反向：顯示原因，按鈕停用',(await txt(page,'#smErr'))==='開始日要在結束日之前。'&&await page.isDisabled('#smMd'));
+    await page.fill('#smFrom','2026-10-01');await page.dispatchEvent('#smFrom','change');await wait(200);
+    await page.click('#smVisit');await wait(300);
+    check('設為這次回診日：寫入 lastVisit',(await page.evaluate(()=>window.__mock.store.get('settings/profile').lastVisit))===T);
+    await page.click('#toastActs button:has-text("撤銷")');await wait(300);
+    check('撤銷：lastVisit 回到沒有',(await page.evaluate(()=>window.__mock.store.get('settings/profile').lastVisit))===null);
+    check('沒有 JS 錯誤',!errors.length,errors);
+    await page.context().close()}
+  {const s=seed();s['settings/profile']={...s['settings/profile'],lastVisit:'2026-09-15'};
+    const {page}=await open({time:NOW,hash:'summary',init:clipNO,cfg:{latencyComp:true,seed:s}});await wait(500);
+    check('有上次回診日：從那天開始',(await page.inputValue('#smFrom'))==='2026-09-15');
+    await page.click('#smCopy');await wait(200);
+    check('剪貼簿被拒：改成選取文字並提示長按複製',await page.isVisible('#smText')&&(await page.inputValue('#smText')).startsWith('家琳回診摘要')&&(await page.textContent('#toastText')).includes('長按複製'));
+    await page.context().close()}
+  {const s=seed();s['settings/profile']={...s['settings/profile'],lastVisit:'2026-12-01'};
+    const {page}=await open({time:NOW,hash:'summary',cfg:{latencyComp:true,seed:s,downloadError:'declined'}});await wait(500);
+    check('上次回診日在未來：不用，改用 90 天',(await page.inputValue('#smFrom'))==='2026-08-02');
+    await page.click('#smMd');await wait(200);
+    check('下載被拒：顯示已取消，不顯示已存',(await page.textContent('#toastText'))==='已取消下載');
+    await page.context().close()}
+  {const {page}=await open({time:NOW,hash:'summary',cfg:{latencyComp:true,seed:seed(),noDownloads:true}});await wait(500);
+    await page.click('#smHtml');await wait(200);
+    check('沒有下載能力：提示到 claude.ai 開啟',(await page.textContent('#toastText')).includes('無法下載'));
+    await page.context().close()}
+  {const {page}=await open({time:NOW,hash:'summary',cfg:{latencyComp:true,seed:seed(),snapDelay:{records:1500}}});await wait(400);
+    check('資料還沒載入：顯示載入中，按鈕停用',(await txt(page,'#smPreview'))==='資料載入中…'&&await page.isDisabled('#smCopy'));
+    await wait(1500);
+    check('載入後：顯示摘要',(await txt(page,'#smPreview')).includes('家琳回診摘要'));
+    await page.context().close()}
+  for(const scheme of ['light','dark']){
+    const s=seed({'meddose/b':md('2026-10-01',75,{tablet:'100 mcg × ½',reason:'TSH 偏高'})});
+    const {page}=await open({time:NOW,scheme,hash:'summary',cfg:{latencyComp:true,seed:s}});await wait(500);
+    const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+    const r=await page.evaluate(`(${scan.toString()})()`);
+    check(`380 ${scheme} 回診摘要：沒有水平捲動、觸控目標、對比`,overflow<=0&&!r.small.length&&!r.low.length,{overflow,...r});
+    if(!process.argv.includes('--no-shots'))await page.screenshot({path:path.join(SHOTS,`380-${scheme}-summary.png`),fullPage:true});
+    await page.context().close()}
+
   await close();
   process.exit(summary()?1:0);
 })().catch(e=>{console.error(e);process.exit(2)});

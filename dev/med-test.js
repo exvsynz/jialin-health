@@ -3,7 +3,7 @@
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(process.env.SRC?path.resolve(process.env.SRC):path.join(__dirname,'../src/index.html'),'utf8');
 const block=n=>{const m=html.match(new RegExp('\\/\\* ---- '+n+' helpers: begin[^*]*\\*\\/([\\s\\S]*?)\\/\\* ---- '+n+' helpers: end ---- \\*\\/'));if(!m){console.error('找不到 '+n+' helpers 區塊標記');process.exit(2)}return m[1]};
-const H=new Function(block('date')+block('med')+';return{tookMed,validDate,validDose,sortMeddose,doseOn,hasResult,trackStart,countable,recheckState}')();
+const H=new Function(block('date')+block('med')+';return{tookMed,validDate,validDose,sortMeddose,doseOn,hasResult,trackStart,countable,recheckState,dueWith,summarize,summaryText,summaryMd,summaryHtml}')();
 let fail=0;
 const eq=(name,got,want)=>{const ok=JSON.stringify(got)===JSON.stringify(want);if(!ok)fail++;console.log((ok?'  ok   ':'  FAIL ')+name+(ok?'':' → '+JSON.stringify(got)+'（應為 '+JSON.stringify(want)+'）'))};
 const md=(id,date,dose,o={})=>({id,date,dose,kind:'dose',createdAt:1,...o});
@@ -78,6 +78,50 @@ eq('不是甲狀腺抽血：不算完成',H.recheckState(M,[{...lab('r1','2026-1
 eq('刪除連結的抽血後：提醒恢復',H.recheckState(M,[],'2026-11-20',6).st,'auto');
 eq('改了生效日：複查日跟著變',H.recheckState([M[0],{...M[1],date:'2026-10-10'}],[],'2026-10-30',6).due,'2026-11-21');
 eq('換製劑（kind product）也排複查',H.recheckState([M[0],md('p','2026-10-05',50,{kind:'product'})],[],'2026-10-30',6).due,'2026-11-16');
+
+/* 回診摘要 */
+const INFO={thy_lab:{name:'甲狀腺抽血',def:6,noFollow:[]},thy_us:{name:'甲狀腺超音波',def:12,noFollow:['none','vlowSmall']},breast_us:{name:'乳房超音波',def:12,noFollow:[]}};
+const C=(o={})=>({days:{},exercise:[],records:[],meddose:[],settingDose:50,pause:null,weeks:undefined,info:INFO,intervals:{},...o});
+const sec=(sm,t)=>(sm.sections.find(x=>x[0]===t)||[,[]])[1];
+eq('期間反向：錯誤',H.summarize(C(),'2026-10-30','2026-10-01','2026-10-31').error,'開始日要在結束日之前。');
+eq('結束日在未來：錯誤',H.summarize(C(),'2026-10-01','2026-11-01','2026-10-31').error,'結束日不能晚於今天。');
+eq('日期空白：錯誤',H.summarize(C(),'','2026-10-01','2026-10-31').error,'請填開始日和結束日。');
+let sm=H.summarize(C(),'2026-10-01','2026-10-30','2026-10-31');
+eq('全空：每段都在，寫期間內沒有紀錄',sm.sections.map(x=>x[0]),['體重（早上）','服藥','劑量','甲狀腺抽血','運動','月經標記','檢查']);
+eq('全空：各段的寫法',[sec(sm,'體重（早上）').at(-1),sec(sm,'服藥')[0],sec(sm,'甲狀腺抽血')[0],sec(sm,'運動')[0],sec(sm,'月經標記')[0]],['期間內沒有紀錄','期間內沒有紀錄','期間內沒有紀錄','期間內沒有運動紀錄','期間內沒有標記']);
+eq('單日期間',H.summarize(C(),'2026-10-30','2026-10-30','2026-10-31').title,'家琳回診摘要 2026/10/30–2026/10/30（共 1 天）');
+const W={};['2026-10-01','2026-10-02','2026-10-07'].forEach((k,i)=>W[k]={am:{w:[52,52.2,52.4][i]}});['2026-10-24','2026-10-30'].forEach(k=>W[k]={am:{w:53}});W['2026-09-30']={am:{w:99}};W['2026-10-31']={am:{w:99}};
+sm=H.summarize(C({days:W}),'2026-10-01','2026-10-30','2026-10-31');
+eq('體重：期初窗含頭尾 7 天（10/01–10/07）、期末不足 3 筆；區間外不混入',sec(sm,'體重（早上）'),['期初 7 天平均 52.2 kg（3 筆）','期末 7 天：資料不足（2 筆）','早上有量 5／30 天']);
+sm=H.summarize(C({days:W}),'2026-10-01','2026-10-10','2026-10-31');
+eq('少於 14 天：只寫期間平均',sec(sm,'體重（早上）')[0],'期間平均 52.2 kg（3 筆）');
+const MD2={'2026-10-01':{am:{w:52},med:{taken:true,mode:'bedtime',interfere:{coffee:true,calcium:false}}},'2026-10-02':{med:{taken:true,mode:'weird',interfere:{coffee:true}}},'2026-10-03':{med:{interfere:{iron:true}}}};
+sm=H.summarize(C({days:MD2}),'2026-10-01','2026-10-03','2026-10-31');
+eq('服藥：可計日、方式分佈（不認得的算未填）、只算「有」的標記、沒有 taken 的不算',sec(sm,'服藥'),['已記錄服藥 2/3 天','未記錄的日子：10/03','服藥方式：睡前 1 天、未填 1 天','自行標記為「有」：咖啡 2 天']);
+const MDS=[md('a','2026-09-01',50),md('b','2026-10-10',75,{createdAt:1}),md('c','2026-10-10',62,{createdAt:2,tablet:'100 mcg × ½',reason:'x'}),md('d','2026-11-01',88)];
+sm=H.summarize(C({meddose:MDS}),'2026-10-01','2026-10-30','2026-10-31');
+eq('劑量：期初劑量、同日只列生效那筆、期間外不列',sec(sm,'劑量'),['期初劑量：50 mcg','10/10 劑量變更 62 mcg・100 mcg × ½・x']);
+eq('劑量：沒有紀錄時依設定推定',sec(H.summarize(C(),'2026-10-01','2026-10-30','2026-10-31'),'劑量'),['期初劑量：50 mcg（依設定推定）','期間內沒有變更']);
+const RL=[{exam:'thy_lab',date:'2026-10-20',labs:{'Free T4':'1.1'},drawCtx:{medBeforeDraw:'no'}},{exam:'thy_lab',date:'2026-11-02',labs:{TSH:'9'}}];
+sm=H.summarize(C({records:RL}),'2026-10-01','2026-10-30','2026-10-31');
+eq('抽血：缺 TSH 寫未填、不省略整筆；期間外不列',sec(sm,'甲狀腺抽血').slice(1),['10/20 TSH 未填・Free T4 1.1・抽血前服藥：否・近一週生物素：未填']);
+const EXs=[{date:'2026-10-02',min:60},{date:'2026-10-03',min:30,deleted:true},{date:'2026-10-04',min:-5},{date:'2026-10-05',min:'40'},{date:'2026-11-01',min:90}];
+eq('運動：排除軟刪除與無效分鐘；7 天以上算每週平均',sec(H.summarize(C({exercise:EXs}),'2026-10-01','2026-10-14','2026-10-31'),'運動'),['每週平均 30 分（共 60 分）']);
+eq('運動：少於 7 天只寫總分鐘',sec(H.summarize(C({exercise:EXs}),'2026-10-01','2026-10-03','2026-10-31'),'運動'),['共 60 分']);
+const P={};['2026-10-01','2026-10-02','2026-10-09','2026-10-10','2026-10-12','2026-10-30'].forEach(k=>P[k]={period:true});
+eq('月經：連續標記合併，不跨過沒標記的日子；碰到邊界加註',sec(H.summarize(C({days:P}),'2026-10-01','2026-10-30','2026-10-31'),'月經標記'),['10/01–10/02（期間外可能還有）','10/09–10/10','10/12','10/30（期間外可能還有）']);
+const RX=[{exam:'breast_us',date:'2025-06-01',interval:12,createdAt:1},{exam:'thy_us',date:'2026-10-05',interval:0,createdAt:1},{exam:'thy_lab',date:'2026-07-01',interval:6,createdAt:1},{exam:'thy_lab',date:'2026-11-05',interval:6,createdAt:2}];
+sm=H.summarize(C({records:RX,meddose:[md('m','2026-10-01',75)],weeks:4}),'2026-10-01','2026-10-30','2026-10-31');
+eq('檢查：以 to 為基準；逾期、待安排、到期的 TSH 複查列為待處理；之後的抽血不抵銷',sec(sm,'檢查'),['截至 2026/10/30 仍待處理：甲狀腺超音波 待安排、乳房超音波 2026/06/01 到期、TSH 複查（劑量變更後）2026/10/29 到期','之後 180 天內到期：甲狀腺抽血 2027/01/01']);
+eq('期間跨年：期間內的日期加上年份',sec(H.summarize(C({days:{'2025-12-31':{am:{w:52},med:{taken:true}},'2026-01-02':{am:{w:52},med:{taken:true}}}}),'2025-12-31','2026-01-02','2026-01-02'),'服藥')[1],'未記錄的日子：2026/01/01');
+eq('dueWith 和頁面規則一致：不追蹤分類、設定的固定間隔、預設',[H.dueWith({exam:'thy_us',date:'2026-01-01',preset:'none',interval:null},INFO,{}),H.dueWith({exam:'thy_lab',date:'2026-01-31',interval:null},INFO,{thy_lab:1}),H.dueWith({exam:'thy_lab',date:'2026-01-31',interval:null},INFO,{})],[null,'2026-02-28','2026-07-31']);
+/* 輸出與跳脫 */
+const XSS=H.summarize(C({meddose:[md('x','2026-10-10',75,{reason:'<script>alert(1)</script>![img](http://e.x/a.png)',brand:'A & "B"'})]}),'2026-10-01','2026-10-30','2026-10-31');
+const outH=H.summaryHtml(XSS),mdo=H.summaryMd(XSS),txt=H.summaryText(XSS);
+eq('HTML：沒有 script、img 標籤，特殊字元跳脫',[/<script/i.test(outH),/<img/i.test(outH),outH.includes('&lt;script&gt;'),outH.includes('&amp; &quot;B&quot;')],[false,false,true,true]);
+eq('HTML：不連外部資源',/(src|href)=/i.test(outH),false);
+eq('Markdown：圖片語法被跳脫',[mdo.includes('![img](http'),mdo.includes('\\!\\[img\\]\\(http')],[false,true]);
+eq('三種輸出來自同一份內容',[txt.includes('75 mcg'),mdo.includes('75 mcg'),outH.includes('75 mcg')],[true,true,true]);
 
 console.log(fail?`\n${fail} 項失敗`:'\n全部通過');
 process.exit(fail?1:0);
