@@ -34,6 +34,7 @@
   --st-late:#ff8f86; --st-late-bg:#3a1f1d; --st-soon:#f0c062; --st-soon-bg:#3a2f17; --st-ok:#7fd3a0; --st-ok-bg:#183326; --st-none:#9aabb3; --st-none-bg:#1f2b31;
   color-scheme:dark}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
 .gutter{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
@@ -490,16 +491,27 @@ function toast(text,acts=[],ms){
 let db=null, canWrite=true;
 let days={}, exercises=[], records=[], intervals={}, profile={};
 let viewDate=logicalToday(), wDays=30, calMonth=logicalToday().slice(0,7), openHist=new Set(), editing=null, openEx=null, ready=false;
+const loaded={days:false,profile:false};
 const EXT={yoga:{name:'瑜珈',cls:'yoga'},pilates:{name:'皮拉提斯',cls:'pilates'},other:{name:'其他',cls:'other'}};
 const prof=k=>({medName:'Levothyroxine',medDose:50,medNote:'半顆',yogaMin:60,pilatesMin:60,...profile})[k];
 
 const queues={};
 function queued(path,fn){const p=(queues[path]||Promise.resolve()).catch(()=>{}).then(fn);queues[path]=p;return p}
-async function writeDay(date,patch){
-  if(!db){toast('資料庫未連線，無法儲存');throw new Error('nodb')}
-  const path='days/'+date;
-  return queued(path,async()=>{const ref=db.doc(path);const body={...patch,updatedAt:Date.now()};if(days[date])await ref.update(body);else await ref.set({date,...body})});
+/* a transient failure gets one retry after a short random delay */
+async function retry1(fn){try{return await fn()}catch(e){if(e?.code!=='unavailable')throw e;await new Promise(r=>setTimeout(r,300+Math.random()*500));return fn()}}
+/* merge into a document; create it only when the store says it is missing, so a stale local copy never replaces it */
+async function mergeDoc(path,patch,init={}){
+  const ref=db.doc(path);
+  try{await retry1(()=>ref.update(patch))}
+  catch(e){if(e?.code!=='invalid_argument')throw e;const s=await retry1(()=>ref.get());if(s.exists)throw e;await retry1(()=>ref.set({...init,...patch}))}
 }
+function canSave(){if(!db){toast('資料庫未連線，無法儲存');return false}if(!ready){toast('資料還在載入，請稍候');return false}return true}
+async function writeDay(date,patch){
+  if(!canSave())throw new Error('nodb');
+  const path='days/'+date;
+  return queued(path,()=>mergeDoc(path,{...patch,updatedAt:Date.now()},{date}));
+}
+const writeEx=(id,patch)=>queued('exercise/'+id,()=>retry1(()=>db.doc('exercise/'+id).update(patch)));
 function writeErr(e){if(e&&e.message==='nodb')return;toast(e&&e.code==='invalid_argument'?'沒有寫入權限，這個頁面只能檢視':'沒有存到，請再試一次')}
 function isPaused(date){const f=profile.pauseFrom,t=profile.pauseTo;return !!(f&&t&&date>=f&&date<=t)}
 
@@ -561,25 +573,25 @@ function renderToday(){
     const s=b.dataset.wslot;const v=d[s];const label=s==='am'?'早上':'晚上';
     const pend=!v&&!paused&&(s==='am'||evening);
     b.classList.toggle('pend',pend);b.classList.toggle('isdone',!!v);b.classList.toggle('ghostval',!v);
-    const show=v?v.w:defaultVal(s,'w');
-    b.innerHTML=`<span class="lbl" style="${pend?'color:inherit;opacity:.75':''}">${label}${v?' <span class="tick">✓</span>':''}</span><span class="big">${show.toFixed(1)}<small>kg</small></span><span class="sub">${v?(v.bf!=null?'體脂 '+v.bf+'%　':'')+esc(v.at||''):'點一下記錄'}</span>`;
-    b.disabled=!canWrite;
+    const show=v?v.w.toFixed(1):ready?defaultVal(s,'w').toFixed(1):'—';
+    b.innerHTML=`<span class="lbl" style="${pend?'color:inherit;opacity:.75':''}">${label}${v?' <span class="tick">✓</span>':''}</span><span class="big">${show}<small>kg</small></span><span class="sub">${v?(v.bf!=null?'體脂 '+v.bf+'%　':'')+esc(v.at||''):'點一下記錄'}</span>`;
+    b.disabled=!canWrite||!ready;
   });
   renderSpark();
   // med
   const mb=$('#medBtn');const ring='<span class="ring"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>';
   if(d.med){mb.className='blk medbtn isdone';mb.innerHTML=`${ring}<span class="grow"><span class="t">已服 ${esc(d.med.at||'')}</span><br><span class="sub">${esc(prof('medName'))} ${d.med.dose||prof('medDose')} mcg</span></span>`}
   else{mb.className='blk medbtn'+(paused?'':' pend');mb.innerHTML=`${ring}<span class="grow"><span class="t">${esc(prof('medName'))} ${prof('medDose')} mcg</span><br><span class="sub">${esc(prof('medNote')||'點一下記錄')}</span></span>`}
-  mb.disabled=!canWrite;
+  mb.disabled=!canWrite||!ready;
   if(!d.med)$('#medCancel').hidden=true;
   // exercise
   const lastOf=t=>exercises.filter(e=>e.type===t&&!e.deleted).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0];
   const exMin=t=>lastOf(t)?.min||(t==='yoga'?prof('yogaMin'):t==='pilates'?prof('pilatesMin'):30);
-  $('#pills').innerHTML=['yoga','pilates','other'].map(t=>`<button type="button" data-type="${t}" ${canWrite?'':'disabled'}><span>${t==='other'?esc(lastOf('other')?.label||'其他'):EXT[t].name}</span><span class="m">${exMin(t)} 分</span></button>`).join('');
+  $('#pills').innerHTML=['yoga','pilates','other'].map(t=>`<button type="button" data-type="${t}" ${canWrite&&ready?'':'disabled'}><span>${t==='other'?esc(lastOf('other')?.label||'其他'):EXT[t].name}</span><span class="m">${exMin(t)} 分</span></button>`).join('');
   const ex=exercises.filter(e=>e.date===viewDate&&!e.deleted).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
   $('#exToday').innerHTML=ex.map(e=>`<li data-id="${esc(e.id)}"><button type="button" class="exhead" data-exopen aria-expanded="${openEx===e.id}"><span class="sw" style="background:var(--ex-${EXT[e.type]?.cls||'other'})"></span><span class="grow">${esc(e.label||'運動')} <span class="num">${e.min} 分</span>${e.note?` <span class="sub">${esc(e.note)}</span>`:''}</span><span class="sub">${esc(e.at||'')}</span></button>${openEx===e.id?`<div class="exedit"><div class="stepper"><button type="button" data-exstep="-15">−15</button><button type="button" data-exstep="-5">−5</button><span class="v">${e.min} 分</span><button type="button" data-exstep="5">＋5</button><button type="button" data-exstep="15">＋15</button></div><div class="row"><input data-exnote class="grow" placeholder="備註" value="${esc(e.note||'')}" aria-label="備註"><button type="button" class="ghost" data-exdel style="color:var(--st-late)">刪除</button></div></div>`:''}</li>`).join('');
   // period
-  const pb=$('#perBtn');pb.setAttribute('aria-pressed',String(!!d.period));pb.textContent=d.period?'是':'否';pb.disabled=!canWrite;
+  const pb=$('#perBtn');pb.setAttribute('aria-pressed',String(!!d.period));pb.textContent=d.period?'是':'否';pb.disabled=!canWrite||!ready;
   $('#perSub').textContent=(days[addDays(viewDate,-1)]||{}).period?'昨天有':'';
   renderExamSlot();
 }
@@ -608,10 +620,10 @@ function renderSpark(){
 }
 function renderExamSlot(){
   const latest=latestByExam();
-  const urgent=Object.values(latest).map(r=>{const due=dueOf(r);const dd=daysFrom(logicalToday(),due);return{r,due,dd:r.interval===0&&!r.nextDue?-1:dd}}).filter(x=>x.dd<=60).sort((a,b)=>a.dd-b.dd);
+  const urgent=Object.values(latest).map(r=>{const asap=r.interval===0&&!r.nextDue;return{r,asap,dd:asap?-Infinity:daysFrom(logicalToday(),dueOf(r))}}).filter(x=>x.dd<=60).sort((a,b)=>a.dd-b.dd);
   if(!urgent.length){$('#examSlot').innerHTML='';return}
   const u=urgent[0];const e=EX[u.r.exam];
-  const t=u.dd<0?`已逾期 ${-u.dd} 天`:u.dd===0?'今天到期':`${u.dd} 天後到期`;
+  const t=u.asap?'需盡快處理':u.dd<0?`已逾期 ${-u.dd} 天`:u.dd===0?'今天到期':`${u.dd} 天後到期`;
   $('#examSlot').innerHTML=`<button type="button" class="blk examcard" style="--cat:${CAT[e.cat].color}" id="examCard"><span class="dot"></span><span class="grow"><span>${esc(e.name)}</span><br><span class="sub">${t}${urgent.length>1?'・另有 '+(urgent.length-1)+' 項':''}</span></span><span class="sub">›</span></button>`;
   $('#examCard').onclick=()=>go('exams');
 }
@@ -656,7 +668,7 @@ function openSheet(slot){
   paintSheet();rebuild(ws.w);
 }
 $$('[data-wslot]').forEach(b=>b.addEventListener('click',()=>openSheet(b.dataset.wslot)));
-$$('[data-wseg]').forEach(b=>b.addEventListener('click',()=>{ws.seg=b.dataset.wseg;$$('[data-wseg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));if(ws.seg==='bf'&&!ws.bfTouched){ws.bfTouched=true}paintSheet();rebuild(curVal())}));
+$$('[data-wseg]').forEach(b=>b.addEventListener('click',()=>{ws.seg=b.dataset.wseg;$$('[data-wseg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));paintSheet();rebuild(curVal())}));
 let scrollT,programmatic=false;
 $('#ruler').addEventListener('scroll',()=>{if(suppress)return;const i=Math.round($('#ruler').scrollLeft/TICK);const v=r1(ws.min+i/10);if(v!==curVal()){if(ws.seg==='w'){ws.w=v;ws.touched=true}else{ws.bf=v;ws.bfTouched=true}paintSheet()}},{passive:true});
 $('#ruler').addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setCur(curVal()+(e.key==='ArrowRight'?0.1:-0.1));rulerTo(curVal(),true)}});
@@ -668,8 +680,10 @@ $('#wsSave').addEventListener('click',async()=>{
   const slot=ws.slot,date=viewDate;const prev=(days[date]||{})[slot]||null;
   const at=date===logicalToday()?nowHM():(prev?.at||'補登');
   const val={w:ws.w,bf:ws.bfTouched?ws.bf:(prev?.bf??null),at};
-  $('#wSheet').close();
-  try{await writeDay(date,{[slot]:val});toast(`已記錄 ${val.w.toFixed(1)} kg`,[['撤銷',()=>writeDay(date,{[slot]:prev}).catch(writeErr)]])}catch(e){writeErr(e)}
+  const btn=$('#wsSave');btn.disabled=true;btn.textContent='儲存中…';
+  try{await writeDay(date,{[slot]:val});$('#wSheet').close();toast(`已記錄 ${val.w.toFixed(1)} kg`,[['撤銷',()=>writeDay(date,{[slot]:prev}).catch(writeErr)]])}
+  catch(e){writeErr(e);paintSheet()}
+  finally{btn.disabled=false}
 });
 
 /* ---- med ---- */
@@ -686,13 +700,13 @@ $('#perBtn').addEventListener('click',async()=>{const d=days[viewDate]||{};try{a
 
 /* ---- exercise ---- */
 $('#pills').addEventListener('click',async ev=>{
-  const b=ev.target.closest('[data-type]');if(!b)return;if(!db){toast('資料庫未連線，無法儲存');return}
+  const b=ev.target.closest('[data-type]');if(!b||!canSave())return;
   const type=b.dataset.type;
   const last=exercises.filter(e=>e.type===type&&!e.deleted).sort((a,c)=>(c.createdAt||0)-(a.createdAt||0))[0];
   const min=last?.min||(type==='yoga'?prof('yogaMin'):type==='pilates'?prof('pilatesMin'):30);
   const body={date:viewDate,type,label:type==='other'?(last?.label||'其他'):EXT[type].name,min,note:'',at:viewDate===logicalToday()?nowHM():'補登',createdAt:Date.now()};
-  try{const ref=db.collection('exercise').doc();await ref.set(body);
-    toast(`已記錄 ${body.label} ${min} 分`,[['撤銷',()=>queued('exercise/'+ref.id,()=>db.doc('exercise/'+ref.id).update({deleted:true})).catch(writeErr)],['改分鐘',()=>{openEx=ref.id;renderToday()}]])}catch(e){writeErr(e)}
+  try{const ref=db.collection('exercise').doc();await retry1(()=>ref.set(body));
+    toast(`已記錄 ${body.label} ${min} 分`,[['撤銷',()=>writeEx(ref.id,{deleted:true}).catch(writeErr)],['改分鐘',()=>{openEx=ref.id;renderToday()}]])}catch(e){writeErr(e)}
 });
 const exTimers={};
 $('#exToday').addEventListener('click',ev=>{
@@ -700,14 +714,14 @@ $('#exToday').addEventListener('click',ev=>{
   if(ev.target.closest('[data-exopen]')){openEx=openEx===id?null:id;renderToday();return}
   const st=ev.target.closest('[data-exstep]');
   if(st){const nm=Math.max(5,Math.min(300,(+e.min||0)+Number(st.dataset.exstep)));e.min=nm;li.querySelector('.stepper .v').textContent=nm+' 分';li.querySelector('.exhead .num').textContent=nm+' 分';
-    clearTimeout(exTimers[id]);exTimers[id]=setTimeout(()=>queued('exercise/'+id,()=>db.doc('exercise/'+id).update({min:nm})).catch(writeErr),700);return}
-  if(ev.target.closest('[data-exdel]')){openEx=null;queued('exercise/'+id,()=>db.doc('exercise/'+id).update({deleted:true})).then(()=>toast('已刪除 '+(e.label||'運動'),[['復原',()=>queued('exercise/'+id,()=>db.doc('exercise/'+id).update({deleted:false})).catch(writeErr)]])).catch(writeErr)}
+    clearTimeout(exTimers[id]);exTimers[id]=setTimeout(()=>writeEx(id,{min:nm}).catch(writeErr),700);return}
+  if(ev.target.closest('[data-exdel]')){openEx=null;writeEx(id,{deleted:true}).then(()=>toast('已刪除 '+(e.label||'運動'),[['復原',()=>writeEx(id,{deleted:false}).catch(writeErr)]])).catch(writeErr)}
 });
 $('#exToday').addEventListener('change',ev=>{
   const inp=ev.target.closest('[data-exnote]');if(!inp)return;const id=inp.closest('li[data-id]').dataset.id;const e=exercises.find(x=>x.id===id);
   const v=inp.value.trim();if(!e||v===(e.note||''))return;
   const patch={note:v};if(e.type==='other'&&v&&e.label==='其他')patch.label=v.slice(0,12);
-  queued('exercise/'+id,()=>db.doc('exercise/'+id).update(patch)).catch(writeErr);
+  writeEx(id,patch).catch(writeErr);
 });
 document.addEventListener('click',ev=>{const g=ev.target.closest('[data-go]');if(!g)return;setView(g.dataset.go);go('today')});
 
@@ -745,7 +759,7 @@ function renderWeight(){
   drawLineChart($('#wChart'),{start,end,dots:am.filter(inR),hollow:pm.filter(inR),line:rolling(am,7).filter(inR),bands});
   drawLineChart($('#bfChart'),{start,end,line:rolling(bf,7).filter(inR),bands,unit:'%'});
   const mean=(a,b)=>{const v=am.filter(p=>p.d>=a&&p.d<=b).map(p=>p.v);return v.length?v.reduce((x,y)=>x+y,0)/v.length:null};
-  const m1=mean(end-6,end),m0=mean(end-13,end-7),m30=mean(end-29,end);const diff=m1!=null&&m0!=null?m1-m0:null;
+  const m1=mean(end-6,end),m0=mean(end-13,end-7),m30=mean(end-29,end);const diff=m1!=null&&m0!=null?r1(m1-m0):null;
   const cnt=keys.filter(k=>dnum(k)>end-7&&days[k].am).length;
   $('#wStats').innerHTML=`<div class="stat"><div class="k">近 7 天早上平均</div><div class="v">${m1!=null?m1.toFixed(1)+' kg':'—'}</div></div><div class="stat"><div class="k">和前 7 天相比</div><div class="v">${diff!=null?(diff>0?'+':'')+diff.toFixed(1)+' kg':'—'}</div></div><div class="stat"><div class="k">近 30 天平均</div><div class="v">${m30!=null?m30.toFixed(1)+' kg':'—'}</div></div><div class="stat"><div class="k">近 7 天早上有量</div><div class="v">${cnt} / 7</div></div>`;
   const recent=keys.filter(k=>days[k].am||days[k].pm).reverse().slice(0,20);
@@ -911,8 +925,8 @@ function renderSetup(){
   $$('#p-setup input,#p-setup button').forEach(x=>{if(x.id!=='btnExport'&&x.id!=='impCancel')x.disabled=!canWrite});
   $('#lastExport').textContent=profile.lastExport?'上次匯出：'+profile.lastExport:'還沒有匯出過。';
 }
-async function saveProfile(patch){if(!db){toast('資料庫未連線，無法儲存');return false}
-  try{await queued('settings/profile',()=>db.doc('settings/profile').set({...profile,...patch,updatedAt:Date.now()}));return true}catch(e){writeErr(e);return false}}
+async function saveProfile(patch){if(!canSave())return false;
+  try{await queued('settings/profile',()=>mergeDoc('settings/profile',{...patch,updatedAt:Date.now()}));return true}catch(e){writeErr(e);return false}}
 $('#profForm').addEventListener('submit',async ev=>{ev.preventDefault();
   const dose=num($('#sDose').value);if(dose==null||dose<=0){$('#sDose').focus();toast('請填劑量');return}
   const pf=$('#sPFrom').value,pt=$('#sPTo').value;if((pf&&!pt)||(!pf&&pt)){toast('暫停模式需要開始日和結束日');return}if(pf&&pt&&pt<pf){toast('結束日要在開始日之後');return}
@@ -921,12 +935,12 @@ $('#profForm').addEventListener('submit',async ev=>{ev.preventDefault();
 $('#sPClear').addEventListener('click',async()=>{if(await saveProfile({pauseFrom:null,pauseTo:null,pauseNote:''})){$('#sPFrom').value='';$('#sPTo').value='';$('#sPNote').value='';toast('已清除暫停')}});
 $('#ivForm').addEventListener('submit',async ev=>{ev.preventDefault();if(!db){toast('資料庫未連線，無法儲存');return}
   const next={};for(const e of EXAMS){const v=Number($('#iv-'+e.id).value);if(Number.isFinite(v)&&v>0)next[e.id]=Math.round(v)}
-  try{await db.doc('settings/intervals').set(next);document.activeElement&&document.activeElement.blur();toast('間隔已儲存')}catch(e){writeErr(e)}});
+  try{await queued('settings/intervals',()=>retry1(()=>db.doc('settings/intervals').set(next)));document.activeElement&&document.activeElement.blur();toast('間隔已儲存')}catch(e){writeErr(e)}});
 async function readAll(col){const s=await db.collection(col).get();const o={};s.docs.forEach(d=>o[d.id]=d.data());return o}
 $('#btnExport').addEventListener('click',async()=>{if(!db){toast('資料庫未連線');return}
   const dl=await window.claude?.use?.('downloads');if(!dl){toast('這個檢視無法下載檔案，請在 claude.ai 開啟頁面');return}
   try{const out={app:'jialin-health',version:1,exportedAt:new Date().toISOString(),collections:{}};for(const c of ['days','exercise','records','settings'])out.collections[c]=await readAll(c);
-    await dl.save({filename:'家琳健康追蹤備份-'+logicalToday()+'.json',data:JSON.stringify(out,null,1)});saveProfile({lastExport:fmt(logicalToday())});toast('已匯出')}
+    await dl.save({filename:'家琳健康追蹤備份-'+logicalToday()+'.json',data:JSON.stringify(out,null,1)});if(ready)saveProfile({lastExport:fmt(logicalToday())});toast('已匯出')}
   catch(e){toast(e&&e.code==='declined'?'已取消匯出':'匯出失敗，請稍後再試')}});
 let pendingImport=null;
 $('#impFile').addEventListener('change',async ev=>{const f=ev.target.files[0];if(!f)return;
@@ -936,8 +950,8 @@ $('#impFile').addEventListener('change',async ev=>{const f=ev.target.files[0];if
   catch(e){toast('這不是本工具匯出的備份檔');ev.target.value=''}});
 $('#impCancel').addEventListener('click',()=>{pendingImport=null;$('#impPreview').hidden=true;$('#impActions').hidden=true;$('#impFile').value=''});
 $('#impGo').addEventListener('click',async()=>{if(!pendingImport||!db)return;const b=$('#impGo');if(!b.classList.contains('armed')){b.classList.add('armed');b.textContent='再按一次開始匯入';return}
-  b.disabled=true;let n=0,fail=0;const total=Object.values(pendingImport.collections).reduce((a,o)=>a+Object.keys(o||{}).length,0);
-  for(const [col,docs] of Object.entries(pendingImport.collections)){if(!['days','exercise','records','settings'].includes(col))continue;
+  b.disabled=true;let n=0,fail=0;const COLS=['days','exercise','records','settings'];const total=COLS.reduce((a,c)=>a+Object.keys(pendingImport.collections[c]||{}).length,0);
+  for(const [col,docs] of Object.entries(pendingImport.collections)){if(!COLS.includes(col))continue;
     for(const [id,data] of Object.entries(docs||{})){let ok=false;for(let t=0;t<4&&!ok;t++){try{await db.doc(col+'/'+id).set(data);ok=true}catch(e){if(e&&(e.code==='resource_exhausted'||e.code==='unavailable'))await new Promise(r=>setTimeout(r,1200*(t+1)));else break}}
       ok?n++:fail++;b.textContent=`匯入中 ${n+fail}/${total}`}}
   toast(fail?`匯入完成 ${n} 筆，${fail} 筆失敗`:`匯入完成，共 ${n} 筆`);b.disabled=false;$('#impCancel').click()});
@@ -954,11 +968,12 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
     db=d;if(u){try{const ok=await u.can('data.write');if(ok===false)canWrite=false}catch(e){}}
     $('#dbNotice').hidden=true;
     const fail=()=>{$('#dbNotice').hidden=false;$('#dbNotice').textContent='資料連線中斷，請重新整理頁面。'};
-    db.collection('days').onSnapshot(s=>{const o={};s.docs.forEach(x=>o[x.id]=x.data());days=o;ready=true;renderCur()},fail);
+    const arrived=k=>{if(!loaded[k]){loaded[k]=true;ready=loaded.days&&loaded.profile}};
+    db.collection('days').onSnapshot(s=>{const o={};s.docs.forEach(x=>o[x.id]=x.data());days=o;arrived('days');renderCur()},fail);
     db.collection('exercise').onSnapshot(s=>{exercises=s.docs.map(x=>({id:x.id,...x.data()}));renderCur()},fail);
     db.collection('records').onSnapshot(s=>{records=s.docs.map(x=>({id:x.id,...x.data()}));renderCur()},fail);
-    db.doc('settings/intervals').onSnapshot(s=>{intervals=s.exists?{...s.data()}:{};renderCur()},()=>{});
-    db.doc('settings/profile').onSnapshot(s=>{profile=s.exists?{...s.data()}:{};renderCur()},()=>{});
+    db.doc('settings/intervals').onSnapshot(s=>{intervals=s.exists?{...s.data()}:{};renderCur()},fail);
+    db.doc('settings/profile').onSnapshot(s=>{profile=s.exists?{...s.data()}:{};arrived('profile');renderCur()},fail);
   }catch(e){$('#dbNotice').textContent='目前無法連線資料庫，請重新整理頁面。'}
 })();
 </script>
