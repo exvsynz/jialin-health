@@ -11,4 +11,5 @@ node dev/weight-test.js
 node dev/review6-test.js
 node dev/review7-test.js
 node dev/remind-test.js "$@"
+node dev/remind-ref-test.js
 node dev/e2e.js "$@"
