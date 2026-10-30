@@ -8,4 +8,5 @@ node dev/data-test.js
 node dev/render-test.js
 node dev/weight-test.js
 node dev/review6-test.js
+node dev/review7-test.js
 node dev/e2e.js "$@"

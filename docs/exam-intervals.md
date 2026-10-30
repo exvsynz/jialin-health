@@ -9,7 +9,8 @@
 | 乳房（任一影像） | BI-RADS 3 | 6 個月 | ACR BI-RADS；Berg et al., Radiology 2020 |
 | 甲狀腺超音波 | ATA 高度懷疑（未達穿刺） | 6 個月 | ATA 2015：6–12 個月 |
 | 甲狀腺超音波 | ATA 低–中度懷疑 | 12 個月 | ATA 2015：12–24 個月 |
-| 甲狀腺超音波 | ATA 極低懷疑／純囊腫 | 24 個月 | ATA 2015：如需追蹤 >24 個月 |
+| 甲狀腺超音波 | ATA 極低懷疑／純囊腫 >1 cm | 24 個月 | ATA 2015 Rec 24C：若要追蹤，≥24 個月（無建議，證據不足） |
+| 甲狀腺超音波 | ATA 極低懷疑／純囊腫 ≤1 cm | 不排 | ATA 2015 Rec 24D：不需例行超音波追蹤 |
 | LDCT | Lung-RADS 1–2 | 12 個月 | ACR Lung-RADS v2022（國健署補助每 2 年） |
 | LDCT | Lung-RADS 3 | 6 個月 | ACR Lung-RADS v2022 |
 | LDCT | Lung-RADS 4A | 3 個月 | ACR Lung-RADS v2022 |
@@ -29,8 +30,8 @@
 | 乳房（任一影像） | BI-RADS 0 | 盡快 | 盡快補做檢查 |
 | 乳房（任一影像） | BI-RADS 4–5 | 盡快 | 切片或轉介，不屬定期追蹤 |
 | 乳房電腦斷層 | BI-RADS 1–2 | 12 個月 | 依醫囑 |
-| 甲狀腺超音波 | 無結節 | 用固定間隔（預設 12 個月） | 無常規追蹤建議，使用預設間隔 |
-| 甲狀腺超音波 | 穿刺良性＋高度懷疑 | 12 個月 | ATA 2015：12 個月內重做超音波與穿刺 |
+| 甲狀腺超音波 | 無結節 | 不排 | ATA 2015 未建議例行追蹤；醫師有安排再填間隔或日期 |
+| 甲狀腺超音波 | 穿刺良性＋高度懷疑 | 12 個月 | ATA 2015 Rec 23A：12 個月內重做超音波，並再做一次超音波導引穿刺 |
 | 甲狀腺超音波 | 穿刺良性＋低–中度懷疑 | 12 個月 | ATA 2015：12–24 個月，取下限 |
 | LDCT | Lung-RADS 4B／4X | 盡快 | 進一步檢查或切片 |
 | LDCT | Lung-RADS 0 | 盡快 | 依報告指定時間補做 |
@@ -38,11 +39,11 @@
 | 大腸鏡 | 1–2 顆無蒂鋸齒狀息肉 <10 mm | 5 年 | USMSTF 2020：5–10 年，取下限 |
 | 大腸鏡 | 鋸齒狀息肉 ≥10 mm 或分化不良、TSA | 3 年 | USMSTF 2020：3 年 |
 
-「甲狀腺超音波＋無結節」目前會套用固定間隔，也就是一次正常的超音波會自動排 12 個月後再做。這和依據欄寫的「無常規追蹤建議」互相矛盾。要不要改，待使用者決定，見 `docs/reviews/2026-10-30-code-review.md` 第八節 Q4。
+2026-10-30 依使用者決定，甲狀腺超音波各分類改為依 ATA 2015 Rec 23–24 原文：
+- 無結節、≤1 cm 極低懷疑或純囊腫：不自動排日期，紀錄的間隔存為空值。
+- >1 cm 極低懷疑：依據改為「≥24 個月」。
+- 穿刺良性＋高度懷疑：依據註明要再做穿刺。
+- 間隔數值都沒有改。
 
-來源
-- 衛福部：114 年擴大癌症篩檢 https://mohw.gov.tw/cp-16-81302-1.html
-- ATA 2015 Quick-Reference Guidelines https://eguideline.guidelinecentral.com/i/631761/9
-- ACR Lung-RADS v2022 https://acr.org/-/media/ACR/Files/RADS/Lung-RADS/Lung-RADS-2022
-- RSNA：BI-RADS 3 六個月追蹤 https://www.rsna.org/media/press/i/2182
-- AAFP 2021：USMSTF 2020 表格 https://aafp.org/pubs/afp/issues/2021/0301/p314.pdf
+原文抽查自 Cancer Care Ontario 2023 的 ATA 指引採用文件，以及 GuidelineCentral 快速參考（PMC 原站在工作環境被網路政策擋住）；細節見 `docs/reviews/2026-10-30-code-review.md` 第九節。
+以前用「無結節」存下、間隔已經自動帶成 12 的舊紀錄，仍維持 12 個月。若要改，在紀錄裡清空間隔即可。
