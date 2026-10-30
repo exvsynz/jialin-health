@@ -431,7 +431,7 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
       <div class="sect"><h2 class="lbl">服藥</h2><div class="blk grp">
         <div class="grid2">
           <div class="field"><label for="sMed">藥名</label><input id="sMed" autocomplete="off"></div>
-          <div class="field"><label for="sDose">劑量 mcg</label><input id="sDose" type="number" inputmode="numeric" min="1" max="500"></div>
+          <div class="field"><label for="sDose">劑量 mcg</label><input id="sDose" type="number" inputmode="numeric" min="1" max="500"><p class="small" style="margin:0" id="sDoseRo" hidden></p><button type="button" class="ghost" id="sDoseGo" hidden>到「用藥」頁變更</button></div>
         </div>
         <div class="field"><label for="sMedNote">服用方式</label><input id="sMedNote" autocomplete="off" placeholder="例如：半顆，早上空腹"></div>
       </div></div>
@@ -1373,6 +1373,10 @@ $('#smVisit').addEventListener('click',async()=>{if(!smCur)return;const prev=pro
 /* ================= SETUP ================= */
 function renderSetup(){
   if(typingIn($('#profForm'))||typingIn($('#ivForm')))heldRender=true; // redraw untouched fields once focus leaves
+  /* once dose changes exist, the medication page is the one place to change the dose */
+  const doseHist=meddose.some(validMeddose),dz=doseOn(logicalToday(),meddose,prof('medDose'));
+  $('#sDose').hidden=doseHist;$('#sDoseRo').hidden=!doseHist;$('#sDoseGo').hidden=!doseHist;
+  if(doseHist)$('#sDoseRo').textContent=`目前 ${dz?dz.dose+' mcg':'劑量未設定'}`;
   if(!formDirty.profForm&&!typingIn($('#profForm'))){$('#sMed').value=prof('medName');$('#sDose').value=prof('medDose');$('#sMedNote').value=prof('medNote');$('#sYoga').value=prof('yogaMin');$('#sPil').value=prof('pilatesMin');
     $('#sPFrom').value=profile.pauseFrom||'';$('#sPTo').value=profile.pauseTo||'';$('#sPNote').value=profile.pauseNote||''}
   if(!formDirty.ivForm&&!typingIn($('#ivForm'))){
@@ -1404,12 +1408,13 @@ $('#remindRows').addEventListener('change',async e=>{const i=e.target.closest('[
 async function saveProfile(patch,onErr=writeErr){if(!canSave())return false;
   try{await queued('settings/profile',()=>mergeDoc('settings/profile',{...patch,updatedAt:Date.now()}));return true}catch(e){onErr(e);return false}}
 $('#profForm').addEventListener('submit',async ev=>{ev.preventDefault();
-  const dose=num($('#sDose').value);if(dose==null||dose<=0){$('#sDose').focus();toast('請填劑量');return}
+  const doseHist=meddose.some(validMeddose),dose=num($('#sDose').value);if(!doseHist&&(dose==null||dose<=0)){$('#sDose').focus();toast('請填劑量');return}
   const pf=$('#sPFrom').value,pt=$('#sPTo').value;if((pf&&!pt)||(!pf&&pt)){toast('暫停模式需要開始日和結束日');return}if(pf&&pt&&pt<pf){toast('結束日要在開始日之後');return}
   const v=formEdits.profForm;
-  const ok=await saveProfile({medName:$('#sMed').value.trim()||'Levothyroxine',medDose:dose,medNote:$('#sMedNote').value.trim(),yogaMin:num($('#sYoga').value)||60,pilatesMin:num($('#sPil').value)||60,pauseFrom:pf||null,pauseTo:pt||null,pauseNote:$('#sPNote').value.trim()});
+  const ok=await saveProfile({medName:$('#sMed').value.trim()||'Levothyroxine',...(doseHist?{}:{medDose:dose}),medNote:$('#sMedNote').value.trim(),yogaMin:num($('#sYoga').value)||60,pilatesMin:num($('#sPil').value)||60,pauseFrom:pf||null,pauseTo:pt||null,pauseNote:$('#sPNote').value.trim()});
   if(ok){if(formEdits.profForm===v){formDirty.profForm=false;document.activeElement&&document.activeElement.blur()}toast('設定已儲存')}}); // edits made while saving stay
 ['profForm','ivForm'].forEach(id=>$('#'+id).addEventListener('input',()=>{formDirty[id]=true;formEdits[id]++}));
+$('#sDoseGo').addEventListener('click',()=>go('meds'));
 $('#sPClear').addEventListener('click',async()=>{if(await saveProfile({pauseFrom:null,pauseTo:null,pauseNote:''})){$('#sPFrom').value='';$('#sPTo').value='';$('#sPNote').value='';toast('已清除暫停')}});
 $('#ivForm').addEventListener('submit',async ev=>{ev.preventDefault();if(!canSave())return;if(!loaded.intervals){toast('資料還在載入，請稍候');return}
   /* merge: keys this form does not show are kept; an emptied field goes back to the default */
@@ -1419,18 +1424,21 @@ $('#ivForm').addEventListener('submit',async ev=>{ev.preventDefault();if(!canSav
 async function readAll(col){const s=await db.collection(col).get();const o={};s.docs.forEach(d=>o[d.id]=d.data());return o}
 $('#btnExport').addEventListener('click',async()=>{if(!db){toast('資料庫未連線');return}
   const dl=await window.claude?.use?.('downloads');if(!dl){toast('這個檢視無法下載檔案，請在 claude.ai 開啟頁面');return}
-  try{const out={app:'jialin-health',version:1,exportedAt:new Date().toISOString(),collections:{}};for(const c of ['days','exercise','records','settings'])out.collections[c]=await readAll(c);
+  try{const out={app:'jialin-health',version:2,exportedAt:new Date().toISOString(),collections:{}};for(const c of ['days','exercise','records','settings','meddose'])out.collections[c]=await readAll(c);
     await dl.save({filename:'家琳健康追蹤備份-'+logicalToday()+'.json',data:JSON.stringify(out,null,1)});if(ready)saveProfile({lastExport:fmt(logicalToday())});toast('已匯出')}
   catch(e){toast(e&&e.code==='declined'?'已取消匯出':'匯出失敗，請稍後再試')}});
 let pendingImport=null;
 $('#impFile').addEventListener('change',async ev=>{const f=ev.target.files[0];if(!f)return;
   try{const j=JSON.parse(await f.text());if(j.app!=='jialin-health'||!j.collections)throw 0;pendingImport=j;const c=j.collections;
-    $('#impPreview').innerHTML=`備份時間 ${esc((j.exportedAt||'').slice(0,10))}：日紀錄 ${Object.keys(c.days||{}).length} 天、運動 ${Object.keys(c.exercise||{}).length} 筆、定期檢查 ${Object.keys(c.records||{}).length} 筆。<br>匯入會用備份內容覆蓋相同日期與相同編號的紀錄，其他紀錄保留。`;
+    const old=!c.meddose; // backups made before dose changes existed (version 1)
+    $('#impPreview').innerHTML=`備份時間 ${esc((j.exportedAt||'').slice(0,10))}：日紀錄 ${Object.keys(c.days||{}).length} 天、運動 ${Object.keys(c.exercise||{}).length} 筆、定期檢查 ${Object.keys(c.records||{}).length} 筆、劑量變更 ${Object.keys(c.meddose||{}).length} 筆。<br>匯入會用備份內容覆蓋相同日期與相同編號的紀錄，其他紀錄保留。`
+      +(old?'<br>這份備份比用藥功能舊；相同日期的服藥細節、抽血情境會被備份內容取代。建議先匯出目前的資料。':'')
+      +(c.meddose&&Object.keys(c.meddose).length?'<br>備份之後才刪除的劑量變更，會依備份內容回來。':'');
     $('#impPreview').hidden=false;$('#impActions').hidden=false;$('#impGo').classList.remove('armed');$('#impGo').textContent='確認匯入'}
   catch(e){toast('這不是本工具匯出的備份檔');ev.target.value=''}});
 $('#impCancel').addEventListener('click',()=>{pendingImport=null;$('#impPreview').hidden=true;$('#impActions').hidden=true;$('#impFile').value=''});
 $('#impGo').addEventListener('click',async()=>{if(!pendingImport||!db)return;const b=$('#impGo');if(!b.classList.contains('armed')){b.classList.add('armed');b.textContent='再按一次開始匯入';return}
-  b.disabled=true;let n=0,fail=0;const COLS=['days','exercise','records','settings'];const total=COLS.reduce((a,c)=>a+Object.keys(pendingImport.collections[c]||{}).length,0);
+  b.disabled=true;let n=0,fail=0;const COLS=['days','exercise','records','settings','meddose'];const total=COLS.reduce((a,c)=>a+Object.keys(pendingImport.collections[c]||{}).length,0);
   for(const [col,docs] of Object.entries(pendingImport.collections)){if(!COLS.includes(col))continue;
     for(const [id,data] of Object.entries(docs||{})){let ok=false;for(let t=0;t<4&&!ok;t++){try{await db.doc(col+'/'+id).set(data);ok=true}catch(e){if(e&&(e.code==='resource_exhausted'||e.code==='unavailable'))await new Promise(r=>setTimeout(r,1200*(t+1)));else break}}
       ok?n++:fail++;b.textContent=`匯入中 ${n+fail}/${total}`}}

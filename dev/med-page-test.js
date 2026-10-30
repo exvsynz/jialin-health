@@ -311,6 +311,51 @@ const txt=(page,s)=>page.evaluate(s=>{const e=document.querySelector(s);return e
     if(!process.argv.includes('--no-shots'))await page.screenshot({path:path.join(SHOTS,`380-${scheme}-summary.png`),fullPage:true});
     await page.context().close()}
 
+  /* B5：匯出與匯入 */
+  const full=()=>{const s=seed({'meddose/a':md('2026-10-01',75,{tablet:'100 mcg × ½'}),'meddose/gone':md('2026-09-01',62,{deleted:true}),'system/heartbeat':{at:'2026-10-30T07:20:00+08:00',kind:'morning'}});
+    s['days/2026-10-29']={...s['days/2026-10-29'],med:{taken:true,at:'07:20',dose:75,doseSrc:'history',mode:'bedtime',interfere:{coffee:true,iron:false}}};
+    s['records/r3']={...s['records/r3'],drawCtx:{medBeforeDraw:'no',biotin7d:'unsure',recheckOf:'a'}};
+    s['settings/profile']={...s['settings/profile'],tshRecheckWeeks:6,lastVisit:'2026-09-15'};return s};
+  let exported;
+  {const {page}=await open({time:NOW,hash:'setup',cfg:{latencyComp:true,seed:full()}});await wait(500);
+    await page.click('#btnExport');await wait(500);
+    exported=JSON.parse(await page.evaluate(()=>window.__lastDownload.data));
+    check('匯出：版本 2，包含劑量變更（含已刪除的），不包含 system',exported.version===2&&Object.keys(exported.collections).sort().join()==='days,exercise,meddose,records,settings'&&exported.collections.meddose.gone?.deleted===true,Object.keys(exported.collections));
+    await page.context().close()}
+  {const {page,doc}=await open({time:NOW,hash:'setup',cfg:{latencyComp:true,seed:{}}});await wait(500);
+    await page.setInputFiles('#impFile',{name:'b.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(exported))});await wait(300);
+    check('匯入預覽：列出劑量變更筆數，新備份沒有「比較舊」的警告',(await txt(page,'#impPreview')).includes('劑量變更 2 筆')&&!(await txt(page,'#impPreview')).includes('比用藥功能舊'),await txt(page,'#impPreview'));
+    await page.click('#impGo');await page.click('#impGo');await wait(1500);
+    const d=await doc('days/2026-10-29'),r3=await doc('records/r3'),p=await doc('settings/profile');
+    check('完整往返：服藥細節、劑量來源',JSON.stringify(d.med)===JSON.stringify({taken:true,at:'07:20',dose:75,doseSrc:'history',mode:'bedtime',interfere:{coffee:true,iron:false}}),d.med);
+    check('完整往返：抽血情境、複查週數、上次回診日',JSON.stringify(r3.drawCtx)===JSON.stringify({medBeforeDraw:'no',biotin7d:'unsure',recheckOf:'a'})&&p.tshRecheckWeeks===6&&p.lastVisit==='2026-09-15');
+    check('完整往返：劑量變更、已刪除的仍是已刪除',(await doc('meddose/a'))?.tablet==='100 mcg × ½'&&(await doc('meddose/gone'))?.deleted===true);
+    check('完整往返：沒有寫入 system/heartbeat',!(await doc('system/heartbeat')));
+    await page.context().close()}
+  {const old={app:'jialin-health',version:1,exportedAt:'2026-09-01T00:00:00Z',collections:{days:{'2026-10-29':{date:'2026-10-29',am:{w:52},med:{taken:true,at:'07:00',dose:50}}}}};
+    const {page,doc}=await open({time:NOW,hash:'setup',cfg:{latencyComp:true,seed:full()}});await wait(500);
+    await page.setInputFiles('#impFile',{name:'old.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(old))});await wait(300);
+    check('舊備份：預覽警告會取代服藥細節、建議先匯出',(await txt(page,'#impPreview')).includes('比用藥功能舊')&&(await txt(page,'#impPreview')).includes('先匯出'));
+    await page.click('#impGo');await page.click('#impGo');await wait(800);
+    check('舊備份：相同日期的紀錄被備份取代（還原語意），劑量變更保留',!(await doc('days/2026-10-29')).med.mode&&(await doc('meddose/a'))?.dose===75);
+    await page.context().close()}
+
+  /* B5：設定頁的劑量 */
+  {const {page,doc}=await open({time:NOW,hash:'setup',cfg:{latencyComp:true,seed:full()}});await wait(500);
+    check('有劑量紀錄：設定頁劑量改成唯讀，顯示目前劑量',!(await page.isVisible('#sDose'))&&(await txt(page,'#sDoseRo'))==='目前 75 mcg'&&await page.isVisible('#sDoseGo'));
+    const n0=await page.evaluate(()=>window.__mock.writes.length);
+    await page.fill('#sMedNote','睡前');await page.click('#profForm button[type="submit"]');await wait(300);
+    const w=await page.evaluate(n=>window.__mock.writes.slice(n).filter(x=>x.path==='settings/profile'),n0);
+    check('送出設定：不含 medDose',w.length===1&&!('medDose' in w[0].data)&&w[0].data.medNote==='睡前',w);
+    await page.click('#sDoseGo');await wait(300);
+    check('到「用藥」頁變更',await page.isVisible('#p-meds'));
+    await page.context().close()}
+  {const {page,doc}=await open({time:NOW,hash:'setup',cfg:{latencyComp:true,seed:seed()}});await wait(500);
+    check('沒有劑量紀錄：設定頁劑量照舊可以編輯',await page.isVisible('#sDose')&&!(await page.isVisible('#sDoseRo')));
+    await page.fill('#sDose','62');await page.click('#profForm button[type="submit"]');await wait(300);
+    check('沒有劑量紀錄：送出時寫入劑量',(await doc('settings/profile')).medDose===62);
+    await page.context().close()}
+
   await close();
   process.exit(summary()?1:0);
 })().catch(e=>{console.error(e);process.exit(2)});
