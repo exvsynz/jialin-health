@@ -74,12 +74,12 @@ const tap=(page,sel)=>page.evaluate(s=>document.querySelector(s).click(),sel); /
       await page.context().close()}
   }
 
-  /* 7. 首頁檢查卡：需盡快處理排第一、文字正確 */
+  /* 7. 首頁檢查卡：待安排排第一、文字正確 */
   {const seed={'records/a':{exam:'thy_us',cat:'thyroid',date:'2025-04-01',preset:'lowint',interval:12,nextDue:null,createdAt:1},
                'records/b':{exam:'breast_us',cat:'breast',date:'2026-10-01',preset:'b45',interval:0,nextDue:null,createdAt:2}};
     const {page}=await open({time:NOW,cfg:{latencyComp:true,seed}});await wait(400);
     const t=await page.textContent('#examSlot');
-    check('首頁檢查卡：需盡快處理排第一',/乳房超音波/.test(t)&&/需盡快處理/.test(t),t);
+    check('首頁檢查卡：待安排（間隔 0）排第一',/乳房超音波/.test(t)&&/待安排/.test(t),t); // B 階段 9.5：「需盡快處理」改為「待安排」
     check('首頁檢查卡：不出現「已逾期 1 天」',!/已逾期 1 天/.test(t),t);
     await page.context().close()}
 

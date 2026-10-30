@@ -126,6 +126,14 @@ textarea{min-height:110px;resize:vertical}
 .chips button{min-height:44px;padding:4px 14px;border-radius:999px;background:var(--surface);color:var(--ink)}
 .chips button[aria-pressed="true"]{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
 .chips button.last{border-style:dashed;border-color:var(--muted)}
+/* medication page timeline */
+.tl{list-style:none;margin:0;padding:0}
+.tl li{border-top:1px solid var(--line)}
+.tl li:first-child{border-top:0}
+.tl button{width:100%;border:0;border-radius:0;background:transparent;text-align:left;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 16px;min-height:52px;overflow-wrap:anywhere}
+.tl .when{font-family:var(--f-num);font-size:.85rem;color:var(--muted)}
+.tl .flag{font-size:.78rem;color:var(--muted)}
+.wrapline{overflow-wrap:anywhere}
 /* exercise */
 .exblk{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
 .pills{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -376,6 +384,19 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
     </details>
   </section>
 
+  <!-- MEDS -->
+  <section class="panel" id="p-meds" hidden>
+    <div class="sect"><h2 class="lbl">目前劑量</h2><div class="blk grp" id="medNow"></div></div>
+    <div class="sect"><h2 class="lbl">服藥紀錄</h2><div class="blk grp"><ul class="kv" id="medAdh"></ul></div></div>
+    <div class="sect"><h2 class="lbl">TSH 複查</h2><div class="blk grp">
+      <p style="margin:0" id="rcState"></p>
+      <div class="field"><label for="rcWeeks">劑量或製劑變更後幾週複查（留空就不排）</label><input id="rcWeeks" type="number" inputmode="numeric" min="1" max="52" step="1"></div>
+      <p class="hint" style="margin:0" id="rcSrc"></p>
+    </div></div>
+    <div class="sect"><div class="sect-head"><h2 class="lbl">變更與抽血</h2><button type="button" class="primary" id="mdAdd">＋ 新增變更</button></div><div class="blk"><ol class="tl" id="medTl"></ol></div></div>
+    <details class="blk refbox"><summary>依據</summary><div class="ref" id="medRef"></div></details>
+  </section>
+
   <!-- SETUP -->
   <section class="panel" id="p-setup" hidden>
     <div class="sect" id="remindSect"><h2 class="lbl">提醒</h2><div class="blk grp">
@@ -448,6 +469,35 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
   </div>
 </dialog>
 
+<!-- dose change sheet -->
+<dialog class="sheet" id="dlgDose" data-keep aria-labelledby="doseTitle">
+  <form class="dlg" id="doseForm" novalidate>
+    <div class="grab"></div>
+    <div class="dlg-head"><h2 id="doseTitle">新增變更</h2><button type="button" class="ghost" data-close>關閉</button></div>
+    <div class="dlg-body">
+      <div class="field"><label for="dKind">類型</label><select id="dKind"><option value="dose">劑量變更</option><option value="product">換廠牌或製劑</option></select></div>
+      <div class="grid2">
+        <div class="field"><label for="dDate">生效日</label><input type="date" id="dDate"></div>
+        <div class="field"><label for="dDose">劑量 mcg</label><input type="number" id="dDose" inputmode="decimal" min="1" max="1000" step="any"></div>
+      </div>
+      <div class="field"><label for="dTablet">錠劑規格</label><input id="dTablet" autocomplete="off" placeholder="例如 100 mcg × ½"></div>
+      <div class="grid2">
+        <div class="field"><label for="dBrand">廠牌</label><input id="dBrand" autocomplete="off"></div>
+        <div class="field"><label for="dReason">原因</label><input id="dReason" autocomplete="off"></div>
+      </div>
+      <div class="field"><label for="dNote">備註</label><input id="dNote" autocomplete="off"></div>
+      <div class="field"><label for="dRecheck">TSH 複查日（選填，會蓋掉依週數計算的日期）</label><input type="date" id="dRecheck"></div>
+      <label class="tgl"><span class="grow">這筆不需要複查</span><input type="checkbox" role="switch" id="dNoRecheck"></label>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="danger" id="dDel" hidden>刪除這筆</button>
+      <span style="flex:1"></span>
+      <button type="button" data-close>取消</button>
+      <button type="submit" class="primary" id="dSave">儲存</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- more sheet -->
 <dialog class="sheet" id="moreSheet" aria-label="更多">
   <div class="grab"></div>
@@ -456,6 +506,7 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
       <button type="button" data-nav="weight">體重與體脂<span class="chev" aria-hidden="true">›</span></button>
       <button type="button" data-nav="exercise">運動紀錄<span class="chev" aria-hidden="true">›</span></button>
       <button type="button" data-nav="exams">定期檢查<span class="chev" aria-hidden="true">›</span></button>
+      <button type="button" data-nav="meds">用藥<span class="chev" aria-hidden="true">›</span></button>
       <button type="button" data-nav="setup">設定與備份<span class="chev" aria-hidden="true">›</span></button>
     </div>
     <div class="field"><label for="dPick">選擇日期補登</label><input type="date" id="dPick"></div>
@@ -471,11 +522,20 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
       <div class="field"><label for="fDate">檢查日期</label><input type="date" id="fDate" required></div>
       <div class="field" id="presetField"><label for="fPreset">報告分類</label><select id="fPreset"></select><span class="hint" id="presetHint"></span></div>
       <div class="grid2">
-        <div class="field"><label for="fInterval">下次追蹤間隔（月）</label><input type="number" id="fInterval" min="0" max="240" step="1" inputmode="numeric"><span class="hint">0 = 需盡快處理，不排定期追蹤</span></div>
+        <div class="field"><label for="fInterval">下次追蹤間隔（月）</label><input type="number" id="fInterval" min="0" max="240" step="1" inputmode="numeric"><span class="hint">0 = 待安排（依報告處置），不排定期追蹤</span></div>
         <div class="field"><label for="fDue">或直接指定下次日期</label><input type="date" id="fDue"><span class="hint">醫師有給日期時填這裡，會優先採用</span></div>
       </div>
       <div class="preview" id="duePreview"></div>
       <div id="labWrap" hidden><span class="field"><label>檢驗數值</label></span><span class="hint" style="display:block;margin-bottom:6px">單位以報告為準，沒做的項目留空</span><div class="labs" id="labs"></div></div>
+      <div id="ctxWrap" class="field" hidden>
+        <span class="lbl" id="ctxMedLbl">抽血前已服藥</span>
+        <div class="seg" role="group" aria-labelledby="ctxMedLbl" data-ctx="medBeforeDraw"><button type="button" data-v="yes">是</button><button type="button" data-v="no">否</button><button type="button" data-v="unsure">不確定</button></div>
+        <span class="lbl" id="ctxBioLbl">近一週吃過含生物素的保健品</span>
+        <div class="seg" role="group" aria-labelledby="ctxBioLbl" data-ctx="biotin7d"><button type="button" data-v="yes">是</button><button type="button" data-v="no">否</button><button type="button" data-v="unsure">不確定</button></div>
+        <label class="tgl" id="rcRow" hidden><span class="grow" id="rcLabel"></span><input type="checkbox" role="switch" id="fRecheck"></label>
+        <span class="hint" id="rcHint"></span>
+        <details class="refbox" style="padding:0"><summary>抽血情境的依據</summary><div class="ref" id="ctxRef"></div></details>
+      </div>
       <div class="field"><label for="fReport">報告內容</label><textarea id="fReport" placeholder="貼上或摘錄報告結論，例如：右乳 10 點鐘 0.6 cm 低回音結節，BI-RADS 3"></textarea></div>
       <div class="grid2">
         <div class="field"><label for="fPlace">醫院／診所</label><input id="fPlace" autocomplete="off"></div>
@@ -552,6 +612,24 @@ function sortMeddose(list){return (list||[]).filter(validMeddose).slice().sort((
 /* the dose on a date: the last change in effect, else the setting as an estimate, else unknown */
 function doseOn(date,list,settingDose){let hit=null;for(const m of sortMeddose(list)){if(m.date<=date)hit=m;else break}
   if(hit)return{dose:hit.dose,src:'history',id:hit.id};return validDose(settingDose)?{dose:settingDose,src:'setting'}:null}
+/* a lab result is text the user typed; it counts only when it holds a number ("<0.01" does, "待報" does not) */
+const hasResult=v=>typeof v==='string'&&/\d/.test(v);
+const inPause=(pause,ds)=>!!(pause&&pause.from&&pause.to&&ds>=pause.from&&ds<=pause.to);
+/* tracking starts at the first day with a weight or a dose; a day holding only a period mark or nothing does not count */
+function trackStart(days){let st=null;for(const k of Object.keys(days||{})){const d=days[k];if(validDate(k)&&(d?.am||d?.pm||tookMed(d))&&(st==null||k<st))st=k}return st}
+/* one set of countable days gives numerator, denominator and the unrecorded list, so they always agree */
+function countable(days,from,to,today,pause){const out={a:0,b:0,missing:[],paused:0},st=trackStart(days);if(!st||from>to)return out;
+  for(let n=dnum(from);n<=dnum(to);n++){const ds=dstr(n);if(ds<st)continue;if(inPause(pause,ds)){out.paused++;continue}
+    const t=tookMed(days[ds]);if(ds===today&&!t)continue;out.b++;if(t)out.a++;else out.missing.push(ds)}
+  return out}
+/* TSH recheck after the latest change in effect: none, done (an explicitly linked draw with a result), manual date, weeks, or unset */
+function recheckState(list,recs,today,weeks){let target=null;for(const m of sortMeddose(list)){if(m.date<=today)target=m;else break}
+  if(!target||target.noRecheck===true)return{st:'none',target};
+  const done=(recs||[]).filter(r=>r.exam==='thy_lab'&&r.drawCtx?.recheckOf===target.id&&validDate(r.date)&&r.date>target.date&&r.date<=today&&hasResult(r.labs?.TSH)).sort((a,b)=>cmpStr(a.date,b.date))[0];
+  if(done)return{st:'done',target,rec:done};
+  if(validDate(target.recheckDue))return{st:'manual',target,due:target.recheckDue};
+  if(Number.isInteger(weeks)&&weeks>=1&&weeks<=52)return{st:'auto',target,due:addDays(target.date,weeks*7),weeks};
+  return{st:'unset',target}}
 /* ---- med helpers: end ---- */
 
 /* toast with optional actions */
@@ -609,7 +687,7 @@ function writeErr(e){if(e&&e.message==='nodb')return;toast(e&&e.code==='invalid_
 function isPaused(date){const f=profile.pauseFrom,t=profile.pauseTo;return !!(f&&t&&date>=f&&date<=t)}
 
 /* ================= navigation ================= */
-const PAGES={today:'',weight:'體重與體脂',exercise:'運動紀錄',exams:'定期檢查',setup:'設定與備份'};
+const PAGES={today:'',weight:'體重與體脂',exercise:'運動紀錄',exams:'定期檢查',meds:'用藥',setup:'設定與備份'};
 let cur='today';
 function show(p){
   if(!(p in PAGES))p='today';
@@ -626,7 +704,7 @@ $('#backBtn').addEventListener('click',()=>go('today'));
 $('#moreBtn').addEventListener('click',()=>{$('#dPick').value=viewDate;$('#dPick').max=logicalToday();$('#moreSheet').showModal()});
 $$('[data-nav]').forEach(b=>b.addEventListener('click',()=>{$('#moreSheet').close();go(b.dataset.nav)}));
 $('#dPick').addEventListener('change',e=>{if(e.target.value){$('#moreSheet').close();setView(e.target.value);go('today')}});
-function renderCur(){({today:renderToday,weight:renderWeight,exercise:renderExercise,exams:renderExams,setup:renderSetup})[cur]()}
+function renderCur(){({today:renderToday,weight:renderWeight,exercise:renderExercise,exams:renderExams,meds:renderMeds,setup:renderSetup})[cur]()}
 
 /* ================= TODAY ================= */
 function isAfterEvening(date){if(date<logicalToday())return true;const h=tpeNow().h;return h>=18||h<4}
@@ -718,13 +796,16 @@ function renderSpark(){
   el.querySelector('[data-nav2]').onclick=()=>go('weight');
 }
 function renderExamSlot(){
-  const latest=latestByExam();
-  const urgent=Object.values(latest).map(r=>{const asap=r.interval===0&&!r.nextDue,due=dueOf(r);return{r,asap,dd:asap?-Infinity:due==null?Infinity:daysFrom(logicalToday(),due)}}).filter(x=>x.dd<=60).sort((a,b)=>a.dd-b.dd);
-  if(!urgent.length){$('#examSlot').innerHTML='';return}
-  const u=urgent[0];const e=EX[u.r.exam];
-  const t=u.asap?'需盡快處理':u.dd<0?`已逾期 ${-u.dd} 天`:u.dd===0?'今天到期':`${u.dd} 天後到期`;
-  $('#examSlot').innerHTML=`<button type="button" class="blk examcard" style="--cat:${CAT[e.cat].color}" id="examCard"><span class="dot"></span><span class="grow"><span>${esc(e.name)}</span><br><span class="sub">${t}${urgent.length>1?'・另有 '+(urgent.length-1)+' 項':''}</span></span><span class="sub">›</span></button>`;
-  $('#examCard').onclick=()=>go('exams');
+  const latest=latestByExam(),today=logicalToday();
+  const urgent=Object.values(latest).map(r=>{const asap=r.interval===0&&!r.nextDue,due=dueOf(r);return{name:EX[r.exam].name,color:CAT[EX[r.exam].cat].color,asap,dd:asap?-Infinity:due==null?Infinity:daysFrom(today,due)}});
+  const rc=recheckState(meddose,records,today,profile.tshRecheckWeeks);
+  if(rc.st==='manual'||rc.st==='auto')urgent.push({name:'TSH 複查（劑量變更後）',color:CAT.thyroid.color,asap:false,dd:daysFrom(today,rc.due),recheck:true});
+  const due=urgent.filter(x=>x.dd<=60).sort((a,b)=>a.dd-b.dd);
+  if(!due.length){$('#examSlot').innerHTML='';return}
+  const u=due[0];
+  const t=u.asap?'待安排':u.dd<0?`已逾期 ${-u.dd} 天`:u.dd===0?'今天到期':`${u.dd} 天後到期`;
+  $('#examSlot').innerHTML=`<button type="button" class="blk examcard" style="--cat:${u.color}" id="examCard"><span class="dot"></span><span class="grow"><span>${esc(u.name)}</span><br><span class="sub">${t}${due.length>1?'・另有 '+(due.length-1)+' 項':''}</span></span><span class="sub">›</span></button>`;
+  $('#examCard').onclick=()=>go(u.recheck?'meds':'exams');
 }
 function setView(d){const today=logicalToday();if(d>today)d=today;viewDate=d;openEx=null;medOpen=false;renderToday()}
 $('#week').addEventListener('click',e=>{const b=e.target.closest('[data-day]');if(b)setView(b.dataset.day)});
@@ -985,7 +1066,7 @@ const EXAMS=[
 const EX=Object.fromEntries(EXAMS.map(e=>[e.id,e]));
 const CAT=Object.fromEntries(CATS.map(c=>[c.id,c]));
 function daysFrom(a,b){return dnum(b)-dnum(a)}
-function intervalText(m){if(m===0)return'需盡快處理';if(m==null)return'—';if(m%12===0)return(m/12)+' 年';return m+' 個月'}
+function intervalText(m){if(m===0)return'待安排';if(m==null)return'—';if(m%12===0)return(m/12)+' 年';return m+' 個月'}
 function defInterval(id){const v=intervals[id];return Number.isFinite(v)?v:EX[id].def}
 function dueOf(r){if(r.nextDue)return r.nextDue;if(r.interval===0)return r.date;if(!Number.isFinite(r.interval)&&presetOf(r)?.noFollow)return null;const m=Number.isFinite(r.interval)?r.interval:defInterval(r.exam);return addMonths(r.date,m)}
 function statusOf(due){if(due==null)return{c:'none',t:'不需例行追蹤',d:Infinity};const d=daysFrom(logicalToday(),due);if(d<0)return{c:'late',t:'已逾期 '+(-d)+' 天',d};if(d<=60)return{c:'soon',t:d===0?'今天到期':d+' 天後到期',d};return{c:'ok',t:'還有 '+Math.round(d/30.4)+' 個月',d}}
@@ -993,7 +1074,7 @@ function presetOf(r){const e=EX[r.exam];return e&&e.presets?e.presets.find(p=>p.
 function latestByExam(){const m={};for(const r of records){if(!EX[r.exam])continue;if(!m[r.exam]||r.date>m[r.exam].date||(r.date===m[r.exam].date&&(r.createdAt||0)>(m[r.exam].createdAt||0)))m[r.exam]=r}return m}
 function renderExams(){
   const latest=latestByExam();
-  const items=Object.values(latest).map(r=>{const due=dueOf(r);return{r,due,st:r.interval===0&&!r.nextDue?{c:'late',t:'需盡快處理',d:-1}:statusOf(due)}}).sort((a,b)=>a.due==null?1:b.due==null?-1:a.due<b.due?-1:1);
+  const items=Object.values(latest).map(r=>{const due=dueOf(r);return{r,due,st:r.interval===0&&!r.nextDue?{c:'late',t:'待安排',d:-1}:statusOf(due)}}).sort((a,b)=>a.due==null?1:b.due==null?-1:a.due<b.due?-1:1);
   const late=items.filter(i=>i.st.c==='late').length, soon=items.filter(i=>i.st.c==='soon').length;
   $('#tally').textContent=items.length?`逾期 ${late}・60 天內 ${soon}・已追蹤 ${items.length}/${EXAMS.length} 項`:'';
   $('#nextList').innerHTML=items.length?items.slice(0,6).map(({r,due,st})=>{const e=EX[r.exam];return`<li style="--cat:${CAT[e.cat].color}"><span class="dot"></span><div><div>${esc(e.name)}</div><div class="when num"><span class="nw">${fmt(due)}</span> <span class="nw">上次 ${fmt(r.date)}</span></div></div><span class="pill ${st.c}">${st.t}</span></li>`}).join(''):'<li class="empty">還沒有任何紀錄。按「新增檢查紀錄」輸入最近一次檢查，這裡就會依到期日排出順序。</li>';
@@ -1004,7 +1085,7 @@ function renderExams(){
 function examCard(e,r){
   const hist=records.filter(x=>x.exam===e.id).sort((a,b)=>a.date<b.date?1:-1);let side,facts;
   if(!r){side=`<span class="pill none">尚無紀錄</span>`;facts=`<div class="facts"><span><span class="k">固定間隔</span>${intervalText(defInterval(e.id))}</span></div>`}
-  else{const due=dueOf(r);const st=r.interval===0&&!r.nextDue?{c:'late',t:'需盡快處理'}:statusOf(due);const p=presetOf(r);
+  else{const due=dueOf(r);const st=r.interval===0&&!r.nextDue?{c:'late',t:'待安排'}:statusOf(due);const p=presetOf(r);
     side=`<span class="pill ${st.c}">${st.t}</span>${p?`<span class="chip">${esc(p.label.split('　')[0])}</span>`:''}`;
     facts=`<div class="facts"><span><span class="k">上次</span><span class="num">${fmt(r.date)}</span></span><span><span class="k">下次</span><span class="num">${fmt(due)}</span></span><span><span class="k">間隔</span>${r.nextDue?'醫師指定日期':due==null?'不排例行追蹤':intervalText(Number.isFinite(r.interval)?r.interval:defInterval(e.id))}</span></div>`}
   const open=openHist.has(e.id);
@@ -1020,6 +1101,21 @@ function histItem(r){const p=presetOf(r);
 function renderRef(){const rows=[];for(const e of EXAMS){if(e.presets){for(const p of e.presets)rows.push([e.name,p.label,p.noFollow?'不排':p.m==null?'用預設':intervalText(p.m),p.src])}else rows.push([e.name,'—',intervalText(e.def),e.defSrc])}
   $('#refTable').innerHTML=`<div style="overflow-x:auto;margin-top:10px"><table><thead><tr><th>檢查</th><th>報告分類</th><th>預設</th><th>依據</th></tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
 const dlg=$('#dlgRec');
+/* thyroid draw context: four states each (yes, no, unsure, unset) and an explicit link to the change it rechecks */
+let formCtx={},rcTouched=false,rcTargetId=null;
+function renderCtx(){const isThy=$('#fExam').value==='thy_lab';$('#ctxWrap').hidden=!isThy;if(!isThy)return;
+  $$('#ctxWrap [data-ctx]').forEach(g=>g.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(formCtx[g.dataset.ctx]===b.dataset.v))));
+  const today=logicalToday(),rc=recheckState(meddose,records.filter(x=>!editing||x.id!==editing.id),today,profile.tshRecheckWeeks);
+  const target=formCtx.recheckOf?meddose.find(m=>m.id===formCtx.recheckOf):(rc.st!=='none'&&rc.st!=='done'?rc.target:null);
+  rcTargetId=target?.id||null;$('#rcRow').hidden=!target;if(!target){$('#rcHint').textContent='';return}
+  const date=$('#fDate').value,ok=validDate(date)&&date>target.date&&date<=today;
+  $('#rcLabel').textContent=`這次是 ${md(target.date)} 變更後的複查`;
+  if(!ok)$('#fRecheck').checked=false;else if(!editing&&!rcTouched)$('#fRecheck').checked=true;
+  $('#fRecheck').disabled=!ok||!canWrite;
+  $('#rcHint').textContent=ok||!date?'':date<=target.date?'採檢日要在變更生效日之後，才能算複查。':'未來的日期不能算複查。'}
+$('#ctxWrap').addEventListener('click',e=>{const b=e.target.closest('[data-ctx] button');if(!b)return;const k=b.closest('[data-ctx]').dataset.ctx;
+  formCtx[k]=formCtx[k]===b.dataset.v?undefined:b.dataset.v;renderCtx()});
+$('#fRecheck').addEventListener('change',()=>{rcTouched=true});
 $('#fExam').innerHTML=CATS.map(c=>`<optgroup label="${c.name}">${EXAMS.filter(e=>e.cat===c.id).map(e=>`<option value="${e.id}">${e.name}</option>`).join('')}</optgroup>`).join('');
 function fillPresets(examId,keep){const e=EX[examId];$('#presetField').hidden=!e.presets;
   if(e.presets)$('#fPreset').innerHTML='<option value="">（未分類）</option>'+e.presets.map(p=>`<option value="${p.k}">${p.label}</option>`).join('');
@@ -1030,16 +1126,18 @@ function applyPreset(){const e=EX[$('#fExam').value];const p=e.presets&&e.preset
   if(p){$('#fInterval').value=p.noFollow?'':p.m==null?defInterval(e.id):p.m;$('#presetHint').textContent=p.src}else{$('#fInterval').value=defInterval(e.id);$('#presetHint').textContent='未分類時使用固定間隔：'+intervalText(defInterval(e.id))}updatePreview()}
 const noFollowPicked=()=>!!EX[$('#fExam').value].presets?.find(x=>x.k===$('#fPreset').value)?.noFollow;
 function updatePreview(){const date=$('#fDate').value,due=$('#fDue').value,m=$('#fInterval').value;let t;
-  if(!date)t='填入檢查日期後會顯示下次日期';else if(due)t='下次檢查：'+fmt(due)+'（醫師指定）';else if(m==='')t=noFollowPicked()?'不排例行追蹤；醫師有安排再填間隔或日期':'請填追蹤間隔';else if(Number(m)===0)t='需盡快處理，不排定期追蹤';else t='下次檢查：'+fmt(addMonths(date,Number(m)))+'（'+intervalText(Number(m))+'後）';
+  if(!date)t='填入檢查日期後會顯示下次日期';else if(due)t='下次檢查：'+fmt(due)+'（醫師指定）';else if(m==='')t=noFollowPicked()?'不排例行追蹤；醫師有安排再填間隔或日期':'請填追蹤間隔';else if(Number(m)===0)t='待安排（依報告處置），不排定期追蹤';else t='下次檢查：'+fmt(addMonths(date,Number(m)))+'（'+intervalText(Number(m))+'後）';
   $('#duePreview').textContent=t}
-$('#fExam').addEventListener('change',()=>{fillPresets($('#fExam').value);updatePreview()});
+$('#fExam').addEventListener('change',()=>{fillPresets($('#fExam').value);updatePreview();renderCtx()});
 $('#fPreset').addEventListener('change',applyPreset);
 ['#fDate','#fDue','#fInterval'].forEach(s=>$(s).addEventListener('input',updatePreview));
+$('#fDate').addEventListener('input',renderCtx);
 function openRecord(examId,rec){editing=rec||null;$('#recTitle').textContent=rec?'編輯檢查紀錄':'新增檢查紀錄';
   $('#fExam').value=rec?rec.exam:(examId||EXAMS[0].id);$('#fExam').disabled=!!rec;fillPresets($('#fExam').value,!!rec);$('#fDate').value=rec?rec.date:logicalToday();
   if(rec){$('#fPreset').value=rec.preset||'';const p=presetOf(rec);$('#presetHint').textContent=p?p.src:'';$('#fInterval').value=Number.isFinite(rec.interval)?rec.interval:'';$$('[data-lab]').forEach(i=>i.value=(rec.labs&&rec.labs[i.dataset.lab])||'')}
   $('#fDue').value=rec?.nextDue||'';$('#fReport').value=rec?.report||'';$('#fPlace').value=rec?.place||'';$('#fDoctor').value=rec?.doctor||'';$('#fNote').value=rec?.note||'';
-  $('#btnDel').hidden=!rec;updatePreview();dlg.showModal()}
+  formCtx=rec&&rec.exam==='thy_lab'?{...(rec.drawCtx||{})}:{};rcTouched=false;$('#fRecheck').checked=!!formCtx.recheckOf;
+  $('#btnDel').hidden=!rec;updatePreview();renderCtx();dlg.showModal()}
 /* the one document-level click router: sheet backdrops, day links, exam buttons, dialog close */
 document.addEventListener('click',ev=>{const t=ev.target;
   if(t.matches('dialog.sheet')){if(!t.hasAttribute('data-keep'))t.close();return} // a half-typed exam report must not vanish on a stray tap
@@ -1056,10 +1154,97 @@ $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
   if(!db){toast('資料庫未連線，無法儲存');return}
   const labs={};$$('[data-lab]').forEach(i=>{if(i.value.trim())labs[i.dataset.lab]=i.value.trim()});const exam=$('#fExam').value;
   const body={exam,cat:EX[exam].cat,date:$('#fDate').value,preset:$('#fPreset').value||null,interval:$('#fInterval').value===''?null:Number($('#fInterval').value),nextDue:$('#fDue').value||null,report:$('#fReport').value.trim(),place:$('#fPlace').value.trim(),doctor:$('#fDoctor').value.trim(),note:$('#fNote').value.trim(),labs,createdAt:editing?.createdAt||Date.now(),updatedAt:Date.now()};
+  /* fields this form does not show are kept; the draw context exists only on thyroid draws */
+  const {id:_omit,...kept}=editing?(records.find(x=>x.id===editing.id)||editing):{};const full={...kept,...body};
+  if(exam==='thy_lab'){const c={};if(formCtx.medBeforeDraw)c.medBeforeDraw=formCtx.medBeforeDraw;if(formCtx.biotin7d)c.biotin7d=formCtx.biotin7d;
+    if(rcTargetId&&$('#fRecheck').checked&&!$('#fRecheck').disabled)c.recheckOf=rcTargetId;
+    if(Object.keys(c).length)full.drawCtx=c;else delete full.drawCtx}
   $('#btnSave').disabled=true;
-  try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(body);dlg.close();toast(editing?'已更新':'已儲存');openHist.add(exam);if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{$('#btnSave').disabled=false}});
+  try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(full);dlg.close();toast(editing?'已更新':'已儲存');openHist.add(exam);if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{$('#btnSave').disabled=false}});
 $('#btnDel').addEventListener('click',async()=>{if(!editing||!canSave())return;const rec=records.find(x=>x.id===editing.id)||editing;const {id,...body}=rec;
   try{await retry1(()=>db.doc('records/'+id).delete());dlg.close();toast('已刪除 '+EX[rec.exam].name+' '+fmt(rec.date),[['撤銷',()=>retry1(()=>db.doc('records/'+id).set(body)).catch(writeErr)]])}catch(e){writeErr(e)}});
+
+/* ================= MEDS ================= */
+/* clinical text below is the verified wording in docs/specs/phase-B.md §5; change it only together with a fresh check of the source */
+const ATA='ATA 2014 指引（Jonklaas J, et al. Thyroid 2014;24:1670–1751，doi:10.1089/thy.2014.0028）';
+const LABEL='levothyroxine 說明書（Aurobindo，2024/3，DailyMed setid c760d0cc-2245-4914-8c67-d536c41ac90f）';
+const MED_REF=[
+  ['服藥時機','ATA 指引建議，如果可以，固定在早餐前 60 分鐘，或睡前（晚餐後 3 小時以上）服用（弱建議，中等品質證據）。藥品說明書寫的是早餐前半小時到一小時空腹。一項隨機雙盲交叉試驗中（90 人完成），睡前服用的 TSH 比早上服用低（依原始摘要）。',ATA+' 建議 3a；'+LABEL+' §2.1；Bolk N, et al. Arch Intern Med 2010;170:1996–2003，doi:10.1001/archinternmed.2010.436'],
+  ['鈣片、鐵劑','ATA 指引建議，可行時與可能干擾的藥物、保健品錯開服用（例如碳酸鈣、硫酸亞鐵）；4 小時的間隔是傳統做法，未經驗證（弱建議，證據品質弱）。藥品說明書寫至少錯開 4 小時。',ATA+' 建議 3b；'+LABEL+' §7.1'],
+  ['胃藥（PPI）','藥品說明書寫 PPI 與制酸劑可能降低吸收，要「適當監測」，沒有寫間隔。ATA 指引整理的研究結果不一致：一項回溯研究看到開始用 PPI 後 TSH 上升；兩項健康志願者的一週研究沒有看到影響。',LABEL+' §7.1；'+ATA+' 建議 3b 的討論'],
+  ['高纖、大豆','ATA 指引提到病例報告顯示可能影響吸收；但一項健康志願者研究中，高纖沒有影響吸收。沒有建議的間隔。',ATA+' 建議 3a 的討論'],
+  ['咖啡','病例報告加小型吸收試驗（6 位患者、9 位志願者）：和咖啡一起吞服時吸收下降；先用水服藥、60 分鐘後再喝咖啡，結果和只喝水相近（依原始摘要）。','Benvenga S, et al. Thyroid 2008;18:293–301，doi:10.1089/thy.2007.0222'],
+  ['TSH 複查的時間','ATA 指引：任何劑量變更後 4–6 週評估 TSH（強建議，中等品質證據）。藥品說明書：成人原發性甲狀腺低下，劑量變更後 6–8 週監測 TSH。兩者不同，週數由你設定。',ATA+' 建議 4b；'+LABEL+' §2.4'],
+  ['換廠牌或製劑','ATA 指引：換了可辨識的製劑（品牌或學名藥）之後，應在穩定狀態時重新評估 TSH（弱建議，低品質證據）。',ATA+' 建議 3d'],
+];
+const CTX_REF=[
+  ['抽血前已服藥','ATA 指引：服藥後約 4 小時，T4 與 FT4 會有約 15% 的暫時高峰。原始研究中，門診隨機採血的 FT4 比服藥前（距上次服藥 22 小時以上）的採血高約 13%；4 位病人連續採血，FT4 約 9 小時內高於基線（依原始摘要）。這是採檢時間的影響，不是檢驗錯誤。',ATA+'（引用文獻 37）；Ain KB, et al. Thyroid 1993;3:81–85，doi:10.1089/thy.1993.3.81'],
+  ['生物素','6 位健康成人每天吃 10 mg 生物素 7 天後，23 項採用生物素－鏈黴親和素設計的檢驗中有 9 項受干擾：競爭型多為偏高、夾心型多為偏低（依原始摘要）。干擾需要的濃度依檢驗與廠商而不同（AACC 指引，依原始摘要）。FDA 2019 安全通訊：生物素可能讓部分檢驗偏高或偏低。藥品說明書：檢驗前至少停用生物素 2 天。這裡的「近一週有吃」只記錄有沒有吃，不代表結果一定不準；沒有吃也不保證沒有干擾。','Li D, et al. JAMA 2017;318:1150–1160，doi:10.1001/jama.2017.13705；Li D, et al. J Appl Lab Med 2020;5:575–587，doi:10.1093/jalm/jfz010；FDA 安全通訊 2019-11-05；'+LABEL+' §2.4'],
+];
+const refHtml=list=>list.map(([t,x,src])=>`<p style="margin:0 0 4px"><strong>${esc(t)}</strong>：${esc(x)}</p><p class="muted wrapline" style="margin:0 0 12px;font-size:.8rem">${esc(src)}</p>`).join('');
+$('#ctxRef').innerHTML=refHtml(CTX_REF);
+const pauseNow=()=>({from:profile.pauseFrom,to:profile.pauseTo});
+function adhLine(n){const today=logicalToday(),c=countable(days,addDays(today,-(n-1)),today,today,pauseNow());
+  return c.b?`已記錄服藥 ${c.a}/${c.b} 天${c.paused?`（暫停 ${c.paused} 天不計）`:''}`:'還沒有紀錄'}
+function rcText(rc){switch(rc.st){
+  case'none':return rc.target?'最近一次變更設為不需要複查。':'還沒有劑量或製劑變更紀錄。';
+  case'done':return`已完成（${fmt(rc.rec.date)} 抽血）。`;
+  case'manual':return`複查日 ${fmt(rc.due)}（手動指定）。`;
+  case'auto':return`複查日 ${fmt(rc.due)}（生效後 ${rc.weeks} 週）。`;
+  default:return'複查週數未設定，不排複查日。'}}
+const CTX_TXT={yes:'是',no:'否',unsure:'不確定'};
+function doseItem(m,effective,today){const ok=validMeddose(m),prev=ok?doseOn(addDays(m.date,-1),meddose,prof('medDose')):null;
+  const head=!ok?'資料不完整':m.kind==='product'?`換製劑・${m.dose} mcg`:`劑量 ${prev&&prev.dose!==m.dose?prev.dose+' → ':''}${m.dose} mcg`;
+  const detail=[m.tablet,m.brand,m.reason].filter(Boolean).map(esc).join('・');
+  const flags=[ok&&!effective.has(m.id)?'同日較早的紀錄（未生效）':'',ok&&m.date>today?'預定':'',m.noRecheck?'不需要複查':''].filter(Boolean).join('・');
+  return`<li><button type="button" data-dose="${esc(m.id)}" ${canWrite?'':'disabled'}><span class="when">${ok?fmt(m.date):'—'}</span><span>${esc(head)}</span>${detail?`<span class="sub wrapline">${detail}</span>`:''}${flags?`<span class="flag">${esc(flags)}</span>`:''}</button></li>`}
+function labItem(r){const L=r.labs||{},c=r.drawCtx||{};
+  const parts=[`TSH ${L.TSH||'未填'}`,`Free T4 ${L['Free T4']||'未填'}`,`抽血前服藥：${CTX_TXT[c.medBeforeDraw]||'未填'}`,`生物素：${CTX_TXT[c.biotin7d]||'未填'}`];
+  return`<li><button type="button" data-edit="${esc(r.id)}" ${canWrite?'':'disabled'}><span class="when">${fmt(r.date)}・甲狀腺抽血${c.recheckOf?'・變更後複查':''}</span><span class="wrapline">${esc(parts.join('・'))}</span></button></li>`}
+function renderMeds(){
+  const today=logicalToday(),now=doseOn(today,meddose,prof('medDose')),sorted=sortMeddose(meddose);
+  const fut=sorted.find(m=>m.date>today),curRec=now?.src==='history'?meddose.find(m=>m.id===now.id):null;
+  const sub=[curRec?.tablet,prof('medNote')].filter(Boolean);
+  $('#medNow').innerHTML=`<div><strong>${esc(prof('medName'))} ${now?now.dose+' mcg':'劑量未設定'}</strong>${now?.src==='setting'?'<span class="muted">（依設定推定）</span>':''}</div>`
+    +(sub.length?`<div class="sub wrapline">${sub.map(esc).join('・')}</div>`:'')+(fut?`<div class="sub">預定 ${md(fut.date)} 起 ${fut.dose} mcg</div>`:'');
+  $('#medAdh').innerHTML=[30,90].map(n=>`<li><span>近 ${n} 天</span><span>${adhLine(n)}</span></li>`).join('');
+  $('#rcState').textContent=rcText(recheckState(meddose,records,today,profile.tshRecheckWeeks));
+  if(!typingIn($('#rcWeeks')))$('#rcWeeks').value=Number.isInteger(profile.tshRecheckWeeks)?profile.tshRecheckWeeks:'';
+  $('#rcWeeks').disabled=!canWrite||!loaded.profile;$('#mdAdd').disabled=!canWrite||!ready;
+  $('#rcSrc').textContent='ATA 2014 指引建議 4b：任何劑量變更後 4–6 週評估 TSH。'+LABEL+' §2.4：成人原發性甲狀腺低下，劑量變更後 6–8 週監測 TSH。兩者不同，週數由你設定。';
+  const lastOnDate={};for(const m of sorted)lastOnDate[m.date]=m.id;const effective=new Set(Object.values(lastOnDate));
+  const items=[...meddose.filter(m=>m.deleted!==true).map(m=>({date:validDate(m.date)?m.date:'',m})),...records.filter(r=>r.exam==='thy_lab').map(r=>({date:r.date,r}))];
+  items.sort((a,b)=>cmpStr(b.date,a.date)||(a.r?1:-1)); // newest first; on one date the change before the draw
+  $('#medTl').innerHTML=items.length?items.map(it=>it.m?doseItem(it.m,effective,today):labItem(it.r)).join(''):'<li><span class="sub" style="display:block;padding:12px 16px">還沒有變更或抽血紀錄。</span></li>';
+  $('#medRef').innerHTML=refHtml(MED_REF)+'<p class="muted" style="margin:0;font-size:.8rem">服藥紀錄的暫停只看目前設定的那一段；清除或改設暫停後，過去的統計會跟著變。</p>';
+}
+$('#rcWeeks').addEventListener('change',async()=>{const raw=$('#rcWeeks').value.trim(),v=raw===''?null:Number(raw),prev=Number.isInteger(profile.tshRecheckWeeks)?profile.tshRecheckWeeks:null;
+  if(v!==null&&!(Number.isInteger(v)&&v>=1&&v<=52)){toast('請填 1–52 的整數週數');$('#rcWeeks').value=prev??'';return}
+  if(v===prev)return;
+  if(await saveProfile({tshRecheckWeeks:v}))toast(v?`TSH 複查：變更後 ${v} 週`:'已清除複查週數',[['撤銷',()=>saveProfile({tshRecheckWeeks:prev})]])});
+/* dose and product changes */
+const dlgD=$('#dlgDose');let editingDose=null;
+function openDose(m){editingDose=m||null;$('#doseTitle').textContent=m?'編輯變更':'新增變更';const now=doseOn(logicalToday(),meddose,prof('medDose'));
+  $('#dKind').value=m?.kind==='product'?'product':'dose';$('#dDate').value=m?.date||logicalToday();$('#dDose').value=m?(m.dose??''):(now?now.dose:'');
+  $('#dTablet').value=m?.tablet||'';$('#dBrand').value=m?.brand||'';$('#dReason').value=m?.reason||'';$('#dNote').value=m?.note||'';$('#dRecheck').value=m?.recheckDue||'';$('#dNoRecheck').checked=m?.noRecheck===true;
+  $('#dDel').hidden=!m;dlgD.showModal()}
+$('#mdAdd').addEventListener('click',()=>openDose());
+$('#medTl').addEventListener('click',e=>{const b=e.target.closest('[data-dose]');if(!b)return;const m=meddose.find(x=>x.id===b.dataset.dose);if(m)openDose(m)});
+$('#doseForm').addEventListener('submit',async ev=>{ev.preventDefault();if(!canSave())return;
+  const date=$('#dDate').value,dose=Number($('#dDose').value),rd=$('#dRecheck').value;
+  if(!validDate(date)){$('#dDate').focus();toast('請填生效日');return}
+  if($('#dDose').value===''||!validDose(dose)){$('#dDose').focus();toast('劑量請填 1–1000 mcg');return}
+  if(rd&&!(validDate(rd)&&rd>date)){$('#dRecheck').focus();toast('複查日要在生效日之後');return}
+  const body={kind:$('#dKind').value==='product'?'product':'dose',date,dose,tablet:$('#dTablet').value.trim(),brand:$('#dBrand').value.trim(),reason:$('#dReason').value.trim(),note:$('#dNote').value.trim(),recheckDue:rd||null,noRecheck:$('#dNoRecheck').checked,updatedAt:Date.now()};
+  $('#dSave').disabled=true;
+  try{
+    if(editingDose){const {id,...prev}=meddose.find(x=>x.id===editingDose.id)||editingDose;const ref=db.doc('meddose/'+id);
+      await retry1(()=>ref.set({...prev,...body}));dlgD.close();toast('已更新變更',[['撤銷',()=>retry1(()=>ref.set(prev)).catch(writeErr)]])}
+    else{const ref=db.collection('meddose').doc();await retry1(()=>ref.set({...body,createdAt:Date.now(),deleted:false}));dlgD.close();
+      toast('已新增變更',[['撤銷',()=>retry1(()=>ref.update({deleted:true,updatedAt:Date.now()})).catch(writeErr)]])}
+  }catch(e){writeErr(e)}finally{$('#dSave').disabled=false}});
+$('#dDel').addEventListener('click',async()=>{if(!editingDose||!canSave())return;const ref=db.doc('meddose/'+editingDose.id);
+  try{await retry1(()=>ref.update({deleted:true,updatedAt:Date.now()}));dlgD.close();toast('已刪除變更',[['撤銷',()=>retry1(()=>ref.update({deleted:false,updatedAt:Date.now()})).catch(writeErr)]])}catch(e){writeErr(e)}});
 
 /* ================= SETUP ================= */
 function renderSetup(){
