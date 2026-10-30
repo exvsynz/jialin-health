@@ -120,6 +120,12 @@ textarea{min-height:110px;resize:vertical}
 .medbtn .t{font-weight:500;color:var(--ink)}
 .medbtn.pend .t{color:var(--on-ink)}
 .medcancel{align-self:flex-end}
+/* dose details: optional, under the dose row, never moves anything above it */
+.medmore{display:flex;flex-direction:column;gap:8px;padding:2px 2px 4px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips button{min-height:44px;padding:4px 14px;border-radius:999px;background:var(--surface);color:var(--ink)}
+.chips button[aria-pressed="true"]{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
+.chips button.last{border-style:dashed;border-color:var(--muted)}
 /* exercise */
 .exblk{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
 .pills{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -309,7 +315,13 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
       </div>
       <div class="spark" id="spark" hidden></div>
       <button type="button" class="blk medbtn" id="medBtn"></button>
-      <button type="button" class="ghost medcancel" id="medCancel" hidden>取消這筆服藥紀錄</button>
+      <div class="medmore" id="medMore" hidden>
+        <div class="lbl" id="modeLbl">服藥方式</div>
+        <div class="chips" id="modeRow" role="group" aria-labelledby="modeLbl"></div>
+        <div class="lbl" id="intfLbl">自行標記（服藥前後）</div>
+        <div class="chips" id="intfRow" role="group" aria-labelledby="intfLbl"></div>
+        <button type="button" class="ghost medcancel" id="medCancel">取消這筆服藥紀錄</button>
+      </div>
       <div class="blk exblk">
         <div class="pills" id="pills"></div>
         <ul class="exlist" id="exToday"></ul>
@@ -669,7 +681,8 @@ function renderToday(){
   if(tookMed(d)){mb.className='blk medbtn isdone';mb.innerHTML=`${ring}<span class="grow"><span class="t">已服 ${esc(d.med.at||'')}</span><br><span class="sub">${esc(prof('medName'))} ${validDose(d.med.dose)?d.med.dose+' mcg':esc(doseTxt)}</span></span>`}
   else{mb.className='blk medbtn'+(paused?'':' pend');mb.innerHTML=`${ring}<span class="grow"><span class="t">${esc(prof('medName'))} ${esc(doseTxt)}</span><br><span class="sub">${esc(prof('medNote')||'點一下記錄')}</span></span>`}
   mb.disabled=!canWrite||!ready;
-  if(!tookMed(d))$('#medCancel').hidden=true;
+  if(!tookMed(d))medOpen=false;
+  renderMedMore();
   // exercise
   const lastOf=t=>exercises.filter(e=>e.type===t&&!e.deleted).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0];
   const exMin=t=>lastOf(t)?.min||(t==='yoga'?prof('yogaMin'):t==='pilates'?prof('pilatesMin'):30);
@@ -713,7 +726,7 @@ function renderExamSlot(){
   $('#examSlot').innerHTML=`<button type="button" class="blk examcard" style="--cat:${CAT[e.cat].color}" id="examCard"><span class="dot"></span><span class="grow"><span>${esc(e.name)}</span><br><span class="sub">${t}${urgent.length>1?'・另有 '+(urgent.length-1)+' 項':''}</span></span><span class="sub">›</span></button>`;
   $('#examCard').onclick=()=>go('exams');
 }
-function setView(d){const today=logicalToday();if(d>today)d=today;viewDate=d;openEx=null;$('#medCancel').hidden=true;renderToday()}
+function setView(d){const today=logicalToday();if(d>today)d=today;viewDate=d;openEx=null;medOpen=false;renderToday()}
 $('#week').addEventListener('click',e=>{const b=e.target.closest('[data-day]');if(b)setView(b.dataset.day)});
 
 /* ---- weight sheet with ruler ---- */
@@ -788,13 +801,37 @@ $('#wsSave').addEventListener('click',async()=>{
 /* ---- med ---- */
 $('#medBtn').addEventListener('click',async()=>{
   const date=viewDate;const d=days[date]||{};
-  if(tookMed(d)){$('#medCancel').hidden=!$('#medCancel').hidden;return}
+  if(tookMed(d)){medOpen=!medOpen;renderMedMore();return}
   if(!canSave())return; // the dose history must have arrived before a dose is stored
   const dz=doseOn(date,meddose,prof('medDose')); // the dose of that day, also when backfilling
   const med={taken:true,at:date===logicalToday()?nowHM():'補登',dose:dz?dz.dose:null,...(dz?{doseSrc:dz.src}:{})};
   try{await writeDay(date,{med});toast('已記錄服藥'+(med.at!=='補登'?' '+med.at:''),[['撤銷',()=>writeDay(date,{med:null}).catch(writeErr)]])}catch(e){writeErr(e)}
 });
-$('#medCancel').addEventListener('click',async()=>{const date=viewDate;const prev=(days[date]||{}).med;$('#medCancel').hidden=true;try{await writeDay(date,{med:null});toast('已取消服藥紀錄',[['復原',()=>writeDay(date,{med:prev}).catch(writeErr)]])}catch(e){writeErr(e)}});
+$('#medCancel').addEventListener('click',async()=>{const date=viewDate;const prev=(days[date]||{}).med;medOpen=false;renderMedMore();try{await writeDay(date,{med:null});toast('已取消服藥紀錄',[['復原',()=>writeDay(date,{med:prev}).catch(writeErr)]])}catch(e){writeErr(e)}});
+/* dose details: each tap writes one key, so taps on two devices or quick taps here never overwrite each other */
+const MODES=[['fasting_am','早餐前空腹'],['bedtime','睡前'],['with_food','隨餐'],['unsure','不確定']];
+const INTF=[['coffee','咖啡'],['calcium','鈣片'],['iron','鐵劑'],['ppi','胃藥（PPI）'],['soy','豆漿／大豆'],['fiber','高纖']];
+let medOpen=false;const medPending={},medSeq={};
+const medVal=(date,key,saved)=>(date+'|'+key) in medPending?medPending[date+'|'+key]:saved;
+function lastMode(before){const ks=Object.keys(days).filter(k=>k<before).sort().reverse();for(const k of ks){const m=days[k]?.med;if(tookMed(days[k])&&MODES.some(([v])=>v===m.mode))return m.mode}return null}
+function renderMedMore(){
+  const d=days[viewDate]||{},show=medOpen&&tookMed(d);$('#medMore').hidden=!show;if(!show)return;
+  const mode=medVal(viewDate,'mode',d.med.mode??null),last=mode?null:lastMode(viewDate);
+  $('#modeRow').innerHTML=MODES.map(([v,l])=>`<button type="button" data-mode="${v}" aria-pressed="${mode===v}" class="${v===last?'last':''}">${l}${v===last?'・上次':''}</button>`).join('');
+  $('#intfRow').innerHTML=INTF.map(([k,l])=>`<button type="button" data-intf="${k}" aria-pressed="${medVal(viewDate,'intf.'+k,d.med.interfere?.[k])===true}">${l}</button>`).join('');
+  $$('#medMore button').forEach(b=>b.disabled=!canWrite||!ready);
+}
+async function setMedDetail(date,key,val,patch){
+  if(!tookMed(days[date])){toast('這筆服藥紀錄已取消');medOpen=false;renderMedMore();return}
+  const id=date+'|'+key,n=(medSeq[id]||0)+1;medSeq[id]=n;medPending[id]=val;renderMedMore();
+  let err=null;try{await writeDay(date,{med:patch})}catch(e){err=e}
+  if(medSeq[id]!==n)return; // a newer tap on the same key settles it
+  delete medPending[id];if(err)writeErr(err);renderMedMore();
+}
+$('#modeRow').addEventListener('click',e=>{const b=e.target.closest('[data-mode]');if(!b)return;const d=days[viewDate]||{};
+  const cur=medVal(viewDate,'mode',d.med?.mode??null),v=cur===b.dataset.mode?null:b.dataset.mode;setMedDetail(viewDate,'mode',v,{mode:v})});
+$('#intfRow').addEventListener('click',e=>{const b=e.target.closest('[data-intf]');if(!b)return;const d=days[viewDate]||{},k=b.dataset.intf;
+  const v=medVal(viewDate,'intf.'+k,d.med?.interfere?.[k])!==true;setMedDetail(viewDate,'intf.'+k,v,{interfere:{[k]:v}})});
 
 /* ---- period ---- */
 $('#perBtn').addEventListener('click',async()=>{const d=days[viewDate]||{};try{await writeDay(viewDate,{period:!d.period})}catch(e){writeErr(e)}});
