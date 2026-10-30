@@ -7,7 +7,7 @@
 :root{
   --bg:#f4f6f6; --surface:#ffffff; --sunk:#eef1f2; --ink:#16222a; --on-ink:#f4f6f6; --muted:#5d6b73; --faint:#9aa6ad; --line:#d9e0e3; --grid:#e4e9eb;
   --accent:#23507e; --accent-ink:#ffffff; --accent-soft:#e3ecf5;
-  --done:#1b7a53; --done-soft:#e3f2ea; --warn:#a36a00; --warn-soft:#fbf0d9;
+  --done:#1b7a53; --done-soft:#e3f2ea; --warn:#946000; --warn-soft:#fbf0d9;
   --c-breast:#b8476a; --c-thyroid:#b07a12; --c-lung:#2f7fa8; --c-gyn:#7a52a8; --c-gi:#5c7a2e;
   --ex-yoga:#277a70; --ex-pilates:#7a52a8; --ex-other:#946610;
   --w-am:#23507e; --w-pm:#8a9aa3; --band:#f4e1e8;
@@ -263,6 +263,15 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
 .preview{background:var(--accent-soft);border-radius:8px;padding:8px 12px;font-size:.9rem}
 .set-row{display:grid;grid-template-columns:1fr 100px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
 .set-row:first-of-type{border-top:0}
+/* reminders: the whole row is the switch's touch target */
+.tgl{display:flex;align-items:center;gap:12px;min-height:52px;border-top:1px solid var(--line);cursor:pointer}
+.tgl input{appearance:none;-webkit-appearance:none;flex:none;width:56px;min-height:44px;height:44px;padding:0;margin:0;border:0;background:transparent;position:relative;cursor:pointer}
+.tgl input::before{content:"";position:absolute;left:2px;top:7px;width:52px;height:30px;border-radius:999px;background:var(--sunk);border:1px solid var(--faint);box-sizing:border-box;transition:background .2s,border-color .2s}
+.tgl input::after{content:"";position:absolute;left:6px;top:11px;width:22px;height:22px;border-radius:50%;background:var(--muted);transition:transform .2s,background .2s}
+.tgl input:checked::before{background:var(--ink);border-color:var(--ink)}
+.tgl input:checked::after{transform:translateX(22px);background:var(--on-ink)}
+.tgl input:disabled{opacity:.45;cursor:not-allowed}
+.hbwarn{color:var(--warn);font-size:.85rem;margin:0}
 
 /* toast */
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--on-ink);padding:6px 6px 6px 16px;border-radius:14px;font-size:.92rem;z-index:20;display:flex;align-items:center;gap:4px;width:max-content;max-width:calc(100vw - 32px)}
@@ -308,6 +317,7 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
       <div class="blk perrow"><div><div>月經</div><div class="sub" id="perSub"></div></div><button type="button" class="switch" id="perBtn" aria-pressed="false">否</button></div>
       <div id="examSlot"></div>
     </div>
+    <p class="hbwarn" id="hbToday" hidden></p>
   </section>
 
   <!-- WEIGHT -->
@@ -356,6 +366,15 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
 
   <!-- SETUP -->
   <section class="panel" id="p-setup" hidden>
+    <div class="sect" id="remindSect"><h2 class="lbl">提醒</h2><div class="blk grp">
+      <p class="small" style="margin:0" id="hbLine" aria-live="polite"></p>
+      <div class="pausebar" id="hbWarn" hidden></div>
+      <div id="remindRows">
+        <label class="tgl"><span class="grow">早上提醒 <span class="sub">07:2x</span></span><input type="checkbox" role="switch" data-remind="morning"></label>
+        <label class="tgl"><span class="grow">晚上提醒 <span class="sub">22:2x</span></span><input type="checkbox" role="switch" data-remind="evening"></label>
+        <label class="tgl"><span class="grow">週報 <span class="sub">週日 20:1x</span></span><input type="checkbox" role="switch" data-remind="weekly"></label>
+      </div>
+    </div></div>
     <form class="panel" id="profForm" novalidate>
       <div class="sect"><h2 class="lbl">服藥</h2><div class="blk grp">
         <div class="grid2">
@@ -487,6 +506,27 @@ function addMonths(ds,m){const[y,mo,d]=ds.split('-').map(Number);const t=new Dat
 const num=v=>{const n=parseFloat(v);return Number.isFinite(n)?n:null};
 const r1=v=>Math.round(v*10)/10;
 /* ---- date helpers: end ---- */
+/* ---- heartbeat helpers: begin (extracted and tested outside the page) ---- */
+/* the scheduled checks write system/heartbeat; two consecutive missed runs put it past 26 hours */
+const HB_STALE_H=26;
+const HB_KIND={morning:'早上',evening:'晚上',weekly:'週報'};
+const HB_SKIP={paused:'暫停中，未推播',off:'提醒關閉，未推播',late:'執行太晚，未推播'};
+function hbTime(at){const ms=typeof at==='number'?at:typeof at==='string'&&/^\d{4}-\d\d-\d\dT/.test(at)?Date.parse(at):NaN;return Number.isFinite(ms)?ms:null}
+function tpeAt(ms){const p=Object.fromEntries(TPE.formatToParts(new Date(ms)).map(x=>[x.type,x.value]));return{date:p.year+'-'+p.month+'-'+p.day,hm:pad(+p.hour%24)+':'+p.minute}}
+function hbStatus(hb,now){
+  if(!hb)return{text:'還沒有收到排程檢查。',warn:false,warnText:''};
+  const ms=hbTime(hb.at);
+  if(ms==null)return{text:'上次檢查時間無法辨識。',warn:true,warnText:'提醒可能停了。'};
+  const h=Math.max(0,(now-ms)/36e5),t=tpeAt(ms);
+  const parts=['上次檢查 '+md(t.date)+'（'+wd(t.date)+'）'+t.hm];
+  if(HB_KIND[hb.kind])parts.push(HB_KIND[hb.kind]);
+  if(hb.ok===false||hb.skipped==='error')parts.push('讀取失敗');
+  else if(HB_SKIP[hb.skipped])parts.push(HB_SKIP[hb.skipped]);
+  else if(HB_KIND[hb.kind]&&hb.kind!=='weekly'&&Array.isArray(hb.missing))parts.push(hb.missing.length?'缺'+hb.missing.join('、'):'都記了');
+  const warn=h>HB_STALE_H;
+  return{text:parts.join('・'),warn,warnText:warn?'提醒可能停了：上次檢查是 '+Math.floor(h)+' 小時前。':''};
+}
+/* ---- heartbeat helpers: end ---- */
 
 /* toast with optional actions */
 let toastT;
@@ -500,6 +540,7 @@ function toast(text,acts=[],ms){
 /* ================= state ================= */
 let db=null, canWrite=true;
 let days={}, exercises=[], records=[], intervals={}, profile={};
+let hb=null, hbLoaded=false, hbErr=false; // system/heartbeat, written only by the scheduled checks
 let viewDate=logicalToday(), wDays=30, calMonth=logicalToday().slice(0,7), openHist=new Set(), editing=null, openEx=null, ready=false;
 const loaded={days:false,profile:false,intervals:false};
 /* a snapshot never rebuilds a block while someone is typing in it; the block is redrawn once focus leaves */
@@ -595,6 +636,7 @@ function renderToday(){
   else{hl.textContent=isToday?'今天完成':'這天完成';hl.className='headline done'}
   $('#fact').textContent=ready&&!need.length&&!paused?dailyFact():'';
   $('#pauseBar').hidden=!paused;
+  renderHb();
   if(paused)$('#pauseBar').textContent=fmt(profile.pauseFrom)+' – '+fmt(profile.pauseTo)+(profile.pauseNote?'，'+profile.pauseNote:'')+'，不算漏記。';
   // weight cells
   const evening=isAfterEvening(viewDate);
@@ -973,9 +1015,26 @@ function renderSetup(){
   if(!formDirty.ivForm&&!typingIn($('#ivForm'))){
     $('#setRows').innerHTML=EXAMS.map(e=>`<div class="set-row"><label for="iv-${e.id}"><span style="color:${CAT[e.cat].color}" aria-hidden="true">●</span> ${esc(e.name)}<br><span class="muted" style="font-size:.8rem">${esc(e.defSrc)}</span></label><div style="display:flex;align-items:center;gap:6px"><input type="number" id="iv-${e.id}" min="1" max="240" value="${defInterval(e.id)}" inputmode="numeric"><span class="muted" style="font-size:.85rem">月</span></div></div>`).join('')}
   /* a form opens for editing only once its saved values have arrived from the server */
-  $$('#p-setup input,#p-setup button').forEach(x=>{if(x.id==='btnExport'||x.id==='impCancel')return;const f=x.closest('#profForm')?loaded.profile:x.closest('#ivForm')?loaded.intervals:true;x.disabled=!canWrite||!f});
+  $$('#p-setup input,#p-setup button').forEach(x=>{if(x.id==='btnExport'||x.id==='impCancel')return;const f=x.closest('#profForm,#remindSect')?loaded.profile:x.closest('#ivForm')?loaded.intervals:true;x.disabled=!canWrite||!f});
+  renderRemind();
   $('#lastExport').textContent=profile.lastExport?'上次匯出：'+profile.lastExport:'還沒有匯出過。';
 }
+/* reminders: switches save on their own, outside the profile form; only the changed key is sent, so another device's switch is kept */
+const REMIND_NAME={morning:'早上提醒',evening:'晚上提醒',weekly:'週報'};
+const remindOf=k=>{const v=profile.remind?.[k];return typeof v==='boolean'?v:k!=='food'};
+const remindPending={};
+function renderHb(){
+  const st=hbStatus(hb,Date.now()),show=hbLoaded&&!hbErr;
+  $('#hbLine').textContent=hbErr?'讀不到檢查紀錄。':show?st.text:'';
+  $('#hbWarn').hidden=!(show&&st.warn);$('#hbWarn').textContent=st.warnText;
+  $('#hbToday').hidden=!(show&&st.warn);$('#hbToday').textContent=st.warnText;
+}
+function renderRemind(){renderHb();$$('[data-remind]').forEach(i=>{const k=i.dataset.remind;i.checked=k in remindPending?remindPending[k]:remindOf(k)})}
+$('#remindRows').addEventListener('change',async e=>{const i=e.target.closest('[data-remind]');if(!i)return;
+  const k=i.dataset.remind,v=i.checked;remindPending[k]=v;
+  const ok=await saveProfile({remind:{[k]:v}});delete remindPending[k];
+  if(ok)toast((v?'已開啟':'已關閉')+REMIND_NAME[k],[['撤銷',()=>saveProfile({remind:{[k]:!v}})]]);
+  renderRemind()});
 async function saveProfile(patch){if(!canSave())return false;
   try{await queued('settings/profile',()=>mergeDoc('settings/profile',{...patch,updatedAt:Date.now()}));return true}catch(e){writeErr(e);return false}}
 $('#profForm').addEventListener('submit',async ev=>{ev.preventDefault();
@@ -1019,7 +1078,7 @@ let lastLogical=logicalToday(),lastEvening=isAfterEvening(lastLogical);
 function clockTick(){const t=logicalToday(),ev=isAfterEvening(t);if(t===lastLogical&&ev===lastEvening)return false;
   if(t!==lastLogical){if(viewDate===lastLogical){viewDate=t;openEx=null}lastLogical=t}lastEvening=ev;return true}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){clockTick();renderCur()}});
-setInterval(()=>{if(clockTick())renderCur()},60000);
+setInterval(()=>{if(clockTick())renderCur();else renderHb()},60000); // the 26-hour warning ages without a snapshot
 (async()=>{
   try{
     const [d,u]=await Promise.all([window.claude?.use?.('db')??null,window.claude?.use?.('user')??null]);
@@ -1034,6 +1093,8 @@ setInterval(()=>{if(clockTick())renderCur()},60000);
     db.collection('records').onSnapshot(s=>{records=s.docs.map(x=>({id:x.id,...x.data()}));renderCur()},fail);
     db.doc('settings/intervals').onSnapshot(s=>{intervals=s.exists?{...s.data()}:{};arrived('intervals',s);renderCur()},fail);
     db.doc('settings/profile').onSnapshot(s=>{profile=s.exists?{...s.data()}:{};arrived('profile',s);renderCur()},fail);
+    /* a lost heartbeat listener only affects the reminder status, never the rest of the page */
+    db.doc('system/heartbeat').onSnapshot(s=>{hb=s.exists?s.data():null;hbLoaded=true;hbErr=false;renderHb()},()=>{hbErr=true;renderHb()});
   }catch(e){$('#dbNotice').textContent='目前無法連線資料庫，請重新整理頁面。'}
 })();
 </script>
