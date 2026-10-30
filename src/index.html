@@ -511,12 +511,13 @@ const r1=v=>Math.round(v*10)/10;
 const HB_STALE_H=26;
 const HB_KIND={morning:'早上',evening:'晚上',weekly:'週報'};
 const HB_SKIP={paused:'暫停中，未推播',off:'提醒關閉，未推播',late:'執行太晚，未推播'};
-function hbTime(at){const ms=typeof at==='number'?at:typeof at==='string'&&/^\d{4}-\d\d-\d\dT/.test(at)?Date.parse(at):NaN;return Number.isFinite(ms)?ms:null}
+/* epoch ms, or ISO 8601 with an explicit Z or offset; a string without one would be read in the device's own zone */
+function hbTime(at){const ms=typeof at==='number'?at:typeof at==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:\d\d)$/.test(at)?Date.parse(at):NaN;return Number.isFinite(ms)&&Number.isFinite(new Date(ms).getTime())?ms:null}
 function tpeAt(ms){const p=Object.fromEntries(TPE.formatToParts(new Date(ms)).map(x=>[x.type,x.value]));return{date:p.year+'-'+p.month+'-'+p.day,hm:pad(+p.hour%24)+':'+p.minute}}
 function hbStatus(hb,now){
-  if(!hb)return{text:'還沒有收到排程檢查。',warn:false,warnText:''};
+  if(!hb)return{text:'還沒有收到排程檢查。',warn:false,stale:false,warnText:''};
   const ms=hbTime(hb.at);
-  if(ms==null)return{text:'上次檢查時間無法辨識。',warn:true,warnText:'提醒可能停了。'};
+  if(ms==null)return{text:'上次檢查時間無法辨識。',warn:true,stale:false,warnText:'提醒可能停了。'}; // stale only when the age is known: the today page shows nothing for this
   const h=Math.max(0,(now-ms)/36e5),t=tpeAt(ms);
   const parts=['上次檢查 '+md(t.date)+'（'+wd(t.date)+'）'+t.hm];
   if(HB_KIND[hb.kind])parts.push(HB_KIND[hb.kind]);
@@ -524,7 +525,7 @@ function hbStatus(hb,now){
   else if(HB_SKIP[hb.skipped])parts.push(HB_SKIP[hb.skipped]);
   else if(HB_KIND[hb.kind]&&hb.kind!=='weekly'&&Array.isArray(hb.missing))parts.push(hb.missing.length?'缺'+hb.missing.join('、'):'都記了');
   const warn=h>HB_STALE_H;
-  return{text:parts.join('・'),warn,warnText:warn?'提醒可能停了：上次檢查是 '+Math.floor(h)+' 小時前。':''};
+  return{text:parts.join('・'),warn,stale:warn,warnText:warn?'提醒可能停了：上次檢查是 '+Math.floor(h)+' 小時前。':''};
 }
 /* ---- heartbeat helpers: end ---- */
 
@@ -1022,19 +1023,22 @@ function renderSetup(){
 /* reminders: switches save on their own, outside the profile form; only the changed key is sent, so another device's switch is kept */
 const REMIND_NAME={morning:'早上提醒',evening:'晚上提醒',weekly:'週報'};
 const remindOf=k=>{const v=profile.remind?.[k];return typeof v==='boolean'?v:k!=='food'};
-const remindPending={};
+const remindPending={},remindSeq={};
 function renderHb(){
-  const st=hbStatus(hb,Date.now()),show=hbLoaded&&!hbErr;
+  let st;try{st=hbStatus(hb,Date.now())}catch(e){st={text:'上次檢查時間無法辨識。',warn:true,stale:false,warnText:'提醒可能停了。'}} // a malformed heartbeat never stops the page
+  const show=hbLoaded&&!hbErr;
   $('#hbLine').textContent=hbErr?'讀不到檢查紀錄。':show?st.text:'';
   $('#hbWarn').hidden=!(show&&st.warn);$('#hbWarn').textContent=st.warnText;
-  $('#hbToday').hidden=!(show&&st.warn);$('#hbToday').textContent=st.warnText;
+  $('#hbToday').hidden=!(show&&st.stale);$('#hbToday').textContent=st.warnText;
 }
 function renderRemind(){renderHb();$$('[data-remind]').forEach(i=>{const k=i.dataset.remind;i.checked=k in remindPending?remindPending[k]:remindOf(k)})}
+/* only the latest tap on a switch settles it: an older write finishing later neither flips the switch back nor shows its toast */
+async function setRemind(k,v){const n=(remindSeq[k]||0)+1;remindSeq[k]=n;remindPending[k]=v;renderRemind();
+  const ok=await saveProfile({remind:{[k]:v}});if(remindSeq[k]!==n)return;
+  delete remindPending[k];renderRemind();return ok}
 $('#remindRows').addEventListener('change',async e=>{const i=e.target.closest('[data-remind]');if(!i)return;
-  const k=i.dataset.remind,v=i.checked;remindPending[k]=v;
-  const ok=await saveProfile({remind:{[k]:v}});delete remindPending[k];
-  if(ok)toast((v?'已開啟':'已關閉')+REMIND_NAME[k],[['撤銷',()=>saveProfile({remind:{[k]:!v}})]]);
-  renderRemind()});
+  const k=i.dataset.remind,v=i.checked;
+  if(await setRemind(k,v))toast((v?'已開啟':'已關閉')+REMIND_NAME[k],[['撤銷',()=>setRemind(k,!v)]])});
 async function saveProfile(patch){if(!canSave())return false;
   try{await queued('settings/profile',()=>mergeDoc('settings/profile',{...patch,updatedAt:Date.now()}));return true}catch(e){writeErr(e);return false}}
 $('#profForm').addEventListener('submit',async ev=>{ev.preventDefault();

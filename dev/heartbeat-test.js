@@ -35,6 +35,14 @@ eq('門檻是 26 小時',f.HB_STALE_H,26);
 eq('at 是毫秒數字',st({at:Date.parse('2026-10-31T07:23:05+08:00'),kind:'morning',missing:[]}).text,'上次檢查 10/31（六）07:23・早上・都記了');
 eq('at 是 UTC ISO：換算成台北',st({at:'2026-10-30T23:30:00Z'}).text,'上次檢查 10/31（六）07:30');
 for(const bad of ['abc',null,{t:1},'',true,[]])eq('at 無法辨識：'+JSON.stringify(bad),[st({at:bad}).text,st({at:bad}).warn],['上次檢查時間無法辨識。',true]);
+for(const bad of [1e20,-1e20,8.64e15+1,Infinity,NaN])eq('at 超出日期範圍的數字不會丟錯：'+bad,[st({at:bad}).text,st({at:bad}).warn],['上次檢查時間無法辨識。',true]);
+eq('at 是沒有時區的 ISO：無法辨識（不依裝置時區猜）',st({at:'2026-10-31T07:00:00'}).text,'上次檢查時間無法辨識。');
+eq('at 是只有日期的字串：無法辨識',st({at:'2026-10-31'}).text,'上次檢查時間無法辨識。');
+eq('at 帶毫秒與 Z',st({at:'2026-10-30T23:30:00.123Z'}).text,'上次檢查 10/31（六）07:30');
+eq('at 帶 -05:00',st({at:'2026-10-30T18:30:00-05:00'}).text,'上次檢查 10/31（六）07:30');
+eq('無法辨識：設定頁警示，但今天頁不顯示（stale:false）',[st({at:'abc'}).warn,st({at:'abc'}).stale],[true,false]);
+eq('超過 26 小時：stale:true',st({at:NOW-27*H}).stale,true);
+eq('沒有心跳：stale:false',st(null).stale,false);
 eq('at 比現在晚：當作 0 小時，不警示',st({at:NOW+3*H}).warn,false);
 eq('台北午夜後的心跳日期正確',st({at:'2026-10-31T16:10:00Z'}).text,'上次檢查 11/01（日）00:10');
 

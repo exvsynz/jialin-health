@@ -26,10 +26,10 @@
   function notify(p){for(const l of listeners){if(l.dead)continue;if(l.kind==='doc'&&l.path===p)setTimeout(()=>!l.dead&&l.next(docSnap(p)),0);if(l.kind==='col'&&l.path===parentOf(p))setTimeout(()=>!l.dead&&l.next(colSnap(l.path)),0)}}
   function gate(){if(cfg.denyWrites)throw err('invalid_argument');const f=cfg.failNext;if(f&&f.count>0){f.count--;throw err(f.code)}}
   /* apply → (latencyComp: notify now) → wait → (else: notify after) */
-  async function write(op,p,apply){
+  async function write(op,p,apply,data){
     try{gate()}catch(e){await sleep(cfg.latency||0);throw e}
     apply();if(cfg.latencyComp)notify(p);
-    await sleep(cfg.latency||0);writes.push({op,path:p});if(!cfg.latencyComp)notify(p);
+    await sleep(cfg.latency||0);writes.push({op,path:p,data:clone(data)});if(!cfg.latencyComp)notify(p);
   }
   function listen(kind,p,next,error,snap){
     const l={kind,path:p,next,error,dead:false};listeners.add(l);
@@ -42,8 +42,8 @@
   function docRef(p){if(segs(p).length%2)throw new TypeError('document path needs an even number of segments: '+p);return{
     id:segs(p).pop(),path:p,
     async get(){await sleep(cfg.latency||0);return docSnap(p)},
-    set(d){return write('set',p,()=>store.set(p,clone(d)))},
-    async update(d){if(!store.has(p)){await sleep(cfg.latency||0);throw err('invalid_argument')}return write('update',p,()=>store.set(p,merge(store.get(p),d)))},
+    set(d){return write('set',p,()=>store.set(p,clone(d)),d)},
+    async update(d){if(!store.has(p)){await sleep(cfg.latency||0);throw err('invalid_argument')}return write('update',p,()=>store.set(p,merge(store.get(p),d)),d)},
     delete(){return write('delete',p,()=>store.delete(p))},
     onSnapshot(next,error){return listen('doc',p,next,error,()=>docSnap(p))},
     async acquire({holder,ttlMs}){await sleep(cfg.latency||0);const now=Date.now(),l=leases.get(p);
