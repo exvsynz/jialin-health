@@ -47,11 +47,14 @@
 - `system/heartbeat` 兩次都失敗：記為「心跳讀不到」。照常判斷與通知，但不做第 5 步的重複檢查，第 6 步不寫心跳，第 7 步只看時間、不寫心跳（不知道文件內容與版本，不能覆蓋）。
 - **整理舊心跳**（讀到心跳就先做，後面都用整理後的結果）：
   - `recent`：不是陣列就當成 `[]`。只留下符合三個條件的項目：是物件；`at` 是有效的毫秒數字，或帶時區（`Z` 或 `+08:00` 這類）的 ISO 時間；`kind` 是 `"morning"`／`"evening"`／`"weekly"`，`date` 是 `YYYY-MM-DD`。每一項只保留 `run`、`at`、`kind`、`date`、`missing`、`paused`、`ok`、`skipped`、`shouldPush`、`delivery`、`msg`。
-  - `sent`：不是物件就當成 `{}`。只留下 key 是 `種類|日期|類別` 的項目：種類是 `morning`／`evening`／`weekly`，日期是 `YYYY-MM-DD` 而且不早於今天往前 7 天，類別是 `remind` 或 `error`。每一項只保留 `run`、`at`、`delivery`。
+  - `sent`：不是物件就當成 `{}`。只留下 key 和值都有效的項目：
+    - key 是 `種類|日期|類別`：種類是 `morning`／`evening`／`weekly`；日期是 `YYYY-MM-DD`，在今天往前 6 天到今天之間（共 7 個日期，未來的日期不留）；類別是 `remind` 或 `error`。
+    - 值是物件（不是陣列）；`run` 是非空字串；`at` 是有效的毫秒數字或帶時區的 ISO 時間；`delivery` 是 `"tool_sent"`、`"tool_error"` 或 `"platform"`。
+    - 每一項只保留 `run`、`at`、`delivery`。
 
 ## 3. 跳過的判斷（依序，符合一條就停在那一條）
 
-1. **時間**：不在時段內 → `skipped` = `"late"`。
+1. **時間**：不在時段內 → `skipped` = `"late"`。如果 profile 讀不到，同時記 `ok` = `false`（仍然不通知）。
 2. **profile 讀不到** → `skipped` = `"error"`、`ok` = `false`、`msg` = 「提醒檢查失敗：讀不到資料」。直接到第 5 步。
 3. **暫停**：`pauseFrom` 和 `pauseTo` 都有值，而且 `pauseFrom ≤ 今天 ≤ pauseTo`（`YYYY-MM-DD` 字串比較，頭尾兩天都算）→ `skipped` = `"paused"`、`paused` = `true`。
 4. **開關**：`remind.evening` 是 `false` → `skipped` = `"off"`。`remind` 或其中的 key 不存在時用預設值：`morning`、`evening`、`weekly` 是 `true`，`food` 是 `false`。
@@ -131,12 +134,12 @@
 3. **交付**（只送一次，不重試），照開頭的通知管道：
    - `msg` 是空字串：不要呼叫任何推播工具。`delivery` 維持 `"none"`。
    - 通知管道是 `tool`：
-     - 有送推播通知的工具（例如 PushNotification）：用它送出 `msg` 這一行。工具回報已送出 → `delivery` = `"tool_sent"`；回報沒有送出 → `"tool_not_sent"`；出錯或看不出結果 → `"tool_error"`。
+     - 有送推播通知的工具（例如 PushNotification）：用它送出 `msg` 這一行。工具回報已送出 → `delivery` = `"tool_sent"`；明確回報沒有送出 → `"tool_not_sent"`；出錯、看不出結果或其他回應 → `"tool_error"`。
      - 沒有這種工具 → `delivery` = `"tool_missing"`。不要改用最終回覆代送。
    - 通知管道是 `platform`：就算有推播工具也不要呼叫。`delivery` = `"platform"`。
 4. `shouldPush`：`msg` 不是空字串就是 `true`。
 
-`delivery` 記的是送出的過程，不代表手機一定收到。**可能已經送出的（`tool_sent`、`tool_error`、`platform`）都算送出**，同一天同一類別不再重送：寧可少一則，也不要重複。
+`delivery` 記的是送出的過程，不代表手機一定收到。**可能已經送出的（`tool_sent`、`tool_error`、`platform`）都算送出**：心跳讀得到時，每天每個種類與類別只送一次。寧可少一則，也不要重複。
 
 ## 6. 寫心跳 `system/heartbeat`
 

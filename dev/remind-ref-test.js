@@ -191,7 +191,8 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   eq('工具模式＋沒有工具：tool_missing，不改走平台',[r.delivery,r.reply,r.heartbeat.shouldPush],['tool_missing','（推播未送出）',true]);
   eq('工具模式＋沒有工具：不算送出，下次照常',!!r.heartbeat.sent?.['morning|'+SAT+'|remind'],false);
   r=await run('morning',M('15:00'),st({},{readError:true}),{push:'sent'});
-  eq('時段外、profile 讀不到：late，不送錯誤通知',[r.entry.skipped,r.fake.pushAttempts.length],['late',0]);
+  eq('時段外、profile 讀不到：late，不送錯誤通知，ok 記 false',[r.entry.skipped,r.fake.pushAttempts.length,r.entry.ok],['late',0,false]);
+  eq('時段外、profile 讀得到：ok 仍是 true',(await run('morning',M('15:00'),st({}))).entry.ok,true);
   r=await run('evening',SUN+'T03:59:00+08:00',st({}),{push:'sent',failList:{records:2},times:[SUN+'T03:59:00+08:00',SUN+'T04:00:30+08:00']});
   eq('03:59 開始、讀取失敗拖過 04:00：錯誤通知也不送',[r.entry.skipped,r.fake.pushAttempts.length],['late',0]);
   r=await run('evening',SUN+'T03:59:00+08:00',st({}),{times:[SUN+'T03:59:00+08:00',SUN+'T03:59:30+08:00',SUN+'T04:01:00+08:00']});
@@ -212,7 +213,11 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
     const pp=await run('morning',M('07:21'),st({}),{mode:'platform'});
     eq('platform 算可能已送出，下次不重送',(await run('morning',M('07:40'),st({},{heartbeat:pp.heartbeat}),{push:'sent'})).entry.skipped,'duplicate');
     const pm=await run('morning',M('07:21'),st({}),{mode:'tool',push:null});
-    eq('tool_missing 不算送出，下次照常',(await run('morning',M('07:40'),st({},{heartbeat:pm.heartbeat}),{push:'sent'})).fake.pushAttempts.length,1)}
+    {const pu=await run('morning',M('07:21'),st({}),{push:'unknown'});
+    eq('推播工具不丟錯但看不出結果：tool_error，回覆結果未確認',[pu.delivery,pu.reply],['tool_error','（推播結果未確認）']);
+    const again=await run('morning',M('07:40'),st({},{heartbeat:pu.heartbeat}),{push:'unknown'});
+    eq('看不出結果算可能已送出：連跑兩次只呼叫工具一次',[pu.fake.pushAttempts.length+again.fake.pushAttempts.length,again.entry.skipped],[1,'duplicate'])}
+  eq('tool_missing 不算送出，下次照常',(await run('morning',M('07:40'),st({},{heartbeat:pm.heartbeat}),{push:'sent'})).fake.pushAttempts.length,1)}
   {const sent=await run('morning',M('07:21'),st({}),{push:'sent'});
     r=await run('morning',M('07:40'),st({[SAT]:day({am:full.am,med:full.med})},{heartbeat:sent.heartbeat}),{push:'sent'});
     eq('先前送過、現在已補齊：記「都記了」，不是 duplicate',[r.entry.skipped,r.entry.missing],[null,[]])}
@@ -221,8 +226,14 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
     for(let i=0;i<23;i++)await run('morning',null,null,{fake:f,mode:'tool'});
     const hbDoc=f.doc('system/heartbeat');
     eq('同日連續執行 23 次：只推播一次（sent 和 recent 分開，不受 21 筆限制）',[f.pushAttempts.length,hbDoc.recent.length,!!hbDoc.sent['morning|'+SAT+'|remind']],[1,21,true])}
-  r=await run('morning',M(),st({},{heartbeat:{recent:[],sent:{['morning|2026-10-20|remind']:{run:'a'},['morning|2026-10-24|remind']:{run:'b'},['bad']:{run:'c'}}}}));
-  eq('sent 只留 7 天內、格式正確的項目',Object.keys(r.heartbeat.sent).sort(),['morning|2026-10-24|remind','morning|2026-10-31|remind']);
+  {const v=(d,o={})=>({run:'r-'+d,at:d+'T07:20:00+08:00',delivery:'tool_sent',...o});
+    r=await run('morning',M(),st({},{heartbeat:{recent:[],sent:{'evening|2026-10-24|remind':v('2026-10-24'),'evening|2026-10-25|remind':v('2026-10-25'),'evening|2026-11-02|remind':v('2026-11-02'),'bad':v('2026-10-30')}}}));
+    eq('sent 只留今天與前 6 天（共 7 個日期），不留未來日期與格式錯的 key',Object.keys(r.heartbeat.sent).sort(),['evening|2026-10-25|remind','morning|2026-10-31|remind']);
+    for(const [name,val] of [['空物件',{}],['陣列',[]],['時間無效',v(SAT,{at:'abc'})],['沒有 run',v(SAT,{run:''})],['tool_not_sent',v(SAT,{delivery:'tool_not_sent'})],['tool_missing',v(SAT,{delivery:'tool_missing'})]]){
+      r=await run('morning',M(),st({},{heartbeat:{recent:[],sent:{['morning|'+SAT+'|remind']:val}}}),{push:'sent'});
+      eq(`sent 的值無效（${name}）：不算送出，照常推播`,[r.entry.skipped,r.fake.pushAttempts.length],[null,1])}
+    r=await run('morning',M(),st({},{heartbeat:{recent:[],sent:{['morning|'+SAT+'|remind']:v(SAT,{delivery:'platform'})}}}),{push:'sent'});
+    eq('sent 的值有效（platform）：duplicate',r.entry.skipped,'duplicate')}
   {const a=await run('morning',M('07:21'),st({}),{push:'sent',failGet:{'system/heartbeat':2}});
     const b=await run('morning',M('07:40'),st({}),{push:'sent',failGet:{'system/heartbeat':2}});
     eq('已知限制：心跳讀不到時沒有去重依據，兩次都推播',[a.fake.pushAttempts.length,b.fake.pushAttempts.length],[1,1])}

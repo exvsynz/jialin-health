@@ -6,7 +6,7 @@
    語意：寫入已存在的文件必須帶 if_version 而且等於目前版本；建立新文件不帶 if_version；有下一頁才回 next_cursor。
    失敗注入：failGet {路徑:次數}、failList {collection:次數}、failSet（提交前失敗的次數）、failSetAfterCommit（提交後才回報失敗的次數）、
    beforeSet(path, store, nextVer)：模擬另一個工作階段搶先寫入。
-   推播工具：push 是 'sent' | 'not_sent' | 'throw'；null 表示沒有推播工具。pushAttempts 是呼叫紀錄，pushAccepted 只記回報已送出的。 */
+   推播工具：push 是 'sent' | 'not_sent' | 'throw' | 'unknown'（不丟錯，但回傳看不出結果）；null 表示沒有推播工具。pushAttempts 是呼叫紀錄，pushAccepted 只記回報已送出的。 */
 const URL='https://claude.ai/artifact/LJViyfLqXv2VdD5krdJahh';
 const SEG='(?!\\.\\.?(?:\\/|$))[A-Za-z0-9_\\-.~:@+]{1,200}';
 const COL_RE=new RegExp('^'+SEG+'(?:\\/'+SEG+'){0,14}$'),ID_RE=new RegExp('^'+SEG+'$');
@@ -65,7 +65,7 @@ function fakeApi({docs={},times=[],failGet={},failList={},failSet=0,failSetAfter
         return{version:store.get(path).version}}
       throw err('unsupported_in_fake');
     },
-    async push(message){pushAttempts.push(message);if(push==='throw')throw err('push_failed');if(push==='sent')pushAccepted.push(message);return push},
+    async push(message){pushAttempts.push(message);if(push==='throw')throw err('push_failed');if(push==='sent')pushAccepted.push(message);return push==='unknown'?undefined:push},
   };
   return{api,store,calls,contractErrors,pushAttempts,pushAccepted,doc:p=>store.get(p)?.data,URL,contract};
 }

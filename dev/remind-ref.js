@@ -40,8 +40,11 @@ function normalizeRecent(hb){
 }
 function normalizeSent(hb,today){
   const o=hb?.sent,out={};if(!o||typeof o!=='object'||Array.isArray(o))return out;
-  const oldest=D.addDays(today,-SENT_DAYS);
-  for(const[k,v]of Object.entries(o)){const p=k.split('|');if(p.length===3&&KINDS.includes(p[0])&&/^\d{4}-\d\d-\d\d$/.test(p[1])&&['remind','error'].includes(p[2])&&p[1]>=oldest&&v&&typeof v==='object')out[k]={run:v.run,at:v.at,delivery:v.delivery}}
+  const oldest=D.addDays(today,-(SENT_DAYS-1)); // 今天與前 6 天，共 7 個日期；未來的日期不留
+  for(const[k,v]of Object.entries(o)){const p=k.split('|');
+    if(p.length===3&&KINDS.includes(p[0])&&/^\d{4}-\d\d-\d\d$/.test(p[1])&&['remind','error'].includes(p[2])&&p[1]>=oldest&&p[1]<=today
+      &&v&&typeof v==='object'&&!Array.isArray(v)&&typeof v.run==='string'&&v.run&&atMs(v.at)!=null&&SENT_AS.includes(v.delivery)) // 只有看起來真的送出過的紀錄才算
+      out[k]={run:v.run,at:v.at,delivery:v.delivery}}
   return out;
 }
 function mergeRecent(entry,old){
@@ -116,7 +119,7 @@ async function execute(kind,api,mode){
   try{const r=await retry(()=>T.get(api,'settings','profile'));profile=r.exists?r.data:{}}catch(e){}
   try{const r=await retry(()=>T.get(api,'system','heartbeat'));hb={ok:true,exists:r.exists,version:r.version,recent:normalizeRecent(r.exists?r.data:null),sent:normalizeSent(r.exists?r.data:null,date)}}catch(e){}
   /* 3. 跳過：時間（不需要 profile）→ profile 讀不到 → 暫停 → 關閉 */
-  if(!inWindow(kind,h,date))entry.skipped='late';
+  if(!inWindow(kind,h,date)){entry.skipped='late';if(!profile)entry.ok=false}
   else if(!profile){entry.ok=false;entry.skipped='error';entry.msg=ERR_MSG}
   else if(isPaused(profile,date)){entry.paused=true;entry.skipped='paused'}
   else if(!remindOf(profile,kind))entry.skipped='off';
@@ -149,7 +152,7 @@ async function execute(kind,api,mode){
   if(entry.msg){
     if(mode==='platform')entry.delivery='platform';
     else if(!api.hasPush)entry.delivery='tool_missing';
-    else{try{entry.delivery=(await api.push(entry.msg))==='sent'?'tool_sent':'tool_not_sent'}catch(e){entry.delivery='tool_error'}}
+    else{try{const res=await api.push(entry.msg);entry.delivery=res==='sent'?'tool_sent':res==='not_sent'?'tool_not_sent':'tool_error'}catch(e){entry.delivery='tool_error'}} // 只有明確沒送出才是 not_sent；看不出結果算可能已送出
   }
   entry.shouldPush=!!entry.msg;
   /* 6. 寫心跳：讀不到舊心跳就不寫 */
