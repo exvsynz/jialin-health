@@ -138,6 +138,14 @@ async function layout(page,label){
     check('撤銷進行中：開關立刻顯示關',!(await sw(page,'morning')).checked);
     await wait(500);check('撤銷完成：資料庫是關',(await doc('settings/profile')).remind.morning===false);
     await page.context().close()}
+  {const {page,doc}=await open({time:NOW,hash:'setup',cfg:{latencyComp:false,latency:400,seed:seed()}});await wait(800);
+    await page.evaluate(()=>window.__mock.cfg.failNext={code:'internal',count:1});
+    await page.click('[data-remind="morning"]');await wait(50);await page.click('[data-remind="morning"]');
+    const mid=[];for(let i=0;i<8;i++){await wait(60);mid.push(await page.isVisible('#toast')?await page.textContent('#toastText'):'')} // 第一筆失敗、第二筆還在等的時段
+    check('第一筆失敗、第二筆仍在等：不顯示過時的錯誤 toast',mid.every(t=>!t.includes('沒有存到')),mid);
+    await wait(600);
+    check('第一筆失敗、第二筆成功：開關是開，toast 是已開啟',(await sw(page,'morning')).checked&&(await doc('settings/profile')).remind.morning===true&&(await page.textContent('#toastText'))==='已開啟早上提醒',[(await doc('settings/profile')).remind,await page.textContent('#toastText')]);
+    await page.context().close()}
   {const {page,doc}=await open({time:NOW,hash:'setup',cfg:{latencyComp:false,latency:300,seed:seed()}});await wait(700);
     await page.evaluate(()=>window.__mock.cfg.failNext={code:'internal',count:1});
     await page.click('[data-remind="weekly"]');await wait(50);await page.click('[data-remind="weekly"]');await wait(50);await page.click('[data-remind="weekly"]');await wait(1200);
@@ -154,6 +162,18 @@ async function layout(page,label){
     const w=await page.evaluate(n=>window.__mock.writes.slice(n),n0);
     check('交錯寫入：開關的 payload 只有自己的 key',w.filter(x=>x.data?.remind).every(x=>Object.keys(x.data.remind).length===1),w);
     check('交錯寫入：表單的 payload 不含 remind',w.filter(x=>x.data&&'medNote' in x.data).every(x=>!('remind' in x.data)),w);
+    await page.context().close()}
+
+  /* 另一台裝置延遲送達的舊快照（內容是本機寫入前的值）：寫入期間不讓開關跳回去，寫入完成後以伺服器為準 */
+  {const {page,doc}=await open({time:NOW,hash:'setup',cfg:{latencyComp:false,latency:400,seed:seed({'settings/profile':{...sampleSeed(T)['settings/profile'],remind:{morning:true}}})}});await wait(800);
+    const old=await page.evaluate(()=>JSON.parse(JSON.stringify(window.__mock.store.get('settings/profile'))));
+    await page.click('[data-remind="morning"]');await wait(80);
+    await page.evaluate(b=>window.__mock.staleSnapshot('settings/profile',b),old);await wait(80);
+    check('寫入中收到舊值快照：開關仍顯示本機剛點的值',!(await sw(page,'morning')).checked);
+    await wait(500);
+    check('寫入完成：開關和資料庫一致（關）',!(await sw(page,'morning')).checked&&(await doc('settings/profile')).remind.morning===false);
+    await page.evaluate(b=>window.__mock.staleSnapshot('settings/profile',b),old);await wait(80);
+    check('寫入完成後才到的舊快照：開關跟著快照顯示（頁面以收到的快照為準）',(await sw(page,'morning')).checked);
     await page.context().close()}
 
   /* 首次建立：沒有 settings/profile 文件 */

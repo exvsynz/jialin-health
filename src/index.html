@@ -1034,13 +1034,13 @@ function renderHb(){
 function renderRemind(){renderHb();$$('[data-remind]').forEach(i=>{const k=i.dataset.remind;i.checked=k in remindPending?remindPending[k]:remindOf(k)})}
 /* only the latest tap on a switch settles it: an older write finishing later neither flips the switch back nor shows its toast */
 async function setRemind(k,v){const n=(remindSeq[k]||0)+1;remindSeq[k]=n;remindPending[k]=v;renderRemind();
-  const ok=await saveProfile({remind:{[k]:v}});if(remindSeq[k]!==n)return;
-  delete remindPending[k];renderRemind();return ok}
+  let err=null;const ok=await saveProfile({remind:{[k]:v}},e=>{err=e});if(remindSeq[k]!==n)return; // a superseded write stays silent, failed or not
+  if(err)writeErr(err);delete remindPending[k];renderRemind();return ok}
 $('#remindRows').addEventListener('change',async e=>{const i=e.target.closest('[data-remind]');if(!i)return;
   const k=i.dataset.remind,v=i.checked;
   if(await setRemind(k,v))toast((v?'已開啟':'已關閉')+REMIND_NAME[k],[['撤銷',()=>setRemind(k,!v)]])});
-async function saveProfile(patch){if(!canSave())return false;
-  try{await queued('settings/profile',()=>mergeDoc('settings/profile',{...patch,updatedAt:Date.now()}));return true}catch(e){writeErr(e);return false}}
+async function saveProfile(patch,onErr=writeErr){if(!canSave())return false;
+  try{await queued('settings/profile',()=>mergeDoc('settings/profile',{...patch,updatedAt:Date.now()}));return true}catch(e){onErr(e);return false}}
 $('#profForm').addEventListener('submit',async ev=>{ev.preventDefault();
   const dose=num($('#sDose').value);if(dose==null||dose<=0){$('#sDose').focus();toast('請填劑量');return}
   const pf=$('#sPFrom').value,pt=$('#sPTo').value;if((pf&&!pt)||(!pf&&pt)){toast('暫停模式需要開始日和結束日');return}if(pf&&pt&&pt<pf){toast('結束日要在開始日之後');return}
