@@ -26,7 +26,8 @@ async function shots(){
     await wait(500);
     const label=`${tag} ${scheme} ${p}`;
     const title=await page.evaluate(()=>document.querySelector('#subTitle').textContent);
-    check(label+'：直接載入顯示正確頁面',p==='today'?title==='':title.length>0,title);
+    const want={today:'',weight:'體重與體脂',exercise:'運動紀錄',exams:'定期檢查',setup:'設定與備份'}[p];
+    check(label+'：直接載入顯示正確頁面',title===want&&await page.isVisible('#p-'+p),title);
     await layout(page,label);
     check(label+'：沒有舊的卡片與統計方框',!(await page.$('.card,.stat')));
     await page.screenshot({path:path.join(SHOTS,`${tag}-${scheme}-${p}.png`),fullPage:true});

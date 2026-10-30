@@ -169,6 +169,7 @@ dialog.sheet[open]{animation:up .24s ease-out}
 .steps{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .steps button{min-height:56px;font-family:var(--f-num);font-size:1.15rem}
 .savebtn{min-height:56px;font-size:1.05rem}
+#wSheet.saving #rulerWrap,#wSheet.saving .steps,#wSheet.saving .seg{opacity:.5;pointer-events:none}
 .kbd{display:flex;gap:8px;align-items:center}
 .menu{display:flex;flex-direction:column}
 .menu button{border:0;border-top:1px solid var(--line);border-radius:0;background:transparent;text-align:left;min-height:56px;display:flex;justify-content:space-between;align-items:center;padding:0 4px;font-size:1rem}
@@ -500,12 +501,12 @@ function toast(text,acts=[],ms){
 let db=null, canWrite=true;
 let days={}, exercises=[], records=[], intervals={}, profile={};
 let viewDate=logicalToday(), wDays=30, calMonth=logicalToday().slice(0,7), openHist=new Set(), editing=null, openEx=null, ready=false;
-const loaded={days:false,profile:false};
+const loaded={days:false,profile:false,intervals:false};
 /* a snapshot never rebuilds a block while someone is typing in it; the block is redrawn once focus leaves */
 let heldRender=false;
 const typingIn=el=>{const a=document.activeElement;return !!(a&&el.contains(a)&&a.matches('input,textarea,select'))};
 document.addEventListener('focusout',()=>{if(heldRender){heldRender=false;setTimeout(renderCur,0)}});
-const formDirty={profForm:false,ivForm:false};
+const formDirty={profForm:false,ivForm:false},formEdits={profForm:0,ivForm:0};
 const exMinPending={}; // stepped minutes not yet written
 const EXT={yoga:{name:'瑜珈',cls:'yoga'},pilates:{name:'皮拉提斯',cls:'pilates'},other:{name:'其他',cls:'other'}};
 const prof=k=>({medName:'Levothyroxine',medDose:50,medNote:'半顆',yogaMin:60,pilatesMin:60,...profile})[k];
@@ -514,11 +515,21 @@ const queues={};
 function queued(path,fn){const p=(queues[path]||Promise.resolve()).catch(()=>{}).then(fn);queues[path]=p;return p}
 /* a transient failure gets one retry after a short random delay */
 async function retry1(fn){try{return await fn()}catch(e){if(e?.code!=='unavailable')throw e;await new Promise(r=>setTimeout(r,300+Math.random()*500));return fn()}}
-/* merge into a document; create it only when the store says it is missing, so a stale local copy never replaces it */
+const TAB='t'+Math.random().toString(36).slice(2);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+/* merge into a document; create it only when the store says it is missing, so a stale local copy never replaces it.
+   Creating runs under the platform's short lease (acquire), so two devices that both find it missing never both create it. */
 async function mergeDoc(path,patch,init={}){
   const ref=db.doc(path);
-  try{await retry1(()=>ref.update(patch))}
-  catch(e){if(e?.code!=='invalid_argument')throw e;const s=await retry1(()=>ref.get());if(s.exists)throw e;await retry1(()=>ref.set({...init,...patch}))}
+  try{return await retry1(()=>ref.update(patch))}
+  catch(e){if(e?.code!=='invalid_argument')throw e;
+    for(let i=0;i<6;i++){
+      let lease={acquired:true};try{lease=await ref.acquire({holder:TAB,ttlMs:3000})}catch(_){} // no lease support: fall back to get, then set
+      if(lease.acquired){const s=await retry1(()=>ref.get());return retry1(()=>s.exists?ref.update({...init,...patch}):ref.set({...init,...patch}))}
+      await sleep(400); // another device is creating it: merge once it exists
+      try{return await retry1(()=>ref.update(patch))}catch(e2){if(e2?.code!=='invalid_argument')throw e2}
+    }
+    throw e}
 }
 function canSave(){if(!db){toast('資料庫未連線，無法儲存');return false}if(!ready){toast('資料還在載入，請稍候');return false}return true}
 async function writeDay(date,patch){
@@ -629,7 +640,7 @@ function dailyFact(){
 function renderSpark(){
   const el=$('#spark');const today=logicalToday();
   const pts=[];for(let i=6;i>=0;i--){const v=days[addDays(viewDate,-i)]?.am?.w;if(v!=null)pts.push({i:6-i,v})}
-  if(!(days[viewDate]?.am)||pts.length<2){el.hidden=true;return}
+  if(!(days[viewDate]?.am)||pts.length<2||(needed(viewDate).length&&!isPaused(viewDate))){el.hidden=true;return} // only once the day is done, so nothing left to tap moves
   const lo=Math.min(...pts.map(p=>p.v)),hi=Math.max(...pts.map(p=>p.v)),sp=Math.max(hi-lo,0.4);
   const x=i=>4+i*(88/6),y=v=>22-((v-lo)/sp)*18;
   const last=pts[pts.length-1];
@@ -668,17 +679,19 @@ function rebuild(v){suppress=true;clearTimeout(supT);buildRuler(v);requestAnimat
 /* always jump, never animate: a smooth scroll reports in-between positions that would overwrite the value */
 function rulerTo(v){$('#ruler').scrollTo({left:Math.round((v-ws.min)*10)*TICK,behavior:'auto'})}
 function curVal(){return ws.seg==='w'?ws.w:ws.bf}
-function setCur(v){v=r1(v);if(ws.seg==='w'){ws.w=v;ws.touched=true}else{ws.bf=v;ws.bfTouched=true}paintSheet()}
+function setCur(v){if(ws.saving)return;v=r1(v);if(ws.seg==='w'){ws.w=v;ws.touched=true}else{ws.bf=v;ws.bfTouched=true}paintSheet()}
 function paintSheet(){
   const v=curVal(),isW=ws.seg==='w',none=v==null;const big=$('#wsBig');
   big.innerHTML=`${none?'—':v.toFixed(1)}<small>${isW?'kg':'%'}</small>`;
   big.classList.toggle('untouched',isW?!ws.touched:!ws.bfTouched);
   $('#rulerWrap').hidden=none;$('#wsSteps').hidden=none;
-  const prev=(days[viewDate]||{})[ws.slot];
+  const prev=(days[ws.date]||{})[ws.slot];
   $('#wsHint').textContent=none?(isW?'第一次記錄，請輸入體重':'第一次記錄體脂，請輸入'):isW?(prev?'已記錄 '+prev.w+' kg，可修改':ws.src==='est'?'預設為今早加平常的早晚差':'預設為上次量的'):(ws.bfTouched?'會一起存':'沒動就不存體脂');
   /* an estimate (evening = morning + usual gap) must be confirmed on the ruler; a last measurement may be kept as is */
   const btn=$('#wsSave'),bf=ws.bfTouched&&ws.bf!=null?`・${ws.bf.toFixed(1)}%`:'';
-  if(ws.w==null){btn.textContent='先輸入體重';btn.disabled=true}
+  $('#wSheet').classList.toggle('saving',ws.saving);
+  if(ws.saving){btn.textContent='儲存中…';btn.disabled=true}
+  else if(ws.w==null){btn.textContent='先輸入體重';btn.disabled=true}
   else if(!ws.touched&&ws.src==='est'){btn.textContent='撥尺確認晚上體重';btn.disabled=true}
   else{btn.textContent=(ws.touched?'記下 ':'和上次一樣 ')+ws.w.toFixed(1)+' kg'+bf;btn.disabled=false}
   if(!$('#kbdRow').hidden&&document.activeElement!==$('#kbdIn'))$('#kbdIn').value=none?'':v.toFixed(1);
@@ -689,7 +702,7 @@ function showInput(){if(curVal()==null)showKbd(true);else rebuild(curVal())}
 function openSheet(slot){
   const d=days[viewDate]||{};
   const dw=defaultOf(slot,'w');
-  ws={slot,seg:'w',w:dw.v,bf:defaultVal(slot,'bf'),src:dw.src,min:0,touched:!!d[slot],bfTouched:d[slot]?.bf!=null};
+  ws={slot,date:viewDate,seg:'w',w:dw.v,bf:defaultVal(slot,'bf'),src:dw.src,min:0,touched:!!d[slot],bfTouched:d[slot]?.bf!=null,saving:false};
   $('#wsTitle').textContent=(viewDate===logicalToday()?'':cmd(viewDate)+' ')+(slot==='am'?'早上':'晚上');
   $$('[data-wseg]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.wseg==='w')));
   showKbd(false);
@@ -697,22 +710,23 @@ function openSheet(slot){
   paintSheet();showInput();
 }
 $$('[data-wslot]').forEach(b=>b.addEventListener('click',()=>openSheet(b.dataset.wslot)));
-$$('[data-wseg]').forEach(b=>b.addEventListener('click',()=>{ws.seg=b.dataset.wseg;$$('[data-wseg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));if(curVal()!=null)showKbd(false);paintSheet();showInput()}));
-$('#ruler').addEventListener('scroll',()=>{if(suppress)return;const i=Math.round($('#ruler').scrollLeft/TICK);const v=r1(ws.min+i/10);if(v!==curVal()){if(ws.seg==='w'){ws.w=v;ws.touched=true}else{ws.bf=v;ws.bfTouched=true}paintSheet()}},{passive:true});
+$$('[data-wseg]').forEach(b=>b.addEventListener('click',()=>{if(ws.saving)return;ws.seg=b.dataset.wseg;$$('[data-wseg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));if(curVal()!=null)showKbd(false);paintSheet();showInput()}));
+$('#ruler').addEventListener('scroll',()=>{if(suppress||ws.saving)return;const i=Math.round($('#ruler').scrollLeft/TICK);const v=r1(ws.min+i/10);if(v!==curVal()){if(ws.seg==='w'){ws.w=v;ws.touched=true}else{ws.bf=v;ws.bfTouched=true}paintSheet()}},{passive:true});
 $('#ruler').addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setCur(curVal()+(e.key==='ArrowRight'?0.1:-0.1));rulerTo(curVal())}});
 $$('[data-step]').forEach(b=>b.addEventListener('click',()=>{if(curVal()==null)return;setCur(curVal()+Number(b.dataset.step)/10);rulerTo(curVal())}));
 $('#kbdBtn').addEventListener('click',()=>showKbd($('#kbdRow').hidden));
-$('#kbdIn').addEventListener('change',()=>{const v=num($('#kbdIn').value);const lo=ws.seg==='w'?20:3,hi=ws.seg==='w'?200:70;if(v==null||v<lo||v>hi){toast(ws.seg==='w'?'體重請填 20–200':'體脂請填 3–70');return}setCur(v);rebuild(v)});
+$('#kbdIn').addEventListener('change',()=>{if(ws.saving)return;const v=num($('#kbdIn').value);const lo=ws.seg==='w'?20:3,hi=ws.seg==='w'?200:70;if(v==null||v<lo||v>hi){toast(ws.seg==='w'?'體重請填 20–200':'體脂請填 3–70');return}setCur(v);rebuild(v)});
 $('#wsClose').addEventListener('click',()=>$('#wSheet').close());
 $('#wsSave').addEventListener('click',async()=>{
-  if(ws.w==null)return;
-  const slot=ws.slot,date=viewDate;const prev=(days[date]||{})[slot]||null;
+  const my=ws;if(my.w==null||my.saving)return;
+  const slot=my.slot,date=my.date;const prev=(days[date]||{})[slot]||null;
   const at=date===logicalToday()?nowHM():(prev?.at||'補登');
-  const val={w:ws.w,bf:ws.bfTouched?ws.bf:(prev?.bf??null),at};
-  const btn=$('#wsSave');btn.disabled=true;btn.textContent='儲存中…';
-  try{await writeDay(date,{[slot]:val});$('#wSheet').close();toast(`已記錄 ${val.w.toFixed(1)} kg`,[['撤銷',()=>writeDay(date,{[slot]:prev}).catch(writeErr)]])}
+  const val={w:my.w,bf:my.bfTouched?my.bf:(prev?.bf??null),at};
+  my.saving=true;paintSheet();
+  const mine=()=>ws===my&&$('#wSheet').open; // a sheet reopened meanwhile is not this save's to close
+  try{await writeDay(date,{[slot]:val});if(mine())$('#wSheet').close();toast(`已記錄 ${val.w.toFixed(1)} kg`,[['撤銷',()=>writeDay(date,{[slot]:prev}).catch(writeErr)]])}
   catch(e){writeErr(e)}
-  finally{btn.disabled=false;if($('#wSheet').open)paintSheet()}
+  finally{my.saving=false;if(mine()){paintSheet();rulerTo(curVal())}}
 });
 
 /* ---- med ---- */
@@ -743,7 +757,8 @@ $('#exToday').addEventListener('click',ev=>{
   if(ev.target.closest('[data-exopen]')){openEx=openEx===id?null:id;renderToday();return}
   const st=ev.target.closest('[data-exstep]');
   if(st){const nm=Math.max(5,Math.min(300,(+(exMinPending[id]??e.min)||0)+Number(st.dataset.exstep)));exMinPending[id]=nm;li.querySelector('.stepper .v').textContent=nm+' 分';li.querySelector('.exhead .num').textContent=nm+' 分';
-    clearTimeout(exTimers[id]);exTimers[id]=setTimeout(()=>writeEx(id,{min:nm}).then(()=>{if(exMinPending[id]===nm)delete exMinPending[id]},err=>{delete exMinPending[id];writeErr(err);renderCur()}),700);return}
+    clearTimeout(exTimers[id]);exTimers[id]=setTimeout(()=>{const done=()=>{if(exMinPending[id]!==nm)return false;delete exMinPending[id];renderCur();return true}; // a newer step owns the value now
+      writeEx(id,{min:nm}).then(done,err=>{if(done())writeErr(err)})},700);return}
   if(ev.target.closest('[data-exdel]')){openEx=null;writeEx(id,{deleted:true}).then(()=>toast('已刪除 '+(e.label||'運動'),[['復原',()=>writeEx(id,{deleted:false}).catch(writeErr)]])).catch(writeErr)}
 });
 $('#exToday').addEventListener('change',ev=>{
@@ -946,16 +961,18 @@ $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
   const body={exam,cat:EX[exam].cat,date:$('#fDate').value,preset:$('#fPreset').value||null,interval:$('#fInterval').value===''?null:Number($('#fInterval').value),nextDue:$('#fDue').value||null,report:$('#fReport').value.trim(),place:$('#fPlace').value.trim(),doctor:$('#fDoctor').value.trim(),note:$('#fNote').value.trim(),labs,createdAt:editing?.createdAt||Date.now(),updatedAt:Date.now()};
   $('#btnSave').disabled=true;
   try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(body);dlg.close();toast(editing?'已更新':'已儲存');openHist.add(exam);if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{$('#btnSave').disabled=false}});
-$('#btnDel').addEventListener('click',async()=>{const rec=editing;if(!rec||!canSave())return;const {id,...body}=rec;
+$('#btnDel').addEventListener('click',async()=>{if(!editing||!canSave())return;const rec=records.find(x=>x.id===editing.id)||editing;const {id,...body}=rec;
   try{await retry1(()=>db.doc('records/'+id).delete());dlg.close();toast('已刪除 '+EX[rec.exam].name+' '+fmt(rec.date),[['撤銷',()=>retry1(()=>db.doc('records/'+id).set(body)).catch(writeErr)]])}catch(e){writeErr(e)}});
 
 /* ================= SETUP ================= */
 function renderSetup(){
+  if(typingIn($('#profForm'))||typingIn($('#ivForm')))heldRender=true; // redraw untouched fields once focus leaves
   if(!formDirty.profForm&&!typingIn($('#profForm'))){$('#sMed').value=prof('medName');$('#sDose').value=prof('medDose');$('#sMedNote').value=prof('medNote');$('#sYoga').value=prof('yogaMin');$('#sPil').value=prof('pilatesMin');
     $('#sPFrom').value=profile.pauseFrom||'';$('#sPTo').value=profile.pauseTo||'';$('#sPNote').value=profile.pauseNote||''}
   if(!formDirty.ivForm&&!typingIn($('#ivForm'))){
     $('#setRows').innerHTML=EXAMS.map(e=>`<div class="set-row"><label for="iv-${e.id}"><span style="color:${CAT[e.cat].color}" aria-hidden="true">●</span> ${esc(e.name)}<br><span class="muted" style="font-size:.8rem">${esc(e.defSrc)}</span></label><div style="display:flex;align-items:center;gap:6px"><input type="number" id="iv-${e.id}" min="1" max="240" value="${defInterval(e.id)}" inputmode="numeric"><span class="muted" style="font-size:.85rem">月</span></div></div>`).join('')}
-  $$('#p-setup input,#p-setup button').forEach(x=>{if(x.id!=='btnExport'&&x.id!=='impCancel')x.disabled=!canWrite});
+  /* a form opens for editing only once its saved values have arrived from the server */
+  $$('#p-setup input,#p-setup button').forEach(x=>{if(x.id==='btnExport'||x.id==='impCancel')return;const f=x.closest('#profForm')?loaded.profile:x.closest('#ivForm')?loaded.intervals:true;x.disabled=!canWrite||!f});
   $('#lastExport').textContent=profile.lastExport?'上次匯出：'+profile.lastExport:'還沒有匯出過。';
 }
 async function saveProfile(patch){if(!canSave())return false;
@@ -963,13 +980,16 @@ async function saveProfile(patch){if(!canSave())return false;
 $('#profForm').addEventListener('submit',async ev=>{ev.preventDefault();
   const dose=num($('#sDose').value);if(dose==null||dose<=0){$('#sDose').focus();toast('請填劑量');return}
   const pf=$('#sPFrom').value,pt=$('#sPTo').value;if((pf&&!pt)||(!pf&&pt)){toast('暫停模式需要開始日和結束日');return}if(pf&&pt&&pt<pf){toast('結束日要在開始日之後');return}
+  const v=formEdits.profForm;
   const ok=await saveProfile({medName:$('#sMed').value.trim()||'Levothyroxine',medDose:dose,medNote:$('#sMedNote').value.trim(),yogaMin:num($('#sYoga').value)||60,pilatesMin:num($('#sPil').value)||60,pauseFrom:pf||null,pauseTo:pt||null,pauseNote:$('#sPNote').value.trim()});
-  if(ok){formDirty.profForm=false;document.activeElement&&document.activeElement.blur();toast('設定已儲存')}});
-['profForm','ivForm'].forEach(id=>$('#'+id).addEventListener('input',()=>{formDirty[id]=true}));
+  if(ok){if(formEdits.profForm===v){formDirty.profForm=false;document.activeElement&&document.activeElement.blur()}toast('設定已儲存')}}); // edits made while saving stay
+['profForm','ivForm'].forEach(id=>$('#'+id).addEventListener('input',()=>{formDirty[id]=true;formEdits[id]++}));
 $('#sPClear').addEventListener('click',async()=>{if(await saveProfile({pauseFrom:null,pauseTo:null,pauseNote:''})){$('#sPFrom').value='';$('#sPTo').value='';$('#sPNote').value='';toast('已清除暫停')}});
-$('#ivForm').addEventListener('submit',async ev=>{ev.preventDefault();if(!db){toast('資料庫未連線，無法儲存');return}
-  const next={};for(const e of EXAMS){const v=Number($('#iv-'+e.id).value);if(Number.isFinite(v)&&v>0)next[e.id]=Math.round(v)}
-  try{await queued('settings/intervals',()=>retry1(()=>db.doc('settings/intervals').set(next)));formDirty.ivForm=false;document.activeElement&&document.activeElement.blur();toast('間隔已儲存')}catch(e){writeErr(e)}});
+$('#ivForm').addEventListener('submit',async ev=>{ev.preventDefault();if(!canSave())return;if(!loaded.intervals){toast('資料還在載入，請稍候');return}
+  /* merge: keys this form does not show are kept; an emptied field goes back to the default */
+  const next={};for(const e of EXAMS){const v=Number($('#iv-'+e.id).value);next[e.id]=Number.isFinite(v)&&v>0?Math.round(v):null}
+  const ver=formEdits.ivForm;
+  try{await queued('settings/intervals',()=>mergeDoc('settings/intervals',next));if(formEdits.ivForm===ver){formDirty.ivForm=false;document.activeElement&&document.activeElement.blur()}toast('間隔已儲存')}catch(e){writeErr(e)}});
 async function readAll(col){const s=await db.collection(col).get();const o={};s.docs.forEach(d=>o[d.id]=d.data());return o}
 $('#btnExport').addEventListener('click',async()=>{if(!db){toast('資料庫未連線');return}
   const dl=await window.claude?.use?.('downloads');if(!dl){toast('這個檢視無法下載檔案，請在 claude.ai 開啟頁面');return}
@@ -1006,12 +1026,13 @@ setInterval(()=>{if(clockTick())renderCur()},60000);
     db=d;if(u){try{const ok=await u.can('data.write');if(ok===false)canWrite=false}catch(e){}}
     $('#dbNotice').hidden=true;
     const fail=()=>{$('#dbNotice').hidden=false;$('#dbNotice').textContent='資料連線中斷，請重新整理頁面。'};
-    const arrived=k=>{if(!loaded[k]){loaded[k]=true;ready=loaded.days&&loaded.profile}};
-    db.collection('days').onSnapshot(s=>{const o={};s.docs.forEach(x=>o[x.id]=x.data());days=o;arrived('days');renderCur()},fail);
+    /* a cached first snapshot may lack data the server has (e.g. the dose): show it, but only the server's answer opens writing */
+    const arrived=(k,s)=>{if(!loaded[k]&&!s.metadata?.fromCache){loaded[k]=true;ready=loaded.days&&loaded.profile}};
+    db.collection('days').onSnapshot(s=>{const o={};s.docs.forEach(x=>o[x.id]=x.data());days=o;arrived('days',s);renderCur()},fail);
     db.collection('exercise').onSnapshot(s=>{exercises=s.docs.map(x=>({id:x.id,...x.data()}));renderCur()},fail);
     db.collection('records').onSnapshot(s=>{records=s.docs.map(x=>({id:x.id,...x.data()}));renderCur()},fail);
-    db.doc('settings/intervals').onSnapshot(s=>{intervals=s.exists?{...s.data()}:{};renderCur()},fail);
-    db.doc('settings/profile').onSnapshot(s=>{profile=s.exists?{...s.data()}:{};arrived('profile');renderCur()},fail);
+    db.doc('settings/intervals').onSnapshot(s=>{intervals=s.exists?{...s.data()}:{};arrived('intervals',s);renderCur()},fail);
+    db.doc('settings/profile').onSnapshot(s=>{profile=s.exists?{...s.data()}:{};arrived('profile',s);renderCur()},fail);
   }catch(e){$('#dbNotice').textContent='目前無法連線資料庫，請重新整理頁面。'}
 })();
 </script>

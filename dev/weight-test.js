@@ -55,7 +55,8 @@ const sheet=page=>page.evaluate(()=>({
     await wait(600);
     const v1=parseFloat((await sheet(page)).big);
     check('連按 10 次 +0.1 剛好 +1.0',Math.abs(v1-v0-1)<1e-9,{v0,v1});
-    /* 平滑捲動途中的 scroll 事件會讀到還沒到位的位置；按下後立刻送一個 scroll 事件，數值不可被拉回 */
+    /* 按 ±0.1 後同步送一個 scroll 事件：平滑捲動時位置還沒移動，數值會被拉回；即時捲動則位置已到位。
+       這只驗證「按鈕後立即的 scroll 事件」，不模擬真人拖曳或 iOS 慣性，那些要實機確認。 */
     const pulled=await page.evaluate(()=>{const big=()=>parseFloat(document.querySelector('#wsBig').textContent);const a=big();
       document.querySelector('[data-step="1"]').click();document.querySelector('#ruler').dispatchEvent(new Event('scroll'));return{a,b:big()}});
     check('按 +0.1 後立即的 scroll 事件不會把數值拉回',Math.abs(pulled.b-pulled.a-0.1)<1e-9,pulled);
