@@ -50,7 +50,7 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   for(const [name,s,t] of [['關閉',st({},{profile:{remind:{evening:false}}}),E()],['暫停',st({},P(SAT,SAT)),E()],['太晚',st({}),E('17:00')]]){
     r=await run('evening',t,s,{failGet:{['days/'+SAT]:9},failList:{records:9}});
     eq(`${name}時其他資料讀不到：不推播錯誤`,[r.push,r.entry.ok],[null,true]);
-    eq(`${name}時只讀 profile 與 heartbeat`,r.fake.calls.filter(c=>c[0]!=='set').map(c=>c[1]),['settings/profile','system/heartbeat']);
+    eq(`${name}時只讀 profile 與 heartbeat`,r.fake.calls.filter(c=>c.action!=='set').map(c=>c.path),['settings/profile','system/heartbeat']);
   }
 
   /* 執行時間與送出前的再檢查 */
@@ -91,7 +91,7 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   eq('月底加月份：5/31 + 5 個月 = 10/31（今天到期）',await ev({records:[rec('thy_lab','2026-05-31',{interval:5})]}),'家琳今天還沒記：晚上體重；甲狀腺抽血 10/31 到期');
   r=await run('evening',E(),st(need,{records:[rec('thy_lab','2026-05-07',{interval:6}),rec('gi_colo','2016-01-01',{interval:120,nextDue:'2026-11-02'})]}),{pageSize:1});
   eq('records 分頁：每頁 1 筆也會讀完',r.push,'家琳今天還沒記：晚上體重；大腸鏡 11/2 到期、甲狀腺抽血 11/7 到期');
-  eq('records 分頁：2 筆、每頁 1 筆，照 next_cursor 讀 2 次就停',r.fake.calls.filter(c=>c[0]==='list').length,2);
+  eq('records 分頁：2 筆、每頁 1 筆，照 next_cursor 讀 2 次就停',r.fake.calls.filter(c=>c.action==='list').length,2);
 
   /* 週報 */
   const wk={},WD=['2026-10-26','2026-10-27','2026-10-28','2026-10-29','2026-10-30','2026-10-31',SUN];
@@ -105,7 +105,7 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   const wst=o=>st(wk,{profile:{lastExport:'2026/10/02'},heartbeat:{recent},exercise:[{date:'2026-10-26',min:60},{date:'2026-10-29',min:50},{date:SUN,min:70},{date:'2026-10-28',min:30,deleted:true},{date:'2026-10-25',min:90}],...o});
   r=await run('weekly',W(),wst());
   eq('週報：平均、服藥、運動、排程',r.push,'週報 10/26–11/1：早上平均 52.3 kg（6 天）、服藥 7/7 天、運動 180 分、排程 14/14');
-  eq('週報：days 依 7 個日期逐一 get',r.fake.calls.filter(c=>c[0]==='get'&&c[1].startsWith('days/')).map(c=>c[1]),WD.map(d=>'days/'+d));
+  eq('週報：days 依 7 個日期逐一 get',r.fake.calls.filter(c=>c.action==='get'&&c.path.startsWith('days/')).map(c=>c.path),WD.map(d=>'days/'+d));
   eq('週報：心跳 kind weekly，missing 空',[r.entry.kind,r.entry.missing,r.entry.shouldPush],['weekly',[],true]);
   eq('上次匯出 31 天前：該備份了',(await run('weekly',W(),wst({profile:{lastExport:'2026/10/01'}}))).push.endsWith('；該備份了'),true);
   eq('從未匯出：該備份了',(await run('weekly',W(),wst({profile:{}}))).push.endsWith('；該備份了'),true);
@@ -122,7 +122,7 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
     eq('舊 recent 異常（'+JSON.stringify(bad).slice(0,30)+'）：週報不丟錯，無效項不計',(await run('weekly',W(),wst({heartbeat:{recent:bad},profile:{lastExport:'2026/10/30'}}))).push.match(/排程 [\d/]+/)[0],'排程 0/14');
   r=await run('weekly',W(),wst({profile:{lastExport:'2026/10/30'}}),{failGet:{'system/heartbeat':2}});
   eq('心跳讀不到：週報寫「排程讀不到」，不寫 0/14',r.push.includes('排程讀不到')&&!r.push.includes('0/14'),true);
-  eq('心跳讀不到：不寫入心跳',[r.heartbeatWritten,r.fake.calls.some(c=>c[0]==='set')],[false,false]);
+  eq('心跳讀不到：不寫入心跳',[r.heartbeatWritten,r.fake.calls.some(c=>c.action==='set')],[false,false]);
   r=await run('weekly',W(),wst({profile:{lastExport:'2026/10/30'}}),{failGet:{'system/heartbeat':1}});
   eq('心跳第一次讀取失敗、重試成功：照常寫入',[r.heartbeatWritten,r.push.includes('排程 14/14')],[true,true]);
   r=await run('weekly',W(),wst(),{pageSize:2});
@@ -138,32 +138,32 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
 
   /* 交付結果 */
   r=await run('morning',M(),st({}),{push:'sent'});
-  eq('推播工具回報已送：tool_sent，最終回覆不重複那一行',[r.delivery,r.reply,r.fake.pushed],['tool_sent','（已推播）',['家琳今天還沒記：早上體重、服藥']]);
+  eq('推播工具回報已送：tool_sent，最終回覆不重複那一行',[r.delivery,r.reply,r.fake.pushAccepted],['tool_sent','（已推播）',['家琳今天還沒記：早上體重、服藥']]);
   r=await run('morning',M(),st({}),{push:'not_sent'});
   eq('推播工具回報未送：tool_not_sent，回覆不說已推播',[r.delivery,r.heartbeat.delivery,r.heartbeat.shouldPush,r.reply],['tool_not_sent','tool_not_sent',true,'（推播未送出）']);
   r=await run('morning',M(),st({}),{push:'throw'});
-  eq('推播工具出錯：tool_error，心跳照寫',[r.delivery,r.heartbeatWritten],['tool_error',true]);
+  eq('推播工具出錯：tool_error，回覆是結果未確認，心跳照寫',[r.delivery,r.reply,r.heartbeatWritten],['tool_error','（推播結果未確認）',true]);
   r=await run('morning',M(),st({}));
-  eq('沒有推播工具：platform，最終回覆就是那一行',[r.delivery,r.reply],['platform','家琳今天還沒記：早上體重、服藥']);
+  eq('平台模式：platform，最終回覆就是那一行',[r.delivery,r.reply],['platform','家琳今天還沒記：早上體重、服藥']);
   r=await run('morning',M(),st({[SAT]:day(full)}),{push:'sent'});
-  eq('沒有缺：不呼叫推播工具',[r.fake.calls.some(c=>c[0]==='push'),r.delivery],[false,'none']);
+  eq('沒有缺：不呼叫推播工具',[r.fake.pushAttempts.length,r.delivery],[0,'none']);
   r=await run('morning',M(),st({}),{push:'sent',failGet:{'system/heartbeat':2}});
   eq('心跳讀不到：照常推播，但不寫心跳',[r.delivery,r.heartbeatWritten],['tool_sent',false]);
 
   /* 重複執行 */
   const prev=(await run('morning',M('07:21'),st({}),{push:'sent'})).heartbeat;
   r=await run('morning',M('07:40'),st({},{heartbeat:prev}),{push:'sent'});
-  eq('同一天早上已送出過：duplicate，不再推播',[r.entry.skipped,r.fake.pushed.length,r.heartbeat.recent.length],['duplicate',0,2]);
+  eq('同一天早上已送出過：duplicate，不再推播',[r.entry.skipped,r.fake.pushAttempts.length,r.heartbeat.recent.length],['duplicate',0,2]);
   const prevNot=(await run('morning',M('07:21'),st({}),{push:'not_sent'})).heartbeat;
-  eq('上一次未送出：這次照常推播',(await run('morning',M('07:40'),st({},{heartbeat:prevNot}),{push:'sent'})).fake.pushed.length,1);
-  eq('早上送過，晚上照常',(await run('evening',E(),st({},{heartbeat:prev}),{push:'sent'})).fake.pushed.length,1);
+  eq('上一次未送出：這次照常推播',(await run('morning',M('07:40'),st({},{heartbeat:prevNot}),{push:'sent'})).fake.pushAttempts.length,1);
+  eq('早上送過，晚上照常',(await run('evening',E(),st({},{heartbeat:prev}),{push:'sent'})).fake.pushAttempts.length,1);
 
   /* 心跳寫入：版本、衝突、建立競爭、排序 */
   r=await run('morning',M(),st({},{heartbeat:{at:'2026-10-30T10:00:00Z',note:'test'}}));
   eq('舊文件沒有 recent：從空陣列開始，舊欄位不保留',[r.heartbeat.recent.length,r.heartbeat.note],[1,undefined]);
-  eq('寫入已存在的文件帶讀到的 if_version',r.fake.calls.find(c=>c[0]==='set')[2]!==null,true);
+  eq('寫入已存在的文件帶讀到的 if_version',r.fake.calls.find(c=>c.action==='set').if_version!==null,true);
   r=await run('morning',M(),st({}));
-  eq('第一次建立：不帶 if_version',r.fake.calls.find(c=>c[0]==='set')[2],null);
+  eq('第一次建立：不帶 if_version',r.fake.calls.find(c=>c.action==='set').if_version,null);
   const other={run:'other#evening-zz',at:'2026-10-30T22:21:00+08:00',kind:'evening',date:'2026-10-30',missing:[],paused:false,ok:true,skipped:null,shouldPush:false,delivery:'none',msg:''};
   const race=(p,store,nextVer)=>{if(p==='system/heartbeat'&&!race.done){race.done=true;store.set(p,{data:{...other,recent:[other]},version:nextVer()})}};
   r=await run('morning',M(),st({}),{beforeSet:race});
@@ -173,7 +173,7 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   eq('版本衝突：重讀一次再寫，三筆都在',r.heartbeat.recent.length,3);
   const always=(p,store,nextVer)=>{if(p==='system/heartbeat'){const c=store.get(p);store.set(p,{data:c?c.data:{},version:nextVer()})}};
   r=await run('morning',M(),st({},{heartbeat:{recent:[]}}),{beforeSet:always,push:'sent'});
-  eq('連續衝突：只重試一次就放棄，推播照常',[r.heartbeatWritten,r.fake.calls.filter(c=>c[0]==='set').length,r.delivery],[false,2,'tool_sent']);
+  eq('連續衝突：只重試一次就放棄，推播照常',[r.heartbeatWritten,r.fake.calls.filter(c=>c.action==='set').length,r.delivery],[false,2,'tool_sent']);
   r=await run('morning',M(),st({},{heartbeat:{recent:[]}}),{failSet:1});
   eq('非版本衝突的寫入失敗：重讀後重寫一次成功',r.heartbeatWritten,true);
   const later={...other,run:'later',at:'2026-10-31T07:30:00+08:00',kind:'morning',date:SAT};
@@ -183,6 +183,71 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   r=await run('morning',M(),st({},{heartbeat:{recent:many}}));
   eq('recent 最多 21 筆，留最新的',[r.heartbeat.recent.length,r.heartbeat.recent[0].run===r.entry.run,r.heartbeat.recent[20].run],[RECENT_MAX,true,'x19']);
   eq('recent 裡不含 recent，也不含未知欄位',normalizeRecent({recent:[{at:M(),kind:'morning',date:SAT,recent:[1],extra:1}]}),[{at:M(),kind:'morning',date:SAT}]);
+
+  /* 第二輪審查：通知管道固定、時間截止、去重身分、sent 與 recent 分開、初始化、run */
+  r=await run('morning',M(),st({}),{mode:'platform',push:'sent'});
+  eq('平台模式＋工具存在：不呼叫工具，最終回覆就是那一行',[r.fake.pushAttempts.length,r.delivery,r.reply],[0,'platform','家琳今天還沒記：早上體重、服藥']);
+  r=await run('morning',M(),st({}),{mode:'tool',push:null});
+  eq('工具模式＋沒有工具：tool_missing，不改走平台',[r.delivery,r.reply,r.heartbeat.shouldPush],['tool_missing','（推播未送出）',true]);
+  eq('工具模式＋沒有工具：不算送出，下次照常',!!r.heartbeat.sent?.['morning|'+SAT+'|remind'],false);
+  r=await run('morning',M('15:00'),st({},{readError:true}),{push:'sent'});
+  eq('時段外、profile 讀不到：late，不送錯誤通知',[r.entry.skipped,r.fake.pushAttempts.length],['late',0]);
+  r=await run('evening',SUN+'T03:59:00+08:00',st({}),{push:'sent',failList:{records:2},times:[SUN+'T03:59:00+08:00',SUN+'T04:00:30+08:00']});
+  eq('03:59 開始、讀取失敗拖過 04:00：錯誤通知也不送',[r.entry.skipped,r.fake.pushAttempts.length],['late',0]);
+  r=await run('evening',SUN+'T03:59:00+08:00',st({}),{times:[SUN+'T03:59:00+08:00',SUN+'T03:59:30+08:00',SUN+'T04:01:00+08:00']});
+  eq('平台模式 03:59 通過檢查、寫完心跳已 04:01：最終回覆不送提醒',[r.reply,r.delivery,r.entry.skipped],['（無需提醒）','none','late']);
+  eq('平台模式撤回：心跳改正為 late，sent 沒有這次',[r.heartbeat.skipped,r.heartbeat.delivery,r.heartbeat.recent.length,Object.keys(r.heartbeat.sent||{}).length],['late','none',1,0]);
+  r=await run('evening',SUN+'T03:59:00+08:00',st({}),{failGet:{'system/heartbeat':2},times:[SUN+'T03:59:00+08:00',SUN+'T03:59:30+08:00',SUN+'T04:01:00+08:00']});
+  eq('平台模式、心跳讀不到：最後的時間檢查照做',[r.reply,r.heartbeatWritten,r.fake.calls.some(c=>c.action==='set')],['（無需提醒）',false,false]);
+  {const errRun=await run('morning',M('07:23'),st({},{readError:true}),{push:'sent'});
+    eq('故障通知送出',errRun.delivery,'tool_sent');
+    r=await run('morning',M('07:40'),st({},{heartbeat:errRun.heartbeat}),{push:'sent'});
+    eq('先送過故障通知，之後資料恢復：正常提醒照送（去重分開）',[r.entry.skipped,r.fake.pushAttempts.length],[null,1]);
+    r=await run('morning',M('07:50'),st({},{readError:false,heartbeat:r.heartbeat}),{push:'sent'});
+    eq('正常提醒送過之後：duplicate',r.entry.skipped,'duplicate');
+    r=await run('morning',M('07:55'),st({},{readError:true,heartbeat:errRun.heartbeat}),{push:'sent'});
+    eq('故障通知送過之後再故障：duplicate',r.entry.skipped,'duplicate')}
+  {const pe=await run('morning',M('07:21'),st({}),{push:'throw'});
+    eq('tool_error 算可能已送出，下次不重送',(await run('morning',M('07:40'),st({},{heartbeat:pe.heartbeat}),{push:'sent'})).entry.skipped,'duplicate');
+    const pp=await run('morning',M('07:21'),st({}),{mode:'platform'});
+    eq('platform 算可能已送出，下次不重送',(await run('morning',M('07:40'),st({},{heartbeat:pp.heartbeat}),{push:'sent'})).entry.skipped,'duplicate');
+    const pm=await run('morning',M('07:21'),st({}),{mode:'tool',push:null});
+    eq('tool_missing 不算送出，下次照常',(await run('morning',M('07:40'),st({},{heartbeat:pm.heartbeat}),{push:'sent'})).fake.pushAttempts.length,1)}
+  {const sent=await run('morning',M('07:21'),st({}),{push:'sent'});
+    r=await run('morning',M('07:40'),st({[SAT]:day({am:full.am,med:full.med})},{heartbeat:sent.heartbeat}),{push:'sent'});
+    eq('先前送過、現在已補齊：記「都記了」，不是 duplicate',[r.entry.skipped,r.entry.missing],[null,[]])}
+  {const {fakeApi}=require('./fake-artifact-data');const {storeDocs}=require('./remind-ref');
+    const f=fakeApi({docs:storeDocs(st({})),push:'sent',times:[...Array(23)].map((_,i)=>SAT+'T07:'+String(20+i).padStart(2,'0')+':00+08:00')});
+    for(let i=0;i<23;i++)await run('morning',null,null,{fake:f,mode:'tool'});
+    const hbDoc=f.doc('system/heartbeat');
+    eq('同日連續執行 23 次：只推播一次（sent 和 recent 分開，不受 21 筆限制）',[f.pushAttempts.length,hbDoc.recent.length,!!hbDoc.sent['morning|'+SAT+'|remind']],[1,21,true])}
+  r=await run('morning',M(),st({},{heartbeat:{recent:[],sent:{['morning|2026-10-20|remind']:{run:'a'},['morning|2026-10-24|remind']:{run:'b'},['bad']:{run:'c'}}}}));
+  eq('sent 只留 7 天內、格式正確的項目',Object.keys(r.heartbeat.sent).sort(),['morning|2026-10-24|remind','morning|2026-10-31|remind']);
+  {const a=await run('morning',M('07:21'),st({}),{push:'sent',failGet:{'system/heartbeat':2}});
+    const b=await run('morning',M('07:40'),st({}),{push:'sent',failGet:{'system/heartbeat':2}});
+    eq('已知限制：心跳讀不到時沒有去重依據，兩次都推播',[a.fake.pushAttempts.length,b.fake.pushAttempts.length],[1,1])}
+  {const {fakeApi}=require('./fake-artifact-data');const {storeDocs,execute}=require('./remind-ref');
+    const f=fakeApi({docs:storeDocs(st({},{heartbeat:{recent:[]}})),push:'sent',times:[M('07:23')]});
+    const [x,y]=await Promise.all([execute('morning',f.api,'tool'),execute('morning',f.api,'tool')]);
+    const hbDoc=f.doc('system/heartbeat');
+    eq('已知限制：兩個執行同時開始，兩個都推播（沒有實作送出前占用）',f.pushAttempts.length,2);
+    eq('同時執行：兩筆紀錄都保留，沒有被覆蓋',[x.heartbeatWritten,y.heartbeatWritten,hbDoc.recent.map(e=>e.run).sort()],[true,true,[x.entry.run,y.entry.run].sort()]);
+    eq('同時執行：ArtifactData 參數都合 schema',f.contractErrors,[])}
+  r=await run('morning',M(),st({},{heartbeat:{recent:[]}}),{push:'sent',failSetAfterCommit:1});
+  eq('寫入已提交但回應遺失：重讀後再寫，同一個 run 只留一筆',[r.heartbeatWritten,r.heartbeat.recent.length,r.fake.calls.filter(c=>c.action==='set').length],[true,1,2]);
+  eq('重寫沿用同一個 run',r.fake.calls.filter(c=>c.action==='set').map(c=>c.data.run).every(x=>x===r.entry.run),true);
+  {const realRandom=Math.random;Math.random=()=>0;try{r=await run('morning',M(),st({}))}finally{Math.random=realRandom}
+    eq('run 的隨機碼固定 4 字（Math.random()=0 也一樣）',r.entry.run.split('-').pop().length,4);
+    for(let i=0;i<50;i++){const x=(await run('morning',M(),st({}))).entry.run;if(!/#morning-[0-9a-z]{4}$/.test(x)){eq('run 格式',x,'…#morning-xxxx');break}}}
+  r=await run('morning',M(),st({},{heartbeat:{recent:[{at:Date.parse(M('06:00')),kind:'evening',date:'2026-10-30'}]}}));
+  eq('舊 recent 的毫秒數字時間保留',r.heartbeat.recent.length,2);
+  r=await run('morning',M(),st({},P(SAT,SAT)));
+  eq('跳過時的紀錄完整初始化',Object.fromEntries(['missing','ok','shouldPush','delivery','msg'].map(k=>[k,r.heartbeat[k]])),{missing:[],ok:true,shouldPush:false,delivery:'none',msg:''});
+  r=await run('morning',M(),st({},{readError:true}),{push:'not_sent'});
+  eq('未送出時 msg 保留，shouldPush 仍是 true',[r.heartbeat.msg,r.heartbeat.shouldPush,r.heartbeat.missing],['提醒檢查失敗：讀不到資料',true,[]]);
+  {const {fakeApi,contract,URL}=require('./fake-artifact-data');
+    eq('替身拒絕不合 schema 的參數（get 沒有 doc_id、list 帶 doc_id、錯的 url、limit 超過）',[contract({action:'get',url:URL,collection:'days'}).length>0,contract({action:'list',url:URL,collection:'days',doc_id:'x'}).length>0,contract({action:'get',url:'https://x',collection:'days',doc_id:'a'}).length>0,contract({action:'list',url:URL,collection:'days',query:{limit:5000}}).length>0],[true,true,true,true]);
+    eq('替身接受合 schema 的參數',contract({action:'query',url:URL,collection:'exercise',query:{limit:1000,where:[['date','>=','2026-10-26']],cursor:'2'}}),[])}
 
   /* 檢查表和 src/index.html 一致：名稱、預設間隔、不追蹤的分類 */
   const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');

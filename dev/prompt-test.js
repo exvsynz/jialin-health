@@ -16,9 +16,13 @@ const COMMON=[
   ['artifact 網址','https://claude.ai/artifact/LJViyfLqXv2VdD5krdJahh'],
   ['台北時區','Asia/Taipei'],['UTC+8','UTC+8'],['凌晨 4 點換日','04:00 之前算前一天'],
   ['暫停要跳過','"paused"'],['開關關閉','"off"'],['執行太晚','"late"'],['讀取失敗','"error"'],['重複執行','"duplicate"'],
-  ['已知跳過時不讀其他文件','符合第 2–4 條：不讀其他文件'],['讀取失敗重試一次','重試一次'],
-  ['心跳讀不到就不寫','第 2 步心跳讀不到時，這一步整個跳過'],['整理舊 recent','整理舊心跳的 `recent`'],
-  ['送出前再看一次時間','再看一次時間'],['交付結果分開記錄','"tool_sent"'],['平台代送','"platform"'],['不代表手機收到','不代表手機一定收到'],
+  ['已知跳過時不讀其他文件','符合第 1、3、4 條：不讀其他文件'],['時間先於 profile 判斷','1. **時間**：不在時段內'],['讀取失敗重試一次','重試一次'],
+  ['心跳讀不到就不寫','第 2 步心跳讀不到時，這一步整個跳過（第 7 步的時間檢查照做）'],['心跳讀不到仍做最後時間檢查','第 7 步只看時間、不寫心跳'],['整理舊 recent','`recent`：不是陣列就當成 `[]`'],['recent 接受毫秒數字','有效的毫秒數字'],
+  ['整理舊 sent','`sent`：不是物件就當成 `{}`'],['故障與提醒分開去重','故障通知和正常提醒分開判斷重複'],['重複只在有訊息時判斷','**重複**：`msg` 不是空字串'],
+  ['錯誤通知也看時間','包括讀取失敗的訊息'],['平台模式最後再看時間','最終回覆前再看一次時間'],['平台模式撤回時改正心跳','撤回這次的通知'],
+  ['通知管道固定','**通知管道：`'],['工具模式不改走平台','不要改用最終回覆代送'],['平台模式不呼叫工具','就算有推播工具也不要呼叫'],
+  ['交付結果分開記錄','"tool_sent"'],['工具缺席','"tool_missing"'],['平台代送','"platform"'],['不代表手機收到','不代表手機一定收到'],['去重策略','寧可少一則，也不要重複'],
+  ['結果未確認的回覆','「（推播結果未確認）」'],['完整初始化','delivery: "none", msg: "" }'],['msg 未送出也保留','推播沒有送出時也保留原文'],['run 重試沿用','重試寫入也一樣'],
   ['心跳寫進 system/heartbeat','system/heartbeat'],['寫入帶 if_version','if_version'],['用 set 不用 update','用 `set` 整份取代'],
   ['recent 依時間排序留 21 筆','依 `at` 由新到舊排序，只留前 21 筆'],['執行識別碼','`run`'],['只能寫 system/heartbeat','只能寫一份文件：`system/heartbeat`'],
   ['推播只寫一行','只寫一行'],['沒有推播的回覆','「（無需提醒）」'],['不推播時不呼叫推播工具','不要呼叫任何推播工具'],
@@ -27,10 +31,12 @@ const COMMON=[
 ];
 
 (async()=>{
-const outs=new Map();for(const c of Object.values(CASES))outs.set(c,(await run(...c)).reply);
+const outs=new Map();for(const c of Object.values(CASES))outs.set(c,(await run(...c)).msg); // 範例句是 msg，和通知管道無關
 for(const [kind,spec] of Object.entries(KINDS)){
   const f=`ops/scheduled/${kind}.md`;let s;try{s=read(f)}catch(e){check(f+'：檔案存在',false);continue}
   for(const [name,needle] of COMMON)check(`${kind}：${name}`,s.includes(needle),needle);
+  const modes=[...s.matchAll(/^\*\*通知管道：`([a-z]+)`\*\*$/gm)].map(x=>x[1]);
+  check(`${kind}：通知管道只有一行，值是 tool 或 platform`,modes.length===1&&['tool','platform'].includes(modes[0]),modes);
   for(const d of spec.docs)check(`${kind}：讀取 ${d}`,s.includes('| `'+d+'`'),d);
   check(`${kind}：開關 key`,s.includes('`remind.'+kind+'`'));
   check(`${kind}：心跳 kind`,s.includes(`kind: "${kind}"`));

@@ -1,5 +1,5 @@
 /* 提示詞範例句對應的情境（合成資料）。ops/scheduled/*.md 裡 [例 id] 那一行「」內的句子，
-   必須等於 dev/remind-ref.js 對這裡同一情境的最終回覆（沒有推播工具，所以回覆就是那一行）。dev/prompt-test.js 會比對。 */
+   必須等於 dev/remind-ref.js 對這裡同一情境算出的 msg。dev/prompt-test.js 會比對。 */
 const SAT='2026-10-31',SUN='2026-11-01';
 const am={w:52.1,bf:24,at:'07:10'},med={taken:true,at:'07:15',dose:50},pm={w:52.6,at:'22:05'};
 const st=(days={},o={})=>({profile:{},days,exercise:[],records:[],heartbeat:null,...o});
