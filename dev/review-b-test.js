@@ -57,6 +57,34 @@ const txt=(page,s)=>page.evaluate(s=>{const e=document.querySelector(s);return e
     check('第 4 點：預定 11/15 起 75 mcg（同日排最後的那筆）',(await txt(page,'#medNow')).includes('預定 11/15 起 75 mcg'),await txt(page,'#medNow'));
     await page.context().close()}
 
+  /* 第 5 點：備份有 meddose 集合，但要覆蓋的紀錄缺新欄位時，也要警告 */
+  {const s=seed();s['days/2026-10-29']={...s['days/2026-10-29'],med:{taken:true,at:'07:20',dose:50,mode:'bedtime',interfere:{coffee:true}}};
+    const bk={app:'jialin-health',version:2,exportedAt:'2026-10-20T00:00:00Z',collections:{days:{'2026-10-29':{date:'2026-10-29',med:{taken:true,at:'07:20',dose:50}}},meddose:{}}};
+    const {page}=await open({time:NOW,hash:'setup',cfg:{latencyComp:true,seed:s}});await wait(500);
+    await page.setInputFiles('#impFile',{name:'b.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bk))});await wait(300);
+    check('第 5 點：要覆蓋的紀錄缺服藥細節，預覽警告會被取代',(await txt(page,'#impPreview')).includes('會被備份內容取代'),await txt(page,'#impPreview'));
+    await page.context().close()}
+
+  /* 第 6 點：正在改摘要期間時，遠端重繪不把日期改回預設 */
+  {const {page}=await open({time:NOW,hash:'summary',cfg:{latencyComp:true,seed:seed()}});await wait(500);
+    await page.evaluate(()=>{const i=document.querySelector('#smFrom');i.value='2026-09-01';i.dispatchEvent(new Event('input',{bubbles:true}))});
+    await page.evaluate(()=>window.__mock.externalSet('days/2026-10-29',{...window.__mock.store.get('days/2026-10-29'),period:true}));await wait(300);
+    check('第 6 點：輸入中的開始日不被重繪蓋掉',(await page.inputValue('#smFrom'))==='2026-09-01',await page.inputValue('#smFrom'));
+    await page.context().close()}
+
+  /* 第 9 點：取得下載能力失敗要提示；等待期間改日期，下載仍是按下時的期間 */
+  {const {page,errors}=await open({time:NOW,hash:'summary',cfg:{latencyComp:true,seed:seed(),downloadsReject:'unavailable'}});await wait(500);
+    await page.click('#smMd');await wait(300);
+    check('第 9 點：取得下載能力失敗：顯示提示',await page.isVisible('#toast')&&(await page.textContent('#toastText')).includes('下載'),await page.textContent('#toastText'));
+    check('第 9 點：沒有未處理的錯誤',!errors.length,errors);
+    await page.context().close()}
+  {const {page}=await open({time:NOW,hash:'summary',cfg:{latencyComp:true,seed:seed(),downloadsDelay:600}});await wait(500);
+    await page.click('#smMd');await page.fill('#smTo','2026-10-15');await page.dispatchEvent('#smTo','change');await wait(900);
+    const dl=await page.evaluate(()=>window.__lastDownload);
+    check('第 9 點：等待期間改了結束日，檔名仍是按下時的期間',dl?.filename==='家琳回診摘要-20260802-20261030.md',dl?.filename);
+    check('第 9 點：內容也是按下時的期間',dl?.data.startsWith('# 家琳回診摘要 2026/08/02–2026/10/30'),dl?.data.slice(0,40));
+    await page.context().close()}
+
   await close();
   process.exit(summary()?1:0);
 })().catch(e=>{console.error(e);process.exit(2)});

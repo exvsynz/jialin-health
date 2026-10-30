@@ -1364,7 +1364,7 @@ function summaryCtx(){return{days,exercise:exercises,records,meddose,settingDose
 const smLoaded=()=>['days','profile','intervals','meddose','records','exercise'].every(k=>loaded[k]);
 let smCur=null;
 function renderSummary(){const today=logicalToday();
-  if(!smUser){const lv=profile.lastVisit;$('#smFrom').value=validDate(lv)&&lv<=today?lv:addDays(today,-89);$('#smTo').value=today}
+  if(!smUser&&loaded.profile){const lv=profile.lastVisit;$('#smFrom').value=validDate(lv)&&lv<=today?lv:addDays(today,-89);$('#smTo').value=today;smUser=true} // set once per visit, never on a redraw
   $('#smFrom').max=today;$('#smTo').max=today;
   const btns=['#smCopy','#smMd','#smHtml','#smVisit'];
   if(!smLoaded()){smCur=null;$('#smErr').hidden=true;$('#smPreview').textContent='資料載入中…';btns.forEach(b=>$(b).disabled=true);return}
@@ -1372,14 +1372,16 @@ function renderSummary(){const today=logicalToday();
   $('#smErr').hidden=!sm.error;$('#smErr').textContent=sm.error||'';smCur=sm.error?null:sm;
   btns.forEach(b=>$(b).disabled=!smCur);$('#smVisit').disabled=!smCur||!canWrite||!loaded.profile;
   $('#smPreview').innerHTML=smCur?summaryBody(smCur):'';$('#smText').hidden=true}
-['#smFrom','#smTo'].forEach(q=>$(q).addEventListener('change',()=>{smUser=true;renderSummary()}));
+['#smFrom','#smTo'].forEach(q=>{$(q).addEventListener('input',()=>{smUser=true});$(q).addEventListener('change',()=>{smUser=true;renderSummary()})});
 $('#smCopy').addEventListener('click',async()=>{if(!smCur)return;const t=summaryText(smCur);
   try{await navigator.clipboard.writeText(t);toast('已複製')}
   catch(e){const ta=$('#smText');ta.value=t;ta.hidden=false;ta.focus();ta.select();toast('已選取，請長按複製')}});
-async function saveSummary(ext){if(!smCur)return;const sm=smCur;
-  const dl=await window.claude?.use?.('downloads');if(!dl){toast('這個檢視無法下載檔案，請在 claude.ai 開啟頁面');return}
-  const name='家琳回診摘要-'+$('#smFrom').value.replace(/-/g,'')+'-'+$('#smTo').value.replace(/-/g,'')+'.'+ext;
-  try{await dl.save({filename:name,data:ext==='md'?summaryMd(sm):summaryHtml(sm)});toast('已存成 .'+ext)}
+async function saveSummary(ext){if(!smCur)return;
+  /* the summary and its period are taken before any wait, so the file matches what was on screen when tapped */
+  const sm=smCur,name='家琳回診摘要-'+$('#smFrom').value.replace(/-/g,'')+'-'+$('#smTo').value.replace(/-/g,'')+'.'+ext,data=ext==='md'?summaryMd(sm):summaryHtml(sm);
+  let dl;try{dl=await window.claude?.use?.('downloads')}catch(e){toast('無法取得下載功能，請稍後再試');return}
+  if(!dl){toast('這個檢視無法下載檔案，請在 claude.ai 開啟頁面');return}
+  try{await dl.save({filename:name,data});toast('已存成 .'+ext)}
   catch(e){toast(e&&e.code==='declined'?'已取消下載':'下載失敗，請再試一次')}}
 $('#smMd').addEventListener('click',()=>saveSummary('md'));
 $('#smHtml').addEventListener('click',()=>saveSummary('html'));
@@ -1444,11 +1446,18 @@ $('#btnExport').addEventListener('click',async()=>{if(!db){toast('資料庫未�
     await dl.save({filename:'家琳健康追蹤備份-'+logicalToday()+'.json',data:JSON.stringify(out,null,1)});if(ready)saveProfile({lastExport:fmt(logicalToday())});toast('已匯出')}
   catch(e){toast(e&&e.code==='declined'?'已取消匯出':'匯出失敗，請稍後再試')}});
 let pendingImport=null;
+/* records whose medication details, draw context or new settings would be replaced by a backup that lacks them */
+function importLoses(c){let n=0;
+  for(const [id,b] of Object.entries(c.days||{})){const cur=days[id]?.med,bm=(b&&b.med)||{};if(!cur)continue;
+    if(['mode','interfere','doseSrc'].some(k=>cur[k]!=null&&!(k in bm)))n++}
+  for(const [id,b] of Object.entries(c.records||{})){const cur=records.find(x=>x.id===id);if(cur?.drawCtx&&!(b&&b.drawCtx))n++}
+  const bp=c.settings?.profile;if(bp&&['tshRecheckWeeks','lastVisit','remind'].some(k=>profile[k]!=null&&!(k in bp)))n++;
+  return n}
 $('#impFile').addEventListener('change',async ev=>{const f=ev.target.files[0];if(!f)return;
   try{const j=JSON.parse(await f.text());if(j.app!=='jialin-health'||!j.collections)throw 0;pendingImport=j;const c=j.collections;
-    const old=!c.meddose; // backups made before dose changes existed (version 1)
+    const old=!c.meddose,lose=importLoses(c); // a backup from before dose changes, or one whose records lack fields the current ones have
     $('#impPreview').innerHTML=`備份時間 ${esc((j.exportedAt||'').slice(0,10))}：日紀錄 ${Object.keys(c.days||{}).length} 天、運動 ${Object.keys(c.exercise||{}).length} 筆、定期檢查 ${Object.keys(c.records||{}).length} 筆、劑量變更 ${Object.keys(c.meddose||{}).length} 筆。<br>匯入會用備份內容覆蓋相同日期與相同編號的紀錄，其他紀錄保留。`
-      +(old?'<br>這份備份比用藥功能舊；相同日期的服藥細節、抽血情境會被備份內容取代。建議先匯出目前的資料。':'')
+      +(old?'<br>這份備份比用藥功能舊；相同日期的服藥細節、抽血情境會被備份內容取代。建議先匯出目前的資料。':lose?`<br>有 ${lose} 筆紀錄的服藥細節、抽血情境或設定，會被備份內容取代。建議先匯出目前的資料。`:'')
       +(c.meddose&&Object.keys(c.meddose).length?'<br>備份之後才刪除的劑量變更，會依備份內容回來。':'');
     $('#impPreview').hidden=false;$('#impActions').hidden=false;$('#impGo').classList.remove('armed');$('#impGo').textContent='確認匯入'}
   catch(e){toast('這不是本工具匯出的備份檔');ev.target.value=''}});

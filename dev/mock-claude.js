@@ -7,7 +7,8 @@
      seed:{path:body}, latency:ms, latencyComp:bool, firstSnapDelay:ms, snapDelay:{path:ms},
      cacheFirst:{path:body|null}（先送 fromCache:true 的快照，serverDelay 毫秒後才送伺服器快照）, serverDelay:ms,
      failListen:[path], denyWrites:bool, failNext:{code,count}, canWrite:bool, noDb:bool,
-     noDownloads:bool（沒有下載能力）, downloadError:code（下載時丟出這個錯誤，例如 'declined'） }
+     noDownloads:bool（沒有下載能力）, downloadError:code（下載時丟出這個錯誤，例如 'declined'）,
+     downloadsReject:code（取得下載能力時就丟錯）, downloadsDelay:ms（取得下載能力要等多久） }
    acquire() 依 db.d.ts 的租約語意：沒有人持有或已過期才給；不會自己建立文件。 */
 (function(){
   const cfg=window.__mockCfg||{};
@@ -70,5 +71,5 @@
     breakListener:p=>{for(const l of listeners)if(!l.dead&&l.path===p){l.dead=true;l.error&&l.error(err('unavailable'))}},
     /* 送出一份帶舊內容的快照給文件監聽者，不改 store：模擬另一台裝置延遲送達的舊快照 */
     staleSnapshot:(p,b)=>{for(const l of listeners)if(!l.dead&&l.kind==='doc'&&l.path===p)setTimeout(()=>!l.dead&&l.next(docSnap(p,meta,clone(b))),0)}};
-  window.claude={use:async name=>{await sleep(cfg.useDelay??20);if(cfg.noDb&&name==='db')return null;return name==='db'?db:name==='user'?user:name==='downloads'?(cfg.noDownloads?null:downloads):null}};
+  window.claude={use:async name=>{await sleep(cfg.useDelay??20);if(name==='downloads'){if(cfg.downloadsReject)throw err(cfg.downloadsReject);await sleep(cfg.downloadsDelay||0)}if(cfg.noDb&&name==='db')return null;return name==='db'?db:name==='user'?user:name==='downloads'?(cfg.noDownloads?null:downloads):null}};
 })();
