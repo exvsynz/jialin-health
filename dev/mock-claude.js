@@ -66,6 +66,8 @@
   for(const[p,b]of Object.entries(cfg.seed||{}))store.set(p,clone(b));
   /* 測試用：不經過 onSnapshot 直接改資料，模擬另一台裝置的寫入尚未送達 */
   window.__mock={store,writes,cfg,leases,holdLease:(p,ms)=>leases.set(p,{holder:'other-device',exp:Date.now()+ms}),releaseLease:p=>leases.delete(p),silentSet:(p,b)=>store.set(p,clone(b)),silentDelete:p=>store.delete(p),externalSet:(p,b)=>{store.set(p,clone(b));notify(p)},
+    /* 讓已經在運作的監聽中途失敗（例如連線中斷） */
+    breakListener:p=>{for(const l of listeners)if(!l.dead&&l.path===p){l.dead=true;l.error&&l.error(err('unavailable'))}},
     /* 送出一份帶舊內容的快照給文件監聽者，不改 store：模擬另一台裝置延遲送達的舊快照 */
     staleSnapshot:(p,b)=>{for(const l of listeners)if(!l.dead&&l.kind==='doc'&&l.path===p)setTimeout(()=>!l.dead&&l.next(docSnap(p,meta,clone(b))),0)}};
   window.claude={use:async name=>{await sleep(cfg.useDelay??20);if(cfg.noDb&&name==='db')return null;return name==='db'?db:name==='user'?user:name==='downloads'?(cfg.noDownloads?null:downloads):null}};

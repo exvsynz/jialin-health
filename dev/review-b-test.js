@@ -35,6 +35,28 @@ const txt=(page,s)=>page.evaluate(s=>{const e=document.querySelector(s);return e
     check('第 8 點：複查已完成時，新抽血仍顯示切換鍵',await page.isVisible('#rcRow'),await txt(page,'#rcLabel'));
     await page.context().close()}
 
+  /* 第 3 點：用藥頁不把「尚未載入」當成「沒有紀錄」；劑量監聽中斷後不能記錄服藥 */
+  {const {page}=await open({time:NOW,hash:'meds',cfg:{latencyComp:true,seed:seed({'meddose/m2':md('2026-10-01',75)}),snapDelay:{meddose:1500}}});await wait(500);
+    const now=await txt(page,'#medNow'),rc=await txt(page,'#rcState'),adh=await txt(page,'#medAdh'),tl=await txt(page,'#medTl');
+    check('第 3 點：劑量歷史載入前，目前劑量不寫推定，寫載入中',now.includes('載入中')&&!now.includes('推定'),now);
+    check('第 3 點：載入前，複查與時間軸不寫「還沒有…紀錄」',!rc.includes('還沒有')&&!tl.includes('還沒有'),{rc,tl});
+    check('第 3 點：載入前，服藥紀錄不寫還沒有紀錄',!adh.includes('還沒有紀錄'),adh);
+    check('第 3 點：載入前，新增變更停用',await page.isDisabled('#mdAdd'));
+    await wait(1500);
+    check('第 3 點：載入後，目前劑量 75 mcg',(await txt(page,'#medNow')).includes('75 mcg'));
+    await page.context().close()}
+  {const {page,doc}=await open({time:NOW,cfg:{latencyComp:true,seed:seed({'meddose/m2':md('2026-10-01',75)})}});await wait(500);
+    await page.evaluate(()=>window.__mock.breakListener('meddose'));await wait(200);
+    await page.evaluate(()=>document.querySelector('#medBtn').click());await wait(300);
+    check('第 3 點：劑量監聽中斷後，不能記錄服藥',!(await doc('days/'+T))?.med?.taken,(await doc('days/'+T))?.med);
+    check('第 3 點：監聽中斷時顯示連線中斷',(await txt(page,'#dbNotice'))?.includes('資料連線中斷'));
+    await page.context().close()}
+
+  /* 第 4 點：同一個未來日期有多筆變更時，預告用最後生效的那筆 */
+  {const {page}=await open({time:NOW,hash:'meds',cfg:{latencyComp:true,seed:seed({'meddose/a':md('2026-11-15',50,{createdAt:1}),'meddose/b':md('2026-11-15',75,{createdAt:2})})}});await wait(500);
+    check('第 4 點：預定 11/15 起 75 mcg（同日排最後的那筆）',(await txt(page,'#medNow')).includes('預定 11/15 起 75 mcg'),await txt(page,'#medNow'));
+    await page.context().close()}
+
   await close();
   process.exit(summary()?1:0);
 })().catch(e=>{console.error(e);process.exit(2)});

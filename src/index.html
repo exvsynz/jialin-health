@@ -1309,21 +1309,26 @@ function labItem(r){const L=r.labs||{},c=r.drawCtx||{};
   const parts=[`TSH ${L.TSH||'未填'}`,`Free T4 ${L['Free T4']||'未填'}`,`抽血前服藥：${CTX_TXT[c.medBeforeDraw]||'未填'}`,`生物素：${CTX_TXT[c.biotin7d]||'未填'}`];
   return`<li><button type="button" data-edit="${esc(r.id)}" ${canWrite?'':'disabled'}><span class="when">${fmt(r.date)}・甲狀腺抽血${c.recheckOf?'・變更後複查':''}</span><span class="wrapline">${esc(parts.join('・'))}</span></button></li>`}
 function renderMeds(){
+  $('#rcSrc').textContent='ATA 2014 指引建議 4b：任何劑量變更後 4–6 週評估 TSH。'+LABEL+' §2.4：成人原發性甲狀腺低下，劑量變更後 6–8 週監測 TSH。兩者不同，週數由你設定。';
+  $('#medRef').innerHTML=refHtml(MED_REF)+'<p class="muted" style="margin:0;font-size:.8rem">服藥紀錄的暫停只看目前設定的那一段；清除或改設暫停後，過去的統計會跟著變。</p>';
+  /* nothing is concluded ("no record", "estimate") until every collection this page reads has arrived from the server */
+  if(!['meddose','days','profile','records'].every(k=>loaded[k])){const w='資料載入中…';
+    $('#medNow').textContent=w;$('#medAdh').innerHTML=`<li><span>${w}</span></li>`;$('#rcState').textContent=w;$('#medTl').innerHTML=`<li><span class="sub" style="display:block;padding:12px 16px">${w}</span></li>`;
+    $('#mdAdd').disabled=true;$('#rcWeeks').disabled=true;return}
   const today=logicalToday(),now=doseOn(today,meddose,prof('medDose')),sorted=sortMeddose(meddose);
-  const fut=sorted.find(m=>m.date>today),curRec=now?.src==='history'?meddose.find(m=>m.id===now.id):null;
+  const nextDate=sorted.find(m=>m.date>today)?.date,fut=nextDate?doseOn(nextDate,meddose,null):null; // on that date the last record is the one in effect
+  const curRec=now?.src==='history'?meddose.find(m=>m.id===now.id):null;
   const sub=[curRec?.tablet,prof('medNote')].filter(Boolean);
   $('#medNow').innerHTML=`<div><strong>${esc(prof('medName'))} ${now?now.dose+' mcg':'劑量未設定'}</strong>${now?.src==='setting'?'<span class="muted">（依設定推定）</span>':''}</div>`
-    +(sub.length?`<div class="sub wrapline">${sub.map(esc).join('・')}</div>`:'')+(fut?`<div class="sub">預定 ${md(fut.date)} 起 ${fut.dose} mcg</div>`:'');
+    +(sub.length?`<div class="sub wrapline">${sub.map(esc).join('・')}</div>`:'')+(fut?`<div class="sub">預定 ${md(nextDate)} 起 ${fut.dose} mcg</div>`:'');
   $('#medAdh').innerHTML=[30,90].map(n=>`<li><span>近 ${n} 天</span><span>${adhLine(n)}</span></li>`).join('');
   $('#rcState').textContent=rcText(recheckState(meddose,records,today,profile.tshRecheckWeeks));
   if(!typingIn($('#rcWeeks')))$('#rcWeeks').value=Number.isInteger(profile.tshRecheckWeeks)?profile.tshRecheckWeeks:'';
   $('#rcWeeks').disabled=!canWrite||!loaded.profile;$('#mdAdd').disabled=!canWrite||!ready;
-  $('#rcSrc').textContent='ATA 2014 指引建議 4b：任何劑量變更後 4–6 週評估 TSH。'+LABEL+' §2.4：成人原發性甲狀腺低下，劑量變更後 6–8 週監測 TSH。兩者不同，週數由你設定。';
   const lastOnDate={};for(const m of sorted)lastOnDate[m.date]=m.id;const effective=new Set(Object.values(lastOnDate));
   const items=[...meddose.filter(m=>m.deleted!==true).map(m=>({date:validDate(m.date)?m.date:'',m})),...records.filter(r=>r.exam==='thy_lab').map(r=>({date:r.date,r}))];
   items.sort((a,b)=>cmpStr(b.date,a.date)||(a.r?1:-1)); // newest first; on one date the change before the draw
   $('#medTl').innerHTML=items.length?items.map(it=>it.m?doseItem(it.m,effective,today):labItem(it.r)).join(''):'<li><span class="sub" style="display:block;padding:12px 16px">還沒有變更或抽血紀錄。</span></li>';
-  $('#medRef').innerHTML=refHtml(MED_REF)+'<p class="muted" style="margin:0;font-size:.8rem">服藥紀錄的暫停只看目前設定的那一段；清除或改設暫停後，過去的統計會跟著變。</p>';
 }
 $('#rcWeeks').addEventListener('change',async()=>{const raw=$('#rcWeeks').value.trim(),v=raw===''?null:Number(raw),prev=Number.isInteger(profile.tshRecheckWeeks)?profile.tshRecheckWeeks:null;
   if(v!==null&&!(Number.isInteger(v)&&v>=1&&v<=52)){toast('請填 1–52 的整數週數');$('#rcWeeks').value=prev??'';return}
@@ -1470,15 +1475,16 @@ setInterval(()=>{if(clockTick())renderCur();else renderHb()},60000); // the 26-h
     if(!d){$('#dbNotice').textContent='目前無法連線資料庫，紀錄暫時無法讀取或儲存。請用你的帳號在 claude.ai 開啟這個頁面。';canWrite=false;ready=true;renderCur();return}
     db=d;if(u){try{const ok=await u.can('data.write');if(ok===false)canWrite=false}catch(e){}}
     $('#dbNotice').hidden=true;
-    const fail=()=>{$('#dbNotice').hidden=false;$('#dbNotice').textContent='資料連線中斷，請重新整理頁面。'};
+    /* a listener that stops leaves its data unreliable: mark it unloaded and stop writes that depend on loaded data */
+    const fail=k=>()=>{loaded[k]=false;ready=false;$('#dbNotice').hidden=false;$('#dbNotice').textContent='資料連線中斷，請重新整理頁面。';renderCur()};
     /* a cached first snapshot may lack data the server has (e.g. the dose): show it, but only the server's answer opens writing */
     const arrived=(k,s)=>{if(!loaded[k]&&!s.metadata?.fromCache){loaded[k]=true;ready=loaded.days&&loaded.profile&&loaded.meddose}};
-    db.collection('days').onSnapshot(s=>{const o={};s.docs.forEach(x=>o[x.id]=x.data());days=o;arrived('days',s);renderCur()},fail);
-    db.collection('exercise').onSnapshot(s=>{exercises=s.docs.map(x=>({id:x.id,...x.data()}));arrived('exercise',s);renderCur()},fail);
-    db.collection('records').onSnapshot(s=>{records=s.docs.map(x=>({id:x.id,...x.data()}));arrived('records',s);renderCur()},fail);
-    db.collection('meddose').onSnapshot(s=>{meddose=s.docs.map(x=>({id:x.id,...x.data()}));arrived('meddose',s);renderCur()},fail);
-    db.doc('settings/intervals').onSnapshot(s=>{intervals=s.exists?{...s.data()}:{};arrived('intervals',s);renderCur()},fail);
-    db.doc('settings/profile').onSnapshot(s=>{profile=s.exists?{...s.data()}:{};arrived('profile',s);renderCur()},fail);
+    db.collection('days').onSnapshot(s=>{const o={};s.docs.forEach(x=>o[x.id]=x.data());days=o;arrived('days',s);renderCur()},fail('days'));
+    db.collection('exercise').onSnapshot(s=>{exercises=s.docs.map(x=>({id:x.id,...x.data()}));arrived('exercise',s);renderCur()},fail('exercise'));
+    db.collection('records').onSnapshot(s=>{records=s.docs.map(x=>({id:x.id,...x.data()}));arrived('records',s);renderCur()},fail('records'));
+    db.collection('meddose').onSnapshot(s=>{meddose=s.docs.map(x=>({id:x.id,...x.data()}));arrived('meddose',s);renderCur()},fail('meddose'));
+    db.doc('settings/intervals').onSnapshot(s=>{intervals=s.exists?{...s.data()}:{};arrived('intervals',s);renderCur()},fail('intervals'));
+    db.doc('settings/profile').onSnapshot(s=>{profile=s.exists?{...s.data()}:{};arrived('profile',s);renderCur()},fail('profile'));
     /* a lost heartbeat listener only affects the reminder status, never the rest of the page */
     db.doc('system/heartbeat').onSnapshot(s=>{hb=s.exists?s.data():null;hbLoaded=true;hbErr=false;renderHb()},()=>{hbErr=true;renderHb()});
   }catch(e){$('#dbNotice').textContent='目前無法連線資料庫，請重新整理頁面。'}
