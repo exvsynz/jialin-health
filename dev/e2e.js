@@ -9,21 +9,14 @@ const T='2026-10-30';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const PAGES=['today','weight','exercise','exams','setup'];
 
-/* 版面檢查：沒有水平捲動；可見的按鈕至少 44×44（行內文字連結除外，名單在 SMALL_OK） */
-async function layout(page,label,{targets=true}={}){
-  const r=await page.evaluate(()=>{
-    const de=document.documentElement;const small=[];
-    for(const el of document.querySelectorAll('button,input,select,summary,[role=button]')){
-      const cs=getComputedStyle(el);if(cs.display==='none'||cs.visibility==='hidden'||el.closest('[hidden],dialog:not([open])'))continue;
-      const b=el.getBoundingClientRect();if(!b.width||!b.height)continue;
-      if(el.closest('[data-small-ok]'))continue;
-      if(b.width<44-0.5||b.height<44-0.5)small.push((el.id?'#'+el.id:el.tagName.toLowerCase()+(el.className?'.'+String(el.className).split(' ')[0]:''))+` ${Math.round(b.width)}×${Math.round(b.height)}`);
-    }
-    return{overflow:de.scrollWidth-de.clientWidth,small:[...new Set(small)]};
-  });
-  check(label+'：沒有水平捲動',r.overflow<=0,r.overflow);
-  if(targets)check(label+'：觸控目標 ≥44px',!r.small.length,r.small.slice(0,12));
-  return r;
+/* 版面檢查：沒有水平捲動、可點元素 ≥44×44、文字對比 ≥4.5:1（大字 3:1）。規則在 dev/a11y.js */
+const {scan}=require('./a11y');
+async function layout(page,label){
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+  check(label+'：沒有水平捲動',overflow<=0,overflow);
+  const r=await page.evaluate(`(${scan.toString()})()`);
+  check(label+'：觸控目標 ≥44px',!r.small.length,r.small.slice(0,10));
+  check(label+'：文字對比足夠',!r.low.length,r.low.slice(0,10));
 }
 
 async function shots(){
@@ -34,13 +27,27 @@ async function shots(){
     const label=`${tag} ${scheme} ${p}`;
     const title=await page.evaluate(()=>document.querySelector('#subTitle').textContent);
     check(label+'：直接載入顯示正確頁面',p==='today'?title==='':title.length>0,title);
-    await layout(page,label,{targets:process.env.STRICT_TARGETS==='1'});
+    await layout(page,label);
     await page.screenshot({path:path.join(SHOTS,`${tag}-${scheme}-${p}.png`),fullPage:true});
     if(p==='today'){
-      await page.click('[data-wslot="pm"]');await wait(350);
+      await page.click('[data-wslot="pm"]');await wait(350);await layout(page,label+' 體重面板');
       await page.screenshot({path:path.join(SHOTS,`${tag}-${scheme}-weight-sheet.png`)});
-      await page.click('#wsClose');await page.click('#moreBtn');await wait(350);
+      await page.click('#wsClose');await page.click('#moreBtn');await wait(350);await layout(page,label+' 更多');
       await page.screenshot({path:path.join(SHOTS,`${tag}-${scheme}-more.png`)});
+      await page.mouse.click(10,10);await wait(200);
+      // 記完後（小折線）、展開一筆運動、補登某天
+      await page.click('[data-wslot="pm"]');await wait(300);await page.click('[data-step="1"]');await page.click('#wsSave');await wait(300);
+      await page.click('[data-wslot="am"]');await wait(300);await page.click('#wsSave');await wait(300);
+      await page.click('#medBtn');await wait(300);await page.click('#pills [data-type="yoga"]');await wait(300);
+      await page.click('#exToday [data-exopen]');await wait(200);await page.click('#medBtn');await wait(150);
+      await layout(page,label+' 完成後');
+      await page.screenshot({path:path.join(SHOTS,`${tag}-${scheme}-today-done.png`),fullPage:true});
+      await page.click('[data-day="2026-10-27"]');await wait(200);await layout(page,label+' 補登');
+    }
+    if(p==='exams'){
+      await page.click('[data-hist="thy_lab"]');await wait(200);await layout(page,label+' 歷史');
+      await page.click('[data-edit="r3"]');await wait(300);await layout(page,label+' 編輯對話框');
+      await page.screenshot({path:path.join(SHOTS,`${tag}-${scheme}-exam-dialog.png`)});
     }
     check(label+'：沒有 JS 錯誤',!errors.length,errors);
     await page.context().close();
@@ -134,6 +141,15 @@ async function flows(){
   await page.selectOption('#fPreset','l3');await page.fill('#fDate','2026-10-01');await page.click('#btnSave');await wait(400);
   const rec=await page.evaluate(()=>[...window.__mock.store.entries()].find(([k,v])=>k.startsWith('records/')&&v.exam==='lung_ldct')?.[1]);
   check('定期檢查新增：分類 Lung-RADS 3 帶入 6 個月',rec?.preset==='l3'&&rec?.interval===6,rec);
+
+  // 刪除檢查紀錄：立即刪除，可撤銷
+  const rid=await page.evaluate(()=>[...window.__mock.store.entries()].find(([k,v])=>k.startsWith('records/')&&v.exam==='lung_ldct')[0].split('/')[1]);
+  check('新增檢查紀錄後歷史直接展開',await page.isVisible(`[data-edit="${rid}"]`));
+  await page.click(`[data-edit="${rid}"]`);await wait(200);
+  await page.click('#btnDel');await wait(400);
+  check('刪除檢查紀錄：一按就刪除並關閉對話框',!(await doc('records/'+rid))&&!(await page.evaluate(()=>document.querySelector('#dlgRec').open)));
+  await page.click('#toastActs button:has-text("撤銷")');await wait(400);
+  check('刪除檢查紀錄後撤銷：內容完整回來',(await doc('records/'+rid))?.preset==='l3',await doc('records/'+rid));
 
   check('流程：沒有 JS 錯誤',!errors.length,errors);
   await page.context().close();

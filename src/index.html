@@ -1,18 +1,18 @@
 <title>家琳健康追蹤</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Sans:wght@300;400;500&display=swap">
 <style>
 /* Layout: "今天" is one quiet column — what is still to do is a solid ink block, what is done collapses into a flat hairline row. Everything else lives behind 「更多」. */
 :root{
   --bg:#f4f6f6; --surface:#ffffff; --sunk:#eef1f2; --ink:#16222a; --on-ink:#f4f6f6; --muted:#5d6b73; --faint:#9aa6ad; --line:#d9e0e3; --grid:#e4e9eb;
   --accent:#23507e; --accent-ink:#ffffff; --accent-soft:#e3ecf5;
-  --done:#1f8a5e; --done-soft:#e3f2ea; --warn:#a36a00; --warn-soft:#fbf0d9;
+  --done:#1b7a53; --done-soft:#e3f2ea; --warn:#a36a00; --warn-soft:#fbf0d9;
   --c-breast:#b8476a; --c-thyroid:#b07a12; --c-lung:#2f7fa8; --c-gyn:#7a52a8; --c-gi:#5c7a2e;
-  --ex-yoga:#2f8f83; --ex-pilates:#7a52a8; --ex-other:#b07a12;
+  --ex-yoga:#277a70; --ex-pilates:#7a52a8; --ex-other:#946610;
   --w-am:#23507e; --w-pm:#8a9aa3; --band:#f4e1e8;
-  --st-late:#b4302a; --st-late-bg:#fbe9e7; --st-soon:#9a6400; --st-soon-bg:#fdf1d8; --st-ok:#2c7a4b; --st-ok-bg:#e4f3ea; --st-none:#6c7a82; --st-none-bg:#edf1f2;
-  --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif; --f-num:"IBM Plex Sans","Noto Sans TC",system-ui,sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --st-late:#b4302a; --st-late-bg:#fbe9e7; --st-soon:#9a6400; --st-soon-bg:#fdf1d8; --st-ok:#2c7a4b; --st-ok-bg:#e4f3ea; --st-none:#5b6870; --st-none-bg:#edf1f2;
+  --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif; --f-num:"IBM Plex Sans","Noto Sans TC",system-ui,sans-serif; --f-mono:"IBM Plex Sans",system-ui,sans-serif;
   --r:16px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
@@ -55,14 +55,14 @@ button.ghost{background:transparent;border-color:transparent;color:var(--accent)
 button.danger{color:var(--st-late);border-color:var(--st-late)}
 button.danger.armed{background:var(--st-late);color:var(--surface)}
 button:disabled{opacity:.45;cursor:not-allowed}
-input,select,textarea{font:inherit;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0;min-height:44px}
 textarea{min-height:110px;resize:vertical}
 .notice{background:var(--accent-soft);border-radius:12px;padding:10px 14px;font-size:.88rem}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .grow{flex:1;min-width:0}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.seg button{border:0;border-radius:0;min-height:36px;padding:4px 16px;background:var(--surface);color:var(--muted)}
+.seg button{border:0;border-radius:0;min-height:44px;padding:4px 16px;background:var(--surface);color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--on-ink)}
 
 /* ---------- TODAY ---------- */
@@ -72,7 +72,7 @@ textarea{min-height:110px;resize:vertical}
 .morebtn{width:44px;height:44px;min-height:44px;padding:0;border-radius:50%;display:grid;place-items:center}
 .morebtn svg{width:20px;height:20px;fill:var(--ink)}
 .week{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:2px}
-.week button{border:0;background:transparent;min-height:44px;padding:4px 0;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--faint);font-size:.72rem;border-radius:10px}
+.week button{border:0;background:transparent;min-height:44px;padding:4px 0;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--muted);font-size:.8rem;border-radius:10px}
 .week button[aria-current="date"]{background:var(--surface);color:var(--ink)}
 .wdot{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--faint)}
 .wdot.half{background:linear-gradient(90deg,var(--ink) 50%,transparent 50%);border-color:var(--ink)}
@@ -101,7 +101,7 @@ textarea{min-height:110px;resize:vertical}
 .spark svg{width:96px;height:26px;overflow:visible}
 .spark polyline{fill:none;stroke:var(--faint);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
 .spark circle{fill:var(--accent)}
-.spark button{min-height:32px;padding:2px 6px;font-size:.85rem}
+.spark button{min-height:44px;padding:2px 8px;font-size:.85rem}
 /* med */
 .medbtn{width:100%;display:flex;align-items:center;gap:14px;padding:14px 16px;min-height:72px;text-align:left}
 .medbtn .ring{width:30px;height:30px;flex:none;border-radius:50%;border:2px solid currentColor;display:grid;place-items:center}
@@ -121,6 +121,7 @@ textarea{min-height:110px;resize:vertical}
 .pills [data-type="pilates"]{border-color:var(--ex-pilates);color:var(--ex-pilates)}
 .pills [data-type="other"]{border-color:var(--ex-other);color:var(--ex-other)}
 .exlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.exlist:empty{display:none}
 .exlist>li{border-top:1px solid var(--line)}
 .exhead{width:100%;display:flex;align-items:center;gap:10px;border:0;background:transparent;border-radius:0;padding:8px 0;min-height:44px;text-align:left}
 .sw{width:10px;height:10px;border-radius:3px;flex:none}
@@ -130,7 +131,7 @@ textarea{min-height:110px;resize:vertical}
 .stepper .v{min-width:70px;text-align:center;font-family:var(--f-num);font-size:1.1rem}
 /* period + exam */
 .perrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 16px;min-height:52px}
-.switch{min-width:64px;min-height:36px;border-radius:999px}
+.switch{min-width:64px;min-height:44px;border-radius:999px}
 .switch[aria-pressed="true"]{background:var(--band);border-color:var(--c-breast);color:var(--c-breast)}
 .examcard{width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;text-align:left}
 .examcard .dot{width:10px;height:10px;border-radius:50%;background:var(--cat);flex:none}
@@ -188,9 +189,9 @@ dialog.sheet[open]{animation:up .24s ease-out}
 .stat .v{font-family:var(--f-num);font-size:1.25rem;font-variant-numeric:tabular-nums}
 .stat .k{font-size:.8rem;color:var(--muted)}
 .bar-yoga{fill:var(--ex-yoga)} .bar-pilates{fill:var(--ex-pilates)} .bar-other{fill:var(--ex-other)}
-.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-size:.82rem}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:.82rem}
 .cal .h{color:var(--muted);font-size:.75rem}
-.cal button{min-height:40px;padding:2px;border-radius:8px;border:1px solid transparent;background:var(--sunk);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;line-height:1.2}
+.cal button{min-height:44px;padding:2px;border-radius:8px;border:1px solid transparent;background:var(--sunk);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;line-height:1.2}
 .cal button.has{background:var(--accent-soft);border-color:var(--accent)}
 .cal button.today{outline:1.5px solid var(--ink)}
 .cal button .m{font-family:var(--f-mono);font-size:.68rem;color:var(--muted)}
@@ -206,6 +207,7 @@ dialog.sheet[open]{animation:up .24s ease-out}
 .next li{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:10px 16px;border-top:1px solid var(--line)}
 .next li:first-child{border-top:0}
 .next .when{font-size:.82rem;color:var(--muted)}
+.nw{white-space:nowrap}
 .next .empty{padding:16px;color:var(--muted);display:block}
 .next .dot{width:10px;height:10px;border-radius:50%;background:var(--cat)}
 section.cat{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
@@ -239,7 +241,7 @@ section.cat{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
 .labtable th:first-child,.labtable td:first-child{text-align:left}
 .labtable th{font-weight:500;color:var(--muted)}
 details.refbox{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
-details.refbox summary{cursor:pointer;font-weight:700}
+details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
 .ref{font-size:.85rem}
 .ref table{border-collapse:collapse;width:100%}
 .ref td,.ref th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
@@ -259,7 +261,7 @@ details.refbox summary{cursor:pointer;font-weight:700}
 
 /* toast */
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--on-ink);padding:6px 6px 6px 16px;border-radius:14px;font-size:.92rem;z-index:20;display:flex;align-items:center;gap:4px;width:max-content;max-width:calc(100vw - 32px)}
-.toast button{background:transparent;border:0;color:var(--on-ink);font-weight:700;min-height:40px;padding:0 10px;text-decoration:underline;text-underline-offset:3px}
+.toast button{background:transparent;border:0;color:var(--on-ink);font-weight:700;min-height:44px;padding:0 10px;text-decoration:underline;text-underline-offset:3px}
 @media (max-width:520px){.grid2{grid-template-columns:1fr}.exam-main{grid-template-columns:1fr}.exam-side{align-items:flex-start;flex-direction:row;flex-wrap:wrap}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -327,8 +329,8 @@ details.refbox summary{cursor:pointer;font-weight:700}
       <div class="legend"><span><i style="background:var(--ex-yoga);height:10px"></i>瑜珈</span><span><i style="background:var(--ex-pilates);height:10px"></i>皮拉提斯</span><span><i style="background:var(--ex-other);height:10px"></i>其他</span></div>
       <div class="chart" id="exChart"></div>
     </div>
-    <div class="card">
-      <div class="row"><button type="button" id="calPrev" aria-label="上個月">‹</button><h3 class="grow" id="calTitle" style="text-align:center"></h3><button type="button" id="calNext" aria-label="下個月">›</button></div>
+    <div class="card" style="padding-inline:12px">
+      <div class="row"><button type="button" id="calPrev" aria-label="上個月" style="min-width:44px">‹</button><h3 class="grow" id="calTitle" style="text-align:center"></h3><button type="button" id="calNext" aria-label="下個月" style="min-width:44px">›</button></div>
       <div class="cal" id="cal"></div>
     </div>
     <div class="card"><h3>最近紀錄</h3><ul class="loglist" id="exLog"></ul></div>
@@ -365,7 +367,7 @@ details.refbox summary{cursor:pointer;font-weight:700}
       </div>
       <p class="hint" style="margin:0">快捷鍵先帶上次同類運動的時間，沒有紀錄才用這裡的預設。</p>
       <h2>暫停模式</h2>
-      <p class="hint" style="margin:0">出差、生病、手術週等期間不算漏記，排程檢查也不會提醒。</p>
+      <p class="hint" style="margin:0">出差、生病、手術週等期間不算漏記。</p>
       <div class="grid2">
         <div class="field"><label for="sPFrom">開始日</label><input id="sPFrom" type="date"></div>
         <div class="field"><label for="sPTo">結束日</label><input id="sPTo" type="date"></div>
@@ -413,10 +415,10 @@ details.refbox summary{cursor:pointer;font-weight:700}
   <div class="grab"></div>
   <div class="sheet-body">
     <div class="menu">
-      <button type="button" data-nav="weight">體重與體脂<span class="chev">›</span></button>
-      <button type="button" data-nav="exercise">運動紀錄<span class="chev">›</span></button>
-      <button type="button" data-nav="exams">定期檢查<span class="chev">›</span></button>
-      <button type="button" data-nav="setup">設定與備份<span class="chev">›</span></button>
+      <button type="button" data-nav="weight">體重與體脂<span class="chev" aria-hidden="true">›</span></button>
+      <button type="button" data-nav="exercise">運動紀錄<span class="chev" aria-hidden="true">›</span></button>
+      <button type="button" data-nav="exams">定期檢查<span class="chev" aria-hidden="true">›</span></button>
+      <button type="button" data-nav="setup">設定與備份<span class="chev" aria-hidden="true">›</span></button>
     </div>
     <div class="field"><label for="dPick">選擇日期補登</label><input type="date" id="dPick"></div>
   </div>
@@ -560,7 +562,7 @@ function defaultOf(slot,field){
 const defaultVal=(slot,field)=>defaultOf(slot,field).v;
 function renderToday(){
   const today=logicalToday();const d=days[viewDate]||{};const isToday=viewDate===today;
-  $('#tDate').innerHTML=`<b>${cmd(viewDate)}</b> 週${wd(viewDate)}`+(isToday?'':` ・ 補登 <button type="button" class="ghost" id="goToday" style="min-height:32px">回到今天</button>`);
+  $('#tDate').innerHTML=`<b>${cmd(viewDate)}</b> 週${wd(viewDate)}`+(isToday?'':` ・ 補登 <button type="button" class="ghost" id="goToday">回到今天</button>`);
   if(!isToday)$('#goToday').onclick=()=>setView(today);
   // week dots
   let w='';for(let i=6;i>=0;i--){const ds=addDays(today,-i);const x=days[ds]||{};const c=(x.am?1:0)+(x.med?1:0);
@@ -875,7 +877,7 @@ function renderExams(){
   const items=Object.values(latest).map(r=>{const due=dueOf(r);return{r,due,st:r.interval===0&&!r.nextDue?{c:'late',t:'需盡快處理',d:-1}:statusOf(due)}}).sort((a,b)=>a.due<b.due?-1:1);
   const late=items.filter(i=>i.st.c==='late').length, soon=items.filter(i=>i.st.c==='soon').length;
   $('#tally').textContent=items.length?`逾期 ${late}・60 天內 ${soon}・已追蹤 ${items.length}/${EXAMS.length} 項`:'';
-  $('#nextList').innerHTML=items.length?items.slice(0,6).map(({r,due,st})=>{const e=EX[r.exam];return`<li style="--cat:${CAT[e.cat].color}"><span class="dot"></span><div><div>${esc(e.name)}</div><div class="when num">${fmt(due)}　上次 ${fmt(r.date)}</div></div><span class="pill ${st.c}">${st.t}</span></li>`}).join(''):'<li class="empty">還沒有任何紀錄。按「新增檢查紀錄」輸入最近一次檢查，這裡就會依到期日排出順序。</li>';
+  $('#nextList').innerHTML=items.length?items.slice(0,6).map(({r,due,st})=>{const e=EX[r.exam];return`<li style="--cat:${CAT[e.cat].color}"><span class="dot"></span><div><div>${esc(e.name)}</div><div class="when num"><span class="nw">${fmt(due)}</span> <span class="nw">上次 ${fmt(r.date)}</span></div></div><span class="pill ${st.c}">${st.t}</span></li>`}).join(''):'<li class="empty">還沒有任何紀錄。按「新增檢查紀錄」輸入最近一次檢查，這裡就會依到期日排出順序。</li>';
   $('#cats').innerHTML=CATS.map(c=>`<section class="cat" style="--cat:${c.color}" aria-labelledby="h-${c.id}"><div class="cat-head"><span class="bar"></span><h3 id="h-${c.id}">${c.name}</h3><span class="en">${c.en}</span></div>${EXAMS.filter(e=>e.cat===c.id).map(e=>examCard(e,latest[e.id])).join('')}</section>`).join('');
   if($('#refTable').childElementCount===0)renderRef();
   $('#btnAdd').disabled=!canWrite;
@@ -917,7 +919,7 @@ function openRecord(examId,rec){editing=rec||null;$('#recTitle').textContent=rec
   $('#fExam').value=rec?rec.exam:(examId||EXAMS[0].id);$('#fExam').disabled=!!rec;fillPresets($('#fExam').value,!!rec);$('#fDate').value=rec?rec.date:logicalToday();
   if(rec){$('#fPreset').value=rec.preset||'';const p=presetOf(rec);$('#presetHint').textContent=p?p.src:'';$('#fInterval').value=Number.isFinite(rec.interval)?rec.interval:'';$$('[data-lab]').forEach(i=>i.value=(rec.labs&&rec.labs[i.dataset.lab])||'')}
   $('#fDue').value=rec?.nextDue||'';$('#fReport').value=rec?.report||'';$('#fPlace').value=rec?.place||'';$('#fDoctor').value=rec?.doctor||'';$('#fNote').value=rec?.note||'';
-  const del=$('#btnDel');del.hidden=!rec;del.classList.remove('armed');del.textContent='刪除這筆';updatePreview();dlg.showModal()}
+  $('#btnDel').hidden=!rec;updatePreview();dlg.showModal()}
 /* the one document-level click router: sheet backdrops, day links, exam buttons, dialog close */
 document.addEventListener('click',ev=>{const t=ev.target;
   if(t.matches('dialog.sheet')){t.close();return}
@@ -935,16 +937,16 @@ $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
   const labs={};$$('[data-lab]').forEach(i=>{if(i.value.trim())labs[i.dataset.lab]=i.value.trim()});const exam=$('#fExam').value;
   const body={exam,cat:EX[exam].cat,date:$('#fDate').value,preset:$('#fPreset').value||null,interval:$('#fInterval').value===''?null:Number($('#fInterval').value),nextDue:$('#fDue').value||null,report:$('#fReport').value.trim(),place:$('#fPlace').value.trim(),doctor:$('#fDoctor').value.trim(),note:$('#fNote').value.trim(),labs,createdAt:editing?.createdAt||Date.now(),updatedAt:Date.now()};
   $('#btnSave').disabled=true;
-  try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(body);dlg.close();toast(editing?'已更新':'已儲存');openHist.add(exam)}catch(e){writeErr(e)}finally{$('#btnSave').disabled=false}});
-$('#btnDel').addEventListener('click',async()=>{const b=$('#btnDel');if(!b.classList.contains('armed')){b.classList.add('armed');b.textContent='再按一次確認刪除';return}
-  try{await db.doc('records/'+editing.id).delete();dlg.close();toast('已刪除')}catch(e){toast('刪除失敗，請稍後再試')}});
+  try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(body);dlg.close();toast(editing?'已更新':'已儲存');openHist.add(exam);if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{$('#btnSave').disabled=false}});
+$('#btnDel').addEventListener('click',async()=>{const rec=editing;if(!rec||!canSave())return;const {id,...body}=rec;
+  try{await retry1(()=>db.doc('records/'+id).delete());dlg.close();toast('已刪除 '+EX[rec.exam].name+' '+fmt(rec.date),[['撤銷',()=>retry1(()=>db.doc('records/'+id).set(body)).catch(writeErr)]])}catch(e){writeErr(e)}});
 
 /* ================= SETUP ================= */
 function renderSetup(){
   if(!formDirty.profForm&&!typingIn($('#profForm'))){$('#sMed').value=prof('medName');$('#sDose').value=prof('medDose');$('#sMedNote').value=prof('medNote');$('#sYoga').value=prof('yogaMin');$('#sPil').value=prof('pilatesMin');
     $('#sPFrom').value=profile.pauseFrom||'';$('#sPTo').value=profile.pauseTo||'';$('#sPNote').value=profile.pauseNote||''}
   if(!formDirty.ivForm&&!typingIn($('#ivForm'))){
-    $('#setRows').innerHTML=EXAMS.map(e=>`<div class="set-row"><label for="iv-${e.id}"><span style="color:${CAT[e.cat].color}">●</span> ${esc(e.name)}<br><span class="muted" style="font-size:.8rem">${esc(e.defSrc)}</span></label><div style="display:flex;align-items:center;gap:6px"><input type="number" id="iv-${e.id}" min="1" max="240" value="${defInterval(e.id)}" inputmode="numeric"><span class="muted" style="font-size:.85rem">月</span></div></div>`).join('')}
+    $('#setRows').innerHTML=EXAMS.map(e=>`<div class="set-row"><label for="iv-${e.id}"><span style="color:${CAT[e.cat].color}" aria-hidden="true">●</span> ${esc(e.name)}<br><span class="muted" style="font-size:.8rem">${esc(e.defSrc)}</span></label><div style="display:flex;align-items:center;gap:6px"><input type="number" id="iv-${e.id}" min="1" max="240" value="${defInterval(e.id)}" inputmode="numeric"><span class="muted" style="font-size:.85rem">月</span></div></div>`).join('')}
   $$('#p-setup input,#p-setup button').forEach(x=>{if(x.id!=='btnExport'&&x.id!=='impCancel')x.disabled=!canWrite});
   $('#lastExport').textContent=profile.lastExport?'上次匯出：'+profile.lastExport:'還沒有匯出過。';
 }
