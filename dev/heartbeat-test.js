@@ -20,6 +20,7 @@ eq('週報只寫週報',st({...m,at:'2026-11-01T20:14:00+08:00',kind:'weekly',mi
 eq('暫停中',st({...m,missing:[],skipped:'paused',paused:true}).text,'上次檢查 10/31（六）07:23・早上・暫停中，未推播');
 eq('提醒關閉',st({...m,missing:[],skipped:'off'}).text,'上次檢查 10/31（六）07:23・早上・提醒關閉，未推播');
 eq('執行太晚',st({...m,missing:[],skipped:'late'}).text,'上次檢查 10/31（六）07:23・早上・執行太晚，未推播');
+eq('同一天已推播過',st({...m,missing:[],skipped:'duplicate'}).text,'上次檢查 10/31（六）07:23・早上・稍早已推播');
 eq('ok:false 顯示讀取失敗',st({...m,ok:false,skipped:'error'}).text,'上次檢查 10/31（六）07:23・早上・讀取失敗');
 eq('舊格式（只有 at）只顯示時間',st({at:'2026-10-31T07:23:05+08:00'}).text,'上次檢查 10/31（六）07:23');
 eq('舊格式：未知 kind 不加說明',st({at:'2026-10-31T07:23:05+08:00',kind:'test',missing:[]}).text,'上次檢查 10/31（六）07:23');

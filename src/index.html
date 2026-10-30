@@ -510,7 +510,7 @@ const r1=v=>Math.round(v*10)/10;
 /* the scheduled checks write system/heartbeat; two consecutive missed runs put it past 26 hours */
 const HB_STALE_H=26;
 const HB_KIND={morning:'早上',evening:'晚上',weekly:'週報'};
-const HB_SKIP={paused:'暫停中，未推播',off:'提醒關閉，未推播',late:'執行太晚，未推播'};
+const HB_SKIP={paused:'暫停中，未推播',off:'提醒關閉，未推播',late:'執行太晚，未推播',duplicate:'稍早已推播'};
 /* epoch ms, or ISO 8601 with an explicit Z or offset; a string without one would be read in the device's own zone */
 function hbTime(at){const ms=typeof at==='number'?at:typeof at==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:\d\d)$/.test(at)?Date.parse(at):NaN;return Number.isFinite(ms)&&Number.isFinite(new Date(ms).getTime())?ms:null}
 function tpeAt(ms){const p=Object.fromEntries(TPE.formatToParts(new Date(ms)).map(x=>[x.type,x.value]));return{date:p.year+'-'+p.month+'-'+p.day,hm:pad(+p.hour%24)+':'+p.minute}}
