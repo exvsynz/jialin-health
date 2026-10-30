@@ -40,6 +40,20 @@ system/heartbeat       排程任務寫入的測試／心跳紀錄
 { "db": { "rules": [{ "path": "", "read": "admin", "write": "admin" }] }, "user": {}, "downloads": true }
 ```
 
+## 本機檢查
+
+`dev/` 只放測試用的東西，不屬於發布內容。發布的仍然只有 `src/index.html`。
+
+- `dev/test.sh`：一次跑完全部檢查。加 `--no-shots` 可以略過截圖。
+- `dev/check.sh`：抽出 `<script>` 跑 `node --check`；確認發布檔裡沒有 mock、`print`、`alert`、`confirm`；確認外部資源只來自允許的來源。
+- `dev/date-test.js`：直接從 `src/index.html` 的 `date helpers` 區塊抽出函式，測試台北時區、凌晨 4 點換日、月底加月份。
+- `dev/data-test.js`、`dev/render-test.js`、`dev/weight-test.js`：資料寫入情境、重繪不打斷輸入、體重面板。
+- `dev/e2e.js`：跑主要流程，並在 380／1280 寬 × 淺色／深色下截圖到 `dev/screenshots/`（不進版控），同時檢查水平捲動、觸控目標與文字對比。
+- `dev/mock-claude.js`：記憶體版的 `window.claude`，可切換寫入延遲、「自寫立即可見」、首筆快照延遲、監聽失敗等情境。只用合成資料。
+- 用 `SRC=舊檔路徑 node dev/xxx-test.js` 可以對舊版本跑同一組測試，確認測試抓得到問題。
+
+需要 Node 與 Playwright（Chromium）。
+
 ## 路線圖
 
 1. ~~主架構、體重體脂、服藥、運動、月經、補登、暫停、匯出匯入~~（已完成）
