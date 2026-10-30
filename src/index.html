@@ -44,7 +44,6 @@ h1,h2,h3{margin:0;text-wrap:balance;font-weight:700}
 h2{font-size:1.15rem}
 h3{font-size:1rem}
 .num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
-.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .muted{color:var(--muted)}
 .small{font-size:.85rem}
 main{padding-block:14px 96px}
@@ -82,7 +81,6 @@ textarea{min-height:110px;resize:vertical}
 .headline{font-size:2rem;font-weight:700;letter-spacing:.01em;margin-top:6px;line-height:1.25}
 .headline.done{color:var(--done)}
 .fact{color:var(--muted);font-size:.92rem;min-height:1.4em}
-.backday{display:flex;gap:8px;align-items:center}
 .pausebar{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:8px 14px;font-size:.88rem}
 
 .list{display:flex;flex-direction:column;gap:10px}
@@ -494,6 +492,12 @@ let db=null, canWrite=true;
 let days={}, exercises=[], records=[], intervals={}, profile={};
 let viewDate=logicalToday(), wDays=30, calMonth=logicalToday().slice(0,7), openHist=new Set(), editing=null, openEx=null, ready=false;
 const loaded={days:false,profile:false};
+/* a snapshot never rebuilds a block while someone is typing in it; the block is redrawn once focus leaves */
+let heldRender=false;
+const typingIn=el=>{const a=document.activeElement;return !!(a&&el.contains(a)&&a.matches('input,textarea,select'))};
+document.addEventListener('focusout',()=>{if(heldRender){heldRender=false;setTimeout(renderCur,0)}});
+const formDirty={profForm:false,ivForm:false};
+const exMinPending={}; // stepped minutes not yet written
 const EXT={yoga:{name:'瑜珈',cls:'yoga'},pilates:{name:'皮拉提斯',cls:'pilates'},other:{name:'其他',cls:'other'}};
 const prof=k=>({medName:'Levothyroxine',medDose:50,medNote:'半顆',yogaMin:60,pilatesMin:60,...profile})[k];
 
@@ -521,7 +525,9 @@ function isPaused(date){const f=profile.pauseFrom,t=profile.pauseTo;return !!(f&
 const PAGES={today:'',weight:'體重與體脂',exercise:'運動紀錄',exams:'定期檢查',setup:'設定與備份'};
 let cur='today';
 function show(p){
-  if(!(p in PAGES))p='today';cur=p;
+  if(!(p in PAGES))p='today';
+  if(p==='setup'&&cur!=='setup'){formDirty.profForm=false;formDirty.ivForm=false}
+  cur=p;
   Object.keys(PAGES).forEach(k=>$('#p-'+k).hidden=k!==p);
   $('#subbar').hidden=p==='today';$('#subTitle').textContent=PAGES[p];
   document.body.classList.toggle('wide',p==='exams'||p==='weight'||p==='exercise');
@@ -533,7 +539,6 @@ $('#backBtn').addEventListener('click',()=>go('today'));
 $('#moreBtn').addEventListener('click',()=>{$('#dPick').value=viewDate;$('#dPick').max=logicalToday();$('#moreSheet').showModal()});
 $$('[data-nav]').forEach(b=>b.addEventListener('click',()=>{$('#moreSheet').close();go(b.dataset.nav)}));
 $('#dPick').addEventListener('change',e=>{if(e.target.value){$('#moreSheet').close();setView(e.target.value);go('today')}});
-$$('dialog.sheet').forEach(d=>d.addEventListener('click',e=>{if(e.target===d)d.close()}));
 function renderCur(){({today:renderToday,weight:renderWeight,exercise:renderExercise,exams:renderExams,setup:renderSetup})[cur]()}
 
 /* ================= TODAY ================= */
@@ -591,7 +596,8 @@ function renderToday(){
   const exMin=t=>lastOf(t)?.min||(t==='yoga'?prof('yogaMin'):t==='pilates'?prof('pilatesMin'):30);
   $('#pills').innerHTML=['yoga','pilates','other'].map(t=>`<button type="button" data-type="${t}" ${canWrite&&ready?'':'disabled'}><span>${t==='other'?esc(lastOf('other')?.label||'其他'):EXT[t].name}</span><span class="m">${exMin(t)} 分</span></button>`).join('');
   const ex=exercises.filter(e=>e.date===viewDate&&!e.deleted).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
-  $('#exToday').innerHTML=ex.map(e=>`<li data-id="${esc(e.id)}"><button type="button" class="exhead" data-exopen aria-expanded="${openEx===e.id}"><span class="sw" style="background:var(--ex-${EXT[e.type]?.cls||'other'})"></span><span class="grow">${esc(e.label||'運動')} <span class="num">${e.min} 分</span>${e.note?` <span class="sub">${esc(e.note)}</span>`:''}</span><span class="sub">${esc(e.at||'')}</span></button>${openEx===e.id?`<div class="exedit"><div class="stepper"><button type="button" data-exstep="-15">−15</button><button type="button" data-exstep="-5">−5</button><span class="v">${e.min} 分</span><button type="button" data-exstep="5">＋5</button><button type="button" data-exstep="15">＋15</button></div><div class="row"><input data-exnote class="grow" placeholder="備註" value="${esc(e.note||'')}" aria-label="備註"><button type="button" class="ghost" data-exdel style="color:var(--st-late)">刪除</button></div></div>`:''}</li>`).join('');
+  if(typingIn($('#exToday')))heldRender=true;
+  else $('#exToday').innerHTML=ex.map(e=>{const mn=exMinPending[e.id]??e.min;const ro=canWrite?'':'disabled';return `<li data-id="${esc(e.id)}"><button type="button" class="exhead" data-exopen aria-expanded="${openEx===e.id}"><span class="sw" style="background:var(--ex-${EXT[e.type]?.cls||'other'})"></span><span class="grow">${esc(e.label||'運動')} <span class="num">${mn} 分</span>${e.note?` <span class="sub">${esc(e.note)}</span>`:''}</span><span class="sub">${esc(e.at||'')}</span></button>${openEx===e.id?`<div class="exedit"><div class="stepper"><button type="button" data-exstep="-15" ${ro}>−15</button><button type="button" data-exstep="-5" ${ro}>−5</button><span class="v">${mn} 分</span><button type="button" data-exstep="5" ${ro}>＋5</button><button type="button" data-exstep="15" ${ro}>＋15</button></div><div class="row"><input data-exnote ${ro} class="grow" placeholder="備註" value="${esc(e.note||'')}" aria-label="備註"><button type="button" class="ghost" data-exdel ${ro} style="color:var(--st-late)">刪除</button></div></div>`:''}</li>`}).join('');
   // period
   const pb=$('#perBtn');pb.setAttribute('aria-pressed',String(!!d.period));pb.textContent=d.period?'是':'否';pb.disabled=!canWrite||!ready;
   $('#perSub').textContent=(days[addDays(viewDate,-1)]||{}).period?'昨天有':'';
@@ -671,7 +677,6 @@ function openSheet(slot){
 }
 $$('[data-wslot]').forEach(b=>b.addEventListener('click',()=>openSheet(b.dataset.wslot)));
 $$('[data-wseg]').forEach(b=>b.addEventListener('click',()=>{ws.seg=b.dataset.wseg;$$('[data-wseg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));paintSheet();rebuild(curVal())}));
-let scrollT,programmatic=false;
 $('#ruler').addEventListener('scroll',()=>{if(suppress)return;const i=Math.round($('#ruler').scrollLeft/TICK);const v=r1(ws.min+i/10);if(v!==curVal()){if(ws.seg==='w'){ws.w=v;ws.touched=true}else{ws.bf=v;ws.bfTouched=true}paintSheet()}},{passive:true});
 $('#ruler').addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setCur(curVal()+(e.key==='ArrowRight'?0.1:-0.1));rulerTo(curVal(),true)}});
 $$('[data-step]').forEach(b=>b.addEventListener('click',()=>{setCur(curVal()+Number(b.dataset.step)/10);rulerTo(curVal(),true)}));
@@ -715,8 +720,8 @@ $('#exToday').addEventListener('click',ev=>{
   const li=ev.target.closest('li[data-id]');if(!li)return;const id=li.dataset.id;const e=exercises.find(x=>x.id===id);if(!e)return;
   if(ev.target.closest('[data-exopen]')){openEx=openEx===id?null:id;renderToday();return}
   const st=ev.target.closest('[data-exstep]');
-  if(st){const nm=Math.max(5,Math.min(300,(+e.min||0)+Number(st.dataset.exstep)));e.min=nm;li.querySelector('.stepper .v').textContent=nm+' 分';li.querySelector('.exhead .num').textContent=nm+' 分';
-    clearTimeout(exTimers[id]);exTimers[id]=setTimeout(()=>writeEx(id,{min:nm}).catch(writeErr),700);return}
+  if(st){const nm=Math.max(5,Math.min(300,(+(exMinPending[id]??e.min)||0)+Number(st.dataset.exstep)));exMinPending[id]=nm;li.querySelector('.stepper .v').textContent=nm+' 分';li.querySelector('.exhead .num').textContent=nm+' 分';
+    clearTimeout(exTimers[id]);exTimers[id]=setTimeout(()=>writeEx(id,{min:nm}).then(()=>{if(exMinPending[id]===nm)delete exMinPending[id]},err=>{delete exMinPending[id];writeErr(err);renderCur()}),700);return}
   if(ev.target.closest('[data-exdel]')){openEx=null;writeEx(id,{deleted:true}).then(()=>toast('已刪除 '+(e.label||'運動'),[['復原',()=>writeEx(id,{deleted:false}).catch(writeErr)]])).catch(writeErr)}
 });
 $('#exToday').addEventListener('change',ev=>{
@@ -725,7 +730,6 @@ $('#exToday').addEventListener('change',ev=>{
   const patch={note:v};if(e.type==='other'&&v&&e.label==='其他')patch.label=v.slice(0,12);
   writeEx(id,patch).catch(writeErr);
 });
-document.addEventListener('click',ev=>{const g=ev.target.closest('[data-go]');if(!g)return;setView(g.dataset.go);go('today')});
 
 /* ================= charts ================= */
 function niceStep(range,maxTicks){const steps=[0.1,0.2,0.5,1,2,5,10,20,50,100,200];for(const s of steps)if(range/s<=maxTicks)return s;return 500}
@@ -901,7 +905,11 @@ function openRecord(examId,rec){editing=rec||null;$('#recTitle').textContent=rec
   if(rec){$('#fPreset').value=rec.preset||'';const p=presetOf(rec);$('#presetHint').textContent=p?p.src:'';$('#fInterval').value=Number.isFinite(rec.interval)?rec.interval:'';$$('[data-lab]').forEach(i=>i.value=(rec.labs&&rec.labs[i.dataset.lab])||'')}
   $('#fDue').value=rec?.nextDue||'';$('#fReport').value=rec?.report||'';$('#fPlace').value=rec?.place||'';$('#fDoctor').value=rec?.doctor||'';$('#fNote').value=rec?.note||'';
   const del=$('#btnDel');del.hidden=!rec;del.classList.remove('armed');del.textContent='刪除這筆';updatePreview();dlg.showModal()}
-document.addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b)return;
+/* the one document-level click router: sheet backdrops, day links, exam buttons, dialog close */
+document.addEventListener('click',ev=>{const t=ev.target;
+  if(t.matches('dialog.sheet')){t.close();return}
+  const g=t.closest('[data-go]');if(g){setView(g.dataset.go);go('today');return}
+  const b=t.closest('button');if(!b)return;
   if(b.dataset.add)openRecord(b.dataset.add);
   else if(b.dataset.hist){openHist.has(b.dataset.hist)?openHist.delete(b.dataset.hist):openHist.add(b.dataset.hist);renderExams()}
   else if(b.dataset.edit){const r=records.find(x=>x.id===b.dataset.edit);if(r)openRecord(r.exam,r)}
@@ -920,9 +928,9 @@ $('#btnDel').addEventListener('click',async()=>{const b=$('#btnDel');if(!b.class
 
 /* ================= SETUP ================= */
 function renderSetup(){
-  const f=document.activeElement&&document.activeElement.closest('#profForm,#ivForm');
-  if(!f){$('#sMed').value=prof('medName');$('#sDose').value=prof('medDose');$('#sMedNote').value=prof('medNote');$('#sYoga').value=prof('yogaMin');$('#sPil').value=prof('pilatesMin');
-    $('#sPFrom').value=profile.pauseFrom||'';$('#sPTo').value=profile.pauseTo||'';$('#sPNote').value=profile.pauseNote||'';
+  if(!formDirty.profForm&&!typingIn($('#profForm'))){$('#sMed').value=prof('medName');$('#sDose').value=prof('medDose');$('#sMedNote').value=prof('medNote');$('#sYoga').value=prof('yogaMin');$('#sPil').value=prof('pilatesMin');
+    $('#sPFrom').value=profile.pauseFrom||'';$('#sPTo').value=profile.pauseTo||'';$('#sPNote').value=profile.pauseNote||''}
+  if(!formDirty.ivForm&&!typingIn($('#ivForm'))){
     $('#setRows').innerHTML=EXAMS.map(e=>`<div class="set-row"><label for="iv-${e.id}"><span style="color:${CAT[e.cat].color}">●</span> ${esc(e.name)}<br><span class="muted" style="font-size:.8rem">${esc(e.defSrc)}</span></label><div style="display:flex;align-items:center;gap:6px"><input type="number" id="iv-${e.id}" min="1" max="240" value="${defInterval(e.id)}" inputmode="numeric"><span class="muted" style="font-size:.85rem">月</span></div></div>`).join('')}
   $$('#p-setup input,#p-setup button').forEach(x=>{if(x.id!=='btnExport'&&x.id!=='impCancel')x.disabled=!canWrite});
   $('#lastExport').textContent=profile.lastExport?'上次匯出：'+profile.lastExport:'還沒有匯出過。';
@@ -933,11 +941,12 @@ $('#profForm').addEventListener('submit',async ev=>{ev.preventDefault();
   const dose=num($('#sDose').value);if(dose==null||dose<=0){$('#sDose').focus();toast('請填劑量');return}
   const pf=$('#sPFrom').value,pt=$('#sPTo').value;if((pf&&!pt)||(!pf&&pt)){toast('暫停模式需要開始日和結束日');return}if(pf&&pt&&pt<pf){toast('結束日要在開始日之後');return}
   const ok=await saveProfile({medName:$('#sMed').value.trim()||'Levothyroxine',medDose:dose,medNote:$('#sMedNote').value.trim(),yogaMin:num($('#sYoga').value)||60,pilatesMin:num($('#sPil').value)||60,pauseFrom:pf||null,pauseTo:pt||null,pauseNote:$('#sPNote').value.trim()});
-  if(ok){document.activeElement&&document.activeElement.blur();toast('設定已儲存')}});
+  if(ok){formDirty.profForm=false;document.activeElement&&document.activeElement.blur();toast('設定已儲存')}});
+['profForm','ivForm'].forEach(id=>$('#'+id).addEventListener('input',()=>{formDirty[id]=true}));
 $('#sPClear').addEventListener('click',async()=>{if(await saveProfile({pauseFrom:null,pauseTo:null,pauseNote:''})){$('#sPFrom').value='';$('#sPTo').value='';$('#sPNote').value='';toast('已清除暫停')}});
 $('#ivForm').addEventListener('submit',async ev=>{ev.preventDefault();if(!db){toast('資料庫未連線，無法儲存');return}
   const next={};for(const e of EXAMS){const v=Number($('#iv-'+e.id).value);if(Number.isFinite(v)&&v>0)next[e.id]=Math.round(v)}
-  try{await queued('settings/intervals',()=>retry1(()=>db.doc('settings/intervals').set(next)));document.activeElement&&document.activeElement.blur();toast('間隔已儲存')}catch(e){writeErr(e)}});
+  try{await queued('settings/intervals',()=>retry1(()=>db.doc('settings/intervals').set(next)));formDirty.ivForm=false;document.activeElement&&document.activeElement.blur();toast('間隔已儲存')}catch(e){writeErr(e)}});
 async function readAll(col){const s=await db.collection(col).get();const o={};s.docs.forEach(d=>o[d.id]=d.data());return o}
 $('#btnExport').addEventListener('click',async()=>{if(!db){toast('資料庫未連線');return}
   const dl=await window.claude?.use?.('downloads');if(!dl){toast('這個檢視無法下載檔案，請在 claude.ai 開啟頁面');return}
@@ -961,8 +970,12 @@ $('#impGo').addEventListener('click',async()=>{if(!pendingImport||!db)return;con
 /* ================= boot ================= */
 show(location.hash.slice(1)||'today');
 let rT;window.addEventListener('resize',()=>{clearTimeout(rT);rT=setTimeout(()=>{if(cur==='weight')renderWeight();if(cur==='exercise')renderExercise()},200)});
-let lastLogical=logicalToday();
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){const t=logicalToday();if(t!==lastLogical){if(viewDate===lastLogical)viewDate=t;lastLogical=t}renderCur()}});
+/* a page left open still turns the day at 04:00 and asks for the evening weight at 18:00 */
+let lastLogical=logicalToday(),lastEvening=isAfterEvening(lastLogical);
+function clockTick(){const t=logicalToday(),ev=isAfterEvening(t);if(t===lastLogical&&ev===lastEvening)return false;
+  if(t!==lastLogical){if(viewDate===lastLogical){viewDate=t;openEx=null}lastLogical=t}lastEvening=ev;return true}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){clockTick();renderCur()}});
+setInterval(()=>{if(clockTick())renderCur()},60000);
 (async()=>{
   try{
     const [d,u]=await Promise.all([window.claude?.use?.('db')??null,window.claude?.use?.('user')??null]);

@@ -39,14 +39,16 @@ async function launch(){browser=browser||await chromium.launch();return browser}
 async function close(){if(browser)await browser.close();browser=null}
 
 /* 開一頁：time 是台北時間 ISO（含 +08:00），cfg 傳給假物件 */
-async function open({time='2026-10-30T08:00:00+08:00',cfg={},width=380,height=820,scheme='light',mobile=true,hash=''}={}){
+/* install:true 用可推進的假時鐘（page.clock.runFor）；init 是額外的頁面初始化 script */
+async function open({time='2026-10-30T08:00:00+08:00',cfg={},width=380,height=820,scheme='light',mobile=true,hash='',install=false,init=''}={}){
   const b=await launch();
   const ctx=await b.newContext({viewport:{width,height},colorScheme:scheme,deviceScaleFactor:mobile?2:1,hasTouch:mobile,isMobile:mobile});
   const page=await ctx.newPage();
   const errors=[];
   page.on('pageerror',e=>errors.push('pageerror: '+e.message));
   page.on('console',m=>{if(m.type()==='error')errors.push('console: '+m.text())});
-  await page.clock.setFixedTime(new Date(time));
+  if(install)await page.clock.install({time:new Date(time)});else await page.clock.setFixedTime(new Date(time));
+  if(init)await page.addInitScript(init);
   await page.addInitScript('window.__mockCfg='+JSON.stringify(cfg)+';'+MOCK);
   await page.goto('file://'+wrap()+(hash?'#'+hash:''));
   return {page,ctx,errors,doc:p=>page.evaluate(p=>{const v=window.__mock.store.get(p);return v===undefined?null:v},p)};
