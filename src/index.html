@@ -528,6 +528,19 @@ function hbStatus(hb,now){
   return{text:parts.join('・'),warn,stale:warn,warnText:warn?'提醒可能停了：上次檢查是 '+Math.floor(h)+' 小時前。':''};
 }
 /* ---- heartbeat helpers: end ---- */
+/* ---- med helpers: begin (extracted and tested outside the page) ---- */
+/* a dose is taken only when the record says so; a detail-only object left by a stale device is not a dose */
+const tookMed=d=>d?.med?.taken===true;
+const validDate=s=>typeof s==='string'&&/^\d{4}-\d\d-\d\d$/.test(s)&&dstr(dnum(s))===s;
+const validDose=v=>typeof v==='number'&&Number.isFinite(v)&&v>=1&&v<=1000;
+const validMeddose=m=>!!m&&m.deleted!==true&&validDate(m.date)&&validDose(m.dose);
+const cmpStr=(a,b)=>a<b?-1:a>b?1:0;
+/* effective order: date, then createdAt, then id; on one date only the last one is in effect */
+function sortMeddose(list){return (list||[]).filter(validMeddose).slice().sort((a,b)=>cmpStr(a.date,b.date)||((a.createdAt||0)-(b.createdAt||0))||cmpStr(String(a.id),String(b.id)))}
+/* the dose on a date: the last change in effect, else the setting as an estimate, else unknown */
+function doseOn(date,list,settingDose){let hit=null;for(const m of sortMeddose(list)){if(m.date<=date)hit=m;else break}
+  if(hit)return{dose:hit.dose,src:'history',id:hit.id};return validDose(settingDose)?{dose:settingDose,src:'setting'}:null}
+/* ---- med helpers: end ---- */
 
 /* toast with optional actions */
 let toastT;
@@ -540,10 +553,10 @@ function toast(text,acts=[],ms){
 
 /* ================= state ================= */
 let db=null, canWrite=true;
-let days={}, exercises=[], records=[], intervals={}, profile={};
+let days={}, exercises=[], records=[], intervals={}, profile={}, meddose=[];
 let hb=null, hbLoaded=false, hbErr=false; // system/heartbeat, written only by the scheduled checks
 let viewDate=logicalToday(), wDays=30, calMonth=logicalToday().slice(0,7), openHist=new Set(), editing=null, openEx=null, ready=false;
-const loaded={days:false,profile:false,intervals:false};
+const loaded={days:false,profile:false,intervals:false,meddose:false};
 /* a snapshot never rebuilds a block while someone is typing in it; the block is redrawn once focus leaves */
 let heldRender=false;
 const typingIn=el=>{const a=document.activeElement;return !!(a&&el.contains(a)&&a.matches('input,textarea,select'))};
@@ -605,7 +618,7 @@ function renderCur(){({today:renderToday,weight:renderWeight,exercise:renderExer
 
 /* ================= TODAY ================= */
 function isAfterEvening(date){if(date<logicalToday())return true;const h=tpeNow().h;return h>=18||h<4}
-function needed(date){const d=days[date]||{};const n=[];if(!d.am)n.push('早上體重');if(!d.med)n.push('服藥');if(isAfterEvening(date)&&!d.pm)n.push('晚上體重');return n}
+function needed(date){const d=days[date]||{};const n=[];if(!d.am)n.push('早上體重');if(!tookMed(d))n.push('服藥');if(isAfterEvening(date)&&!d.pm)n.push('晚上體重');return n}
 function lastSlotVal(s,field,before){const ks=Object.keys(days).filter(k=>k<before).sort().reverse();for(const k of ks){const v=days[k][s]?.[field];if(v!=null)return v}return null}
 /* where the sheet starts: today's saved value, the last measurement, an estimate, or nothing (never an invented number) */
 function defaultOf(slot,field){
@@ -625,7 +638,7 @@ function renderToday(){
   $('#tDate').innerHTML=`<b>${cmd(viewDate)}</b> 週${wd(viewDate)}`+(isToday?'':` ・ 補登 <button type="button" class="ghost" id="goToday">回到今天</button>`);
   if(!isToday)$('#goToday').onclick=()=>setView(today);
   // week dots
-  let w='';for(let i=6;i>=0;i--){const ds=addDays(today,-i);const x=days[ds]||{};const c=!needed(ds).length?2:(x.am||x.med||x.pm)?1:0; // same rule as the headline
+  let w='';for(let i=6;i>=0;i--){const ds=addDays(today,-i);const x=days[ds]||{};const c=!needed(ds).length?2:(x.am||tookMed(x)||x.pm)?1:0; // same rule as the headline
     w+=`<button type="button" data-day="${ds}" ${ds===viewDate?'aria-current="date"':''} aria-label="${cmd(ds)}"><span>${wd(ds)}</span><span class="wdot ${c===2?'full':c===1?'half':''} ${isPaused(ds)?'paused':''}"></span></button>`}
   $('#week').innerHTML=w;
   // headline
@@ -652,10 +665,11 @@ function renderToday(){
   renderSpark();
   // med
   const mb=$('#medBtn');const ring='<span class="ring"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>';
-  if(d.med){mb.className='blk medbtn isdone';mb.innerHTML=`${ring}<span class="grow"><span class="t">已服 ${esc(d.med.at||'')}</span><br><span class="sub">${esc(prof('medName'))} ${d.med.dose||prof('medDose')} mcg</span></span>`}
-  else{mb.className='blk medbtn'+(paused?'':' pend');mb.innerHTML=`${ring}<span class="grow"><span class="t">${esc(prof('medName'))} ${prof('medDose')} mcg</span><br><span class="sub">${esc(prof('medNote')||'點一下記錄')}</span></span>`}
+  const dz=doseOn(viewDate,meddose,prof('medDose')),doseTxt=dz?dz.dose+' mcg':'劑量未設定';
+  if(tookMed(d)){mb.className='blk medbtn isdone';mb.innerHTML=`${ring}<span class="grow"><span class="t">已服 ${esc(d.med.at||'')}</span><br><span class="sub">${esc(prof('medName'))} ${validDose(d.med.dose)?d.med.dose+' mcg':esc(doseTxt)}</span></span>`}
+  else{mb.className='blk medbtn'+(paused?'':' pend');mb.innerHTML=`${ring}<span class="grow"><span class="t">${esc(prof('medName'))} ${esc(doseTxt)}</span><br><span class="sub">${esc(prof('medNote')||'點一下記錄')}</span></span>`}
   mb.disabled=!canWrite||!ready;
-  if(!d.med)$('#medCancel').hidden=true;
+  if(!tookMed(d))$('#medCancel').hidden=true;
   // exercise
   const lastOf=t=>exercises.filter(e=>e.type===t&&!e.deleted).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0];
   const exMin=t=>lastOf(t)?.min||(t==='yoga'?prof('yogaMin'):t==='pilates'?prof('pilatesMin'):30);
@@ -774,8 +788,10 @@ $('#wsSave').addEventListener('click',async()=>{
 /* ---- med ---- */
 $('#medBtn').addEventListener('click',async()=>{
   const date=viewDate;const d=days[date]||{};
-  if(d.med){$('#medCancel').hidden=!$('#medCancel').hidden;return}
-  const med={taken:true,at:date===logicalToday()?nowHM():'補登',dose:prof('medDose')};
+  if(tookMed(d)){$('#medCancel').hidden=!$('#medCancel').hidden;return}
+  if(!canSave())return; // the dose history must have arrived before a dose is stored
+  const dz=doseOn(date,meddose,prof('medDose')); // the dose of that day, also when backfilling
+  const med={taken:true,at:date===logicalToday()?nowHM():'補登',dose:dz?dz.dose:null,...(dz?{doseSrc:dz.src}:{})};
   try{await writeDay(date,{med});toast('已記錄服藥'+(med.at!=='補登'?' '+med.at:''),[['撤銷',()=>writeDay(date,{med:null}).catch(writeErr)]])}catch(e){writeErr(e)}
 });
 $('#medCancel').addEventListener('click',async()=>{const date=viewDate;const prev=(days[date]||{}).med;$('#medCancel').hidden=true;try{await writeDay(date,{med:null});toast('已取消服藥紀錄',[['復原',()=>writeDay(date,{med:prev}).catch(writeErr)]])}catch(e){writeErr(e)}});
@@ -1091,10 +1107,11 @@ setInterval(()=>{if(clockTick())renderCur();else renderHb()},60000); // the 26-h
     $('#dbNotice').hidden=true;
     const fail=()=>{$('#dbNotice').hidden=false;$('#dbNotice').textContent='資料連線中斷，請重新整理頁面。'};
     /* a cached first snapshot may lack data the server has (e.g. the dose): show it, but only the server's answer opens writing */
-    const arrived=(k,s)=>{if(!loaded[k]&&!s.metadata?.fromCache){loaded[k]=true;ready=loaded.days&&loaded.profile}};
+    const arrived=(k,s)=>{if(!loaded[k]&&!s.metadata?.fromCache){loaded[k]=true;ready=loaded.days&&loaded.profile&&loaded.meddose}};
     db.collection('days').onSnapshot(s=>{const o={};s.docs.forEach(x=>o[x.id]=x.data());days=o;arrived('days',s);renderCur()},fail);
     db.collection('exercise').onSnapshot(s=>{exercises=s.docs.map(x=>({id:x.id,...x.data()}));renderCur()},fail);
     db.collection('records').onSnapshot(s=>{records=s.docs.map(x=>({id:x.id,...x.data()}));renderCur()},fail);
+    db.collection('meddose').onSnapshot(s=>{meddose=s.docs.map(x=>({id:x.id,...x.data()}));arrived('meddose',s);renderCur()},fail);
     db.doc('settings/intervals').onSnapshot(s=>{intervals=s.exists?{...s.data()}:{};arrived('intervals',s);renderCur()},fail);
     db.doc('settings/profile').onSnapshot(s=>{profile=s.exists?{...s.data()}:{};arrived('profile',s);renderCur()},fail);
     /* a lost heartbeat listener only affects the reminder status, never the rest of the page */

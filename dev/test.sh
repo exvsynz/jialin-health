@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 dev/check.sh
 node dev/date-test.js
 node dev/heartbeat-test.js
+node dev/med-test.js
 node dev/data-test.js
 node dev/render-test.js
 node dev/weight-test.js
@@ -13,4 +14,5 @@ node dev/review7-test.js
 node dev/remind-test.js "$@"
 node dev/remind-ref-test.js
 node dev/prompt-test.js
+node dev/med-page-test.js "$@"
 node dev/e2e.js "$@"
