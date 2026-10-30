@@ -395,7 +395,7 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
     <div class="sect"><h2 class="lbl">TSH 複查</h2><div class="blk grp">
       <p style="margin:0" id="rcState"></p>
       <div class="field"><label for="rcWeeks">劑量或製劑變更後幾週複查（留空就不排）</label><input id="rcWeeks" type="number" inputmode="numeric" min="1" max="52" step="1"></div>
-      <p class="hint" style="margin:0" id="rcSrc"></p>
+      <p class="hint wrapline" style="margin:0" id="rcSrc"></p>
     </div></div>
     <div class="sect"><div class="sect-head"><h2 class="lbl">變更與抽血</h2><button type="button" class="primary" id="mdAdd">＋ 新增變更</button></div><div class="blk"><ol class="tl" id="medTl"></ol></div></div>
     <details class="blk refbox"><summary>依據</summary><div class="ref" id="medRef"></div></details>
@@ -1274,7 +1274,7 @@ $('#btnDel').addEventListener('click',async()=>{if(!editing||!canSave())return;c
 /* ================= MEDS ================= */
 /* clinical text below is the verified wording in docs/specs/phase-B.md §5; change it only together with a fresh check of the source */
 const ATA='ATA 2014 指引（Jonklaas J, et al. Thyroid 2014;24:1670–1751，doi:10.1089/thy.2014.0028）';
-const LABEL='levothyroxine 說明書（Aurobindo，2024/3，DailyMed setid c760d0cc-2245-4914-8c67-d536c41ac90f）';
+const LABEL='levothyroxine 說明書（Aurobindo，2024/3，DailyMed https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=c760d0cc-2245-4914-8c67-d536c41ac90f）';
 const MED_REF=[
   ['服藥時機','ATA 指引建議，如果可以，固定在早餐前 60 分鐘，或睡前（晚餐後 3 小時以上）服用（弱建議，中等品質證據）。藥品說明書寫的是早餐前半小時到一小時空腹。一項隨機雙盲交叉試驗中（90 人完成），睡前服用的 TSH 比早上服用低（依原始摘要）。',ATA+' 建議 3a；'+LABEL+' §2.1；Bolk N, et al. Arch Intern Med 2010;170:1996–2003，doi:10.1001/archinternmed.2010.436'],
   ['鈣片、鐵劑','ATA 指引建議，可行時與可能干擾的藥物、保健品錯開服用（例如碳酸鈣、硫酸亞鐵）；4 小時的間隔是傳統做法，未經驗證（弱建議，證據品質弱）。藥品說明書寫至少錯開 4 小時。',ATA+' 建議 3b；'+LABEL+' §7.1'],
@@ -1285,8 +1285,8 @@ const MED_REF=[
   ['換廠牌或製劑','ATA 指引：換了可辨識的製劑（品牌或學名藥）之後，應在穩定狀態時重新評估 TSH（弱建議，低品質證據）。',ATA+' 建議 3d'],
 ];
 const CTX_REF=[
-  ['抽血前已服藥','ATA 指引：服藥後約 4 小時，T4 與 FT4 會有約 15% 的暫時高峰。原始研究中，門診隨機採血的 FT4 比服藥前（距上次服藥 22 小時以上）的採血高約 13%；4 位病人連續採血，FT4 約 9 小時內高於基線（依原始摘要）。這是採檢時間的影響，不是檢驗錯誤。',ATA+'（引用文獻 37）；Ain KB, et al. Thyroid 1993;3:81–85，doi:10.1089/thy.1993.3.81'],
-  ['生物素','6 位健康成人每天吃 10 mg 生物素 7 天後，23 項採用生物素－鏈黴親和素設計的檢驗中有 9 項受干擾：競爭型多為偏高、夾心型多為偏低（依原始摘要）。干擾需要的濃度依檢驗與廠商而不同（AACC 指引，依原始摘要）。FDA 2019 安全通訊：生物素可能讓部分檢驗偏高或偏低。藥品說明書：檢驗前至少停用生物素 2 天。這裡的「近一週有吃」只記錄有沒有吃，不代表結果一定不準；沒有吃也不保證沒有干擾。','Li D, et al. JAMA 2017;318:1150–1160，doi:10.1001/jama.2017.13705；Li D, et al. J Appl Lab Med 2020;5:575–587，doi:10.1093/jalm/jfz010；FDA 安全通訊 2019-11-05；'+LABEL+' §2.4'],
+  ['抽血前已服藥','ATA 指引：服藥後約 4 小時，T4 與 FT4 會有約 15% 的暫時高峰。原始研究中，門診隨機採血的 FT4 比服藥前（距上次服藥 22 小時以上）的採血高：替代治療組約 13%（TSH 抑制治療組約 15%）；4 位無甲狀腺的病人連續採血，FT4 約 9 小時內高於基線（依原始摘要）。這是採檢時間的影響，不是檢驗錯誤。',ATA+'（引用文獻 37）；Ain KB, et al. Thyroid 1993;3:81–85，doi:10.1089/thy.1993.3.81'],
+  ['生物素','6 位健康成人每天吃 10 mg 生物素 7 天後，23 項採用生物素－鏈黴親和素設計的檢驗中有 9 項受干擾：競爭型 8 項中有 5 項偏高，夾心型 15 項中有 4 項偏低（依原始摘要）。干擾需要的濃度依檢驗與廠商而不同（AACC 指引，依原始摘要）。FDA 2019 安全通訊：生物素可能讓部分檢驗偏高或偏低（FDA 原頁沒有取得，依存檔副本的節錄）。藥品說明書：檢驗前至少停用生物素 2 天。這裡的「近一週有吃」只記錄有沒有吃，不代表結果一定不準；沒有吃也不保證沒有干擾。','Li D, et al. JAMA 2017;318:1150–1160，doi:10.1001/jama.2017.13705；Li D, et al. J Appl Lab Med 2020;5:575–587，doi:10.1093/jalm/jfz010；FDA 安全通訊 2019-11-05（FDA 原頁沒有取得；依 regulations.gov 存檔副本 FDA-2019-D-1876-0015 的節錄）；'+LABEL+' §2.4'],
 ];
 const refHtml=list=>list.map(([t,x,src])=>`<p style="margin:0 0 4px"><strong>${esc(t)}</strong>：${esc(x)}</p><p class="muted wrapline" style="margin:0 0 12px;font-size:.8rem">${esc(src)}</p>`).join('');
 $('#ctxRef').innerHTML=refHtml(CTX_REF);

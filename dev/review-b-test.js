@@ -85,6 +85,16 @@ const txt=(page,s)=>page.evaluate(s=>{const e=document.querySelector(s);return e
     check('第 9 點：內容也是按下時的期間',dl?.data.startsWith('# 家琳回診摘要 2026/08/02–2026/10/30'),dl?.data.slice(0,40));
     await page.context().close()}
 
+  /* 臨床文字（審查的「低」建議） */
+  {const {page}=await open({time:NOW,hash:'meds',cfg:{latencyComp:true,seed:seed()}});await wait(500);
+    const ref=await page.evaluate(()=>document.querySelector('#medRef').textContent+document.querySelector('#ctxRef').textContent+document.querySelector('#rcSrc').textContent);
+    check('臨床：FT4 約 13% 註明是替代治療組',ref.includes('替代治療組')&&ref.includes('13%'),ref.match(/原始研究中[^。]*。/)?.[0]);
+    check('臨床：生物素干擾寫出明確分母',ref.includes('競爭型 8 項中有 5 項偏高')&&ref.includes('夾心型 15 項中有 4 項偏低'));
+    check('臨床：DailyMed 寫完整網址',ref.includes('https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=c760d0cc-2245-4914-8c67-d536c41ac90f'));
+    check('臨床：FDA 2019 照實標示原頁沒有取得',ref.includes('FDA 原頁沒有取得'));
+    check('臨床：網址只是文字，不是連結',!(await page.$('#medRef a, #ctxRef a')));
+    await page.context().close()}
+
   await close();
   process.exit(summary()?1:0);
 })().catch(e=>{console.error(e);process.exit(2)});
