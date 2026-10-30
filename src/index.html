@@ -400,8 +400,8 @@ details.refbox summary{cursor:pointer;font-weight:700}
     <div class="sheet-head"><div class="seg" role="group" aria-label="項目"><button type="button" data-wseg="w" aria-pressed="true">體重</button><button type="button" data-wseg="bf" aria-pressed="false">體脂</button></div><span class="sub" id="wsTitle"></span></div>
     <div class="wbig untouched" id="wsBig" aria-live="polite"></div>
     <div class="sub" style="text-align:center" id="wsHint"></div>
-    <div><div class="ruler" id="ruler" tabindex="0" aria-label="左右滑動調整數值"><div class="track" id="track"></div></div><div class="needle"></div></div>
-    <div class="steps"><button type="button" data-step="-1">−0.1</button><button type="button" data-step="1">＋0.1</button></div>
+    <div id="rulerWrap"><div class="ruler" id="ruler" tabindex="0" aria-label="左右滑動調整數值"><div class="track" id="track"></div></div><div class="needle"></div></div>
+    <div class="steps" id="wsSteps"><button type="button" data-step="-1">−0.1</button><button type="button" data-step="1">＋0.1</button></div>
     <div class="kbd" id="kbdRow" hidden><input id="kbdIn" type="number" inputmode="decimal" step="0.1" aria-label="直接輸入"></div>
     <button type="button" class="primary savebtn" id="wsSave"></button>
     <div class="row"><button type="button" class="ghost" id="kbdBtn">用鍵盤輸入</button><span class="grow"></span><button type="button" class="ghost" id="wsClose">關閉</button></div>
@@ -545,17 +545,19 @@ function renderCur(){({today:renderToday,weight:renderWeight,exercise:renderExer
 function isAfterEvening(date){if(date<logicalToday())return true;const h=tpeNow().h;return h>=18||h<4}
 function needed(date){const d=days[date]||{};const n=[];if(!d.am)n.push('早上體重');if(!d.med)n.push('服藥');if(isAfterEvening(date)&&!d.pm)n.push('晚上體重');return n}
 function lastSlotVal(s,field,before){const ks=Object.keys(days).filter(k=>k<before).sort().reverse();for(const k of ks){const v=days[k][s]?.[field];if(v!=null)return v}return null}
-function defaultVal(slot,field){
+/* where the sheet starts: today's saved value, the last measurement, an estimate, or nothing (never an invented number) */
+function defaultOf(slot,field){
   const d=days[viewDate]||{};
-  if(d[slot]?.[field]!=null)return d[slot][field];
+  if(d[slot]?.[field]!=null)return{v:d[slot][field],src:'saved'};
   if(slot==='pm'&&d.am?.[field]!=null){ // morning value plus the usual evening-minus-morning gap
     const diffs=[];for(let i=1;i<=14;i++){const x=days[addDays(viewDate,-i)];if(x?.am?.[field]!=null&&x?.pm?.[field]!=null)diffs.push(x.pm[field]-x.am[field])}
-    return r1(d.am[field]+(diffs.length?diffs.reduce((a,b)=>a+b,0)/diffs.length:0));
+    return{v:r1(d.am[field]+(diffs.length?diffs.reduce((a,b)=>a+b,0)/diffs.length:0)),src:'est'};
   }
-  const same=lastSlotVal(slot,field,viewDate);if(same!=null)return same;
-  const other=lastSlotVal(slot==='am'?'pm':'am',field,viewDate+'~');if(other!=null)return other;
-  return field==='w'?55:25;
+  const same=lastSlotVal(slot,field,viewDate);if(same!=null)return{v:same,src:'last'};
+  const other=lastSlotVal(slot==='am'?'pm':'am',field,viewDate+'~');if(other!=null)return{v:other,src:'last'};
+  return{v:null,src:'none'};
 }
+const defaultVal=(slot,field)=>defaultOf(slot,field).v;
 function renderToday(){
   const today=logicalToday();const d=days[viewDate]||{};const isToday=viewDate===today;
   $('#tDate').innerHTML=`<b>${cmd(viewDate)}</b> 週${wd(viewDate)}`+(isToday?'':` ・ 補登 <button type="button" class="ghost" id="goToday" style="min-height:32px">回到今天</button>`);
@@ -580,7 +582,7 @@ function renderToday(){
     const s=b.dataset.wslot;const v=d[s];const label=s==='am'?'早上':'晚上';
     const pend=!v&&!paused&&(s==='am'||evening);
     b.classList.toggle('pend',pend);b.classList.toggle('isdone',!!v);b.classList.toggle('ghostval',!v);
-    const show=v?v.w.toFixed(1):ready?defaultVal(s,'w').toFixed(1):'—';
+    const dv=v||!ready?null:defaultVal(s,'w');const show=v?v.w.toFixed(1):dv!=null?dv.toFixed(1):'—';
     b.innerHTML=`<span class="lbl" style="${pend?'color:inherit;opacity:.75':''}">${label}${v?' <span class="tick">✓</span>':''}</span><span class="big">${show}<small>kg</small></span><span class="sub">${v?(v.bf!=null?'體脂 '+v.bf+'%　':'')+esc(v.at||''):'點一下記錄'}</span>`;
     b.disabled=!canWrite||!ready;
   });
@@ -639,7 +641,7 @@ function setView(d){const today=logicalToday();if(d>today)d=today;viewDate=d;ope
 $('#week').addEventListener('click',e=>{const b=e.target.closest('[data-day]');if(b)setView(b.dataset.day)});
 
 /* ---- weight sheet with ruler ---- */
-const TICK=12;let ws={slot:'am',seg:'w',w:null,bf:null,min:0,touched:false,bfTouched:false};
+const TICK=12;let ws={slot:'am',seg:'w',w:null,bf:null,src:'none',min:0,touched:false,bfTouched:false};
 function buildRuler(center){
   const span=ws.seg==='w'?100:80; // ±10 kg / ±8 %
   ws.min=r1(Math.max(ws.seg==='w'?20:3,center-span/10));
@@ -653,44 +655,55 @@ function buildRuler(center){
 }
 let suppress=false,supT;
 /* rebuilding the ruler resets its scroll position; ignore scroll events until it is re-centred */
-function rebuild(v){suppress=true;clearTimeout(supT);buildRuler(v);requestAnimationFrame(()=>{rulerTo(v,false);supT=setTimeout(()=>suppress=false,180)})}
-function rulerTo(v,smooth){const r=$('#ruler');r.scrollTo({left:Math.round((v-ws.min)*10)*TICK,behavior:smooth?'smooth':'auto'})}
+function rebuild(v){suppress=true;clearTimeout(supT);buildRuler(v);requestAnimationFrame(()=>{rulerTo(v);supT=setTimeout(()=>suppress=false,180)})}
+/* always jump, never animate: a smooth scroll reports in-between positions that would overwrite the value */
+function rulerTo(v){$('#ruler').scrollTo({left:Math.round((v-ws.min)*10)*TICK,behavior:'auto'})}
 function curVal(){return ws.seg==='w'?ws.w:ws.bf}
 function setCur(v){v=r1(v);if(ws.seg==='w'){ws.w=v;ws.touched=true}else{ws.bf=v;ws.bfTouched=true}paintSheet()}
 function paintSheet(){
-  const v=curVal();const big=$('#wsBig');
-  big.innerHTML=`${v.toFixed(1)}<small>${ws.seg==='w'?'kg':'%'}</small>`;
-  big.classList.toggle('untouched',ws.seg==='w'?!ws.touched:!ws.bfTouched);
+  const v=curVal(),isW=ws.seg==='w',none=v==null;const big=$('#wsBig');
+  big.innerHTML=`${none?'—':v.toFixed(1)}<small>${isW?'kg':'%'}</small>`;
+  big.classList.toggle('untouched',isW?!ws.touched:!ws.bfTouched);
+  $('#rulerWrap').hidden=none;$('#wsSteps').hidden=none;
   const prev=(days[viewDate]||{})[ws.slot];
-  $('#wsHint').textContent=ws.seg==='w'?(prev?'已記錄 '+prev.w+' kg，可修改':'預設為'+(ws.slot==='pm'&&(days[viewDate]||{}).am?'今早加平常的早晚差':'上次同時段')):(ws.bfTouched?'會一起存':'沒動就不存體脂');
-  $('#wsSave').textContent=`記下 ${ws.w.toFixed(1)} kg`+(ws.bfTouched?`・${ws.bf.toFixed(1)}%`:'');
-  if(!$('#kbdRow').hidden&&document.activeElement!==$('#kbdIn'))$('#kbdIn').value=v.toFixed(1);
+  $('#wsHint').textContent=none?(isW?'第一次記錄，請輸入體重':'第一次記錄體脂，請輸入'):isW?(prev?'已記錄 '+prev.w+' kg，可修改':ws.src==='est'?'預設為今早加平常的早晚差':'預設為上次量的'):(ws.bfTouched?'會一起存':'沒動就不存體脂');
+  /* an estimate (evening = morning + usual gap) must be confirmed on the ruler; a last measurement may be kept as is */
+  const btn=$('#wsSave'),bf=ws.bfTouched&&ws.bf!=null?`・${ws.bf.toFixed(1)}%`:'';
+  if(ws.w==null){btn.textContent='先輸入體重';btn.disabled=true}
+  else if(!ws.touched&&ws.src==='est'){btn.textContent='撥尺確認晚上體重';btn.disabled=true}
+  else{btn.textContent=(ws.touched?'記下 ':'和上次一樣 ')+ws.w.toFixed(1)+' kg'+bf;btn.disabled=false}
+  if(!$('#kbdRow').hidden&&document.activeElement!==$('#kbdIn'))$('#kbdIn').value=none?'':v.toFixed(1);
 }
+function showKbd(on){$('#kbdRow').hidden=!on;$('#kbdBtn').textContent=on?'收起鍵盤':'用鍵盤輸入';if(on){const v=curVal();$('#kbdIn').value=v==null?'':v.toFixed(1);$('#kbdIn').focus()}}
+/* with no earlier value there is nothing to centre a ruler on: type the first one */
+function showInput(){if(curVal()==null)showKbd(true);else rebuild(curVal())}
 function openSheet(slot){
   const d=days[viewDate]||{};
-  ws={slot,seg:'w',w:defaultVal(slot,'w'),bf:defaultVal(slot,'bf'),min:0,touched:!!d[slot],bfTouched:d[slot]?.bf!=null};
+  const dw=defaultOf(slot,'w');
+  ws={slot,seg:'w',w:dw.v,bf:defaultVal(slot,'bf'),src:dw.src,min:0,touched:!!d[slot],bfTouched:d[slot]?.bf!=null};
   $('#wsTitle').textContent=(viewDate===logicalToday()?'':cmd(viewDate)+' ')+(slot==='am'?'早上':'晚上');
   $$('[data-wseg]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.wseg==='w')));
-  $('#kbdRow').hidden=true;$('#kbdBtn').textContent='用鍵盤輸入';
+  showKbd(false);
   $('#wSheet').showModal();
-  paintSheet();rebuild(ws.w);
+  paintSheet();showInput();
 }
 $$('[data-wslot]').forEach(b=>b.addEventListener('click',()=>openSheet(b.dataset.wslot)));
-$$('[data-wseg]').forEach(b=>b.addEventListener('click',()=>{ws.seg=b.dataset.wseg;$$('[data-wseg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));paintSheet();rebuild(curVal())}));
+$$('[data-wseg]').forEach(b=>b.addEventListener('click',()=>{ws.seg=b.dataset.wseg;$$('[data-wseg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));if(curVal()!=null)showKbd(false);paintSheet();showInput()}));
 $('#ruler').addEventListener('scroll',()=>{if(suppress)return;const i=Math.round($('#ruler').scrollLeft/TICK);const v=r1(ws.min+i/10);if(v!==curVal()){if(ws.seg==='w'){ws.w=v;ws.touched=true}else{ws.bf=v;ws.bfTouched=true}paintSheet()}},{passive:true});
-$('#ruler').addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setCur(curVal()+(e.key==='ArrowRight'?0.1:-0.1));rulerTo(curVal(),true)}});
-$$('[data-step]').forEach(b=>b.addEventListener('click',()=>{setCur(curVal()+Number(b.dataset.step)/10);rulerTo(curVal(),true)}));
-$('#kbdBtn').addEventListener('click',()=>{const r=$('#kbdRow');r.hidden=!r.hidden;$('#kbdBtn').textContent=r.hidden?'用鍵盤輸入':'收起鍵盤';if(!r.hidden){$('#kbdIn').value=curVal().toFixed(1);$('#kbdIn').focus()}});
+$('#ruler').addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setCur(curVal()+(e.key==='ArrowRight'?0.1:-0.1));rulerTo(curVal())}});
+$$('[data-step]').forEach(b=>b.addEventListener('click',()=>{if(curVal()==null)return;setCur(curVal()+Number(b.dataset.step)/10);rulerTo(curVal())}));
+$('#kbdBtn').addEventListener('click',()=>showKbd($('#kbdRow').hidden));
 $('#kbdIn').addEventListener('change',()=>{const v=num($('#kbdIn').value);const lo=ws.seg==='w'?20:3,hi=ws.seg==='w'?200:70;if(v==null||v<lo||v>hi){toast(ws.seg==='w'?'體重請填 20–200':'體脂請填 3–70');return}setCur(v);rebuild(v)});
 $('#wsClose').addEventListener('click',()=>$('#wSheet').close());
 $('#wsSave').addEventListener('click',async()=>{
+  if(ws.w==null)return;
   const slot=ws.slot,date=viewDate;const prev=(days[date]||{})[slot]||null;
   const at=date===logicalToday()?nowHM():(prev?.at||'補登');
   const val={w:ws.w,bf:ws.bfTouched?ws.bf:(prev?.bf??null),at};
   const btn=$('#wsSave');btn.disabled=true;btn.textContent='儲存中…';
   try{await writeDay(date,{[slot]:val});$('#wSheet').close();toast(`已記錄 ${val.w.toFixed(1)} kg`,[['撤銷',()=>writeDay(date,{[slot]:prev}).catch(writeErr)]])}
-  catch(e){writeErr(e);paintSheet()}
-  finally{btn.disabled=false}
+  catch(e){writeErr(e)}
+  finally{btn.disabled=false;if($('#wSheet').open)paintSheet()}
 });
 
 /* ---- med ---- */

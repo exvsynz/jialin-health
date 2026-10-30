@@ -3,7 +3,7 @@
 const fs=require('fs'),os=require('os'),path=require('path');
 const {chromium}=require('playwright');
 const ROOT=path.resolve(__dirname,'..');
-const SRC=path.join(ROOT,'src/index.html');
+const SRC=process.env.SRC?path.resolve(process.env.SRC):path.join(ROOT,'src/index.html'); // SRC=舊檔路徑 可對舊版本跑同一組測試
 const MOCK=fs.readFileSync(path.join(__dirname,'mock-claude.js'),'utf8');
 
 function wrap(){
