@@ -686,8 +686,14 @@ function summarize(c,from,to,today){
       L.push('自行標記為「有」：'+(im.length?im.join('、'):'沒有'))}
     S.push(['服藥',L])}
   /* doses */
-  {const L=[],d0=doseOn(from,c.meddose,c.settingDose),sorted=sortMeddose(c.meddose);
-    L.push(`期初劑量：${d0?d0.dose+' mcg'+(d0.src==='setting'?'（依設定推定）':''):'未設定'}`);
+  {const L=[],sorted=sortMeddose(c.meddose);
+    /* what the dose records of the period say, grouped by dose; then the dose history at the start, never mixed with the current setting */
+    const taken=Object.keys(days).filter(k=>inR(k)&&tookMed(days[k])).sort(),grp=[];let none=0;
+    for(const k of taken){const m=days[k].med;if(!validDose(m.dose)){none++;continue}
+      const key=m.dose+'|'+(m.doseSrc==='setting'?'s':''),g=grp.find(x=>x.key===key);if(g){g.n++;g.last=k}else grp.push({key,dose:m.dose,est:m.doseSrc==='setting',n:1,first:k,last:k})}
+    L.push('服藥紀錄上的劑量：'+(taken.length?[...grp.map(g=>`${g.dose} mcg${g.est?'（記錄時依設定推定）':' '}${g.n} 天（${g.first===g.last?dIn(g.first):dIn(g.first)+'–'+dIn(g.last)}）`),none?`劑量沒有記錄 ${none} 天`:''].filter(Boolean).join('、'):'期間內沒有服藥紀錄'));
+    const d0=doseOn(from,c.meddose,c.settingDose);
+    L.push('期初的劑量紀錄：'+(d0?.src==='history'?d0.dose+' mcg':'沒有'+(d0?`（依目前設定推定 ${d0.dose} mcg）`:'')));
     const last={};for(const m of sorted)last[m.date]=m.id;
     const ch=sorted.filter(m=>inR(m.date)&&last[m.date]===m.id);
     if(ch.length)for(const m of ch)L.push(`${dIn(m.date)} ${m.kind==='product'?'換製劑':'劑量變更'} ${m.dose} mcg`+[m.tablet,m.brand,m.reason].filter(Boolean).map(x=>'・'+x).join(''));
