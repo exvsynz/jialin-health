@@ -13,6 +13,7 @@ module.exports={
   'e-exam':['evening',SAT+'T22:21:00+08:00',st({[SAT]:{am,med}},{records:[rec('thy_lab','2026-05-07',{interval:6})]})],
   'e-many':['evening',SAT+'T22:21:00+08:00',st({},{records:[rec('breast_us','2025-06-01'),rec('thy_us','2026-10-20',{interval:0})]})],
   'e-recheck':['evening',SAT+'T22:21:00+08:00',st({[SAT]:{am,med}},{meddose:[{id:'m2',kind:'dose',date:'2026-10-01',dose:75,createdAt:1}],profile:{tshRecheckWeeks:5}})],
+  'e-food':['evening',SAT+'T22:21:00+08:00',st({[SAT]:{am,med,pm}},{profile:{remind:{food:true}}})],
   'e-legacy':['evening',SAT+'T22:21:00+08:00',st({[SAT]:{am,med}},{records:[rec('thy_lab','2026-05-03',{interval:null})]})],
   'w-full':['weekly',SUN+'T20:14:00+08:00',st(week(),{profile:{lastExport:'2026/09/20'},heartbeat:{recent:runs()},exercise:[{date:'2026-10-26',min:60},{date:'2026-10-29',min:50},{date:SUN,min:70}],records:[rec('breast_us','2025-11-12'),rec('thy_lab','2026-05-30',{interval:6})]})],
   'w-empty':['weekly',SUN+'T20:14:00+08:00',st({},{profile:{lastExport:'2026/10/30'}})],

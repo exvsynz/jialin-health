@@ -87,6 +87,17 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   eq('只看最新一筆：舊的逾期紀錄不列入',await ev({records:[rec('thy_lab','2025-04-01',{interval:6}),rec('thy_lab','2026-10-01',{interval:6})]}),'家琳今天還沒記：晚上體重');
   eq('同一天取 createdAt 最大',await ev({records:[rec('thy_lab','2026-05-01',{interval:6,createdAt:1}),rec('thy_lab','2026-05-01',{interval:12,createdAt:2})]}),'家琳今天還沒記：晚上體重');
   eq('沒有缺、只有檢查到期：不推播（8.2）',(await run('evening',E(),st({[SAT]:day(full)},{records:[rec('thy_lab','2026-05-07',{interval:6})]}))).push,null);
+  /* C 階段：飲食提醒（remind.food 開啟時，今天沒有飲食紀錄就列「飲食」，排在最後） */
+  {const F={profile:{medDose:50,remind:{food:true}}},ml=(o={})=>({x:{at:Date.parse(SAT+'T12:00:00+08:00'),meal:'lunch',note:'',createdAt:1,attempts:{},...o}});
+    eq('飲食：remind.food 不存在，不看飲食',(await run('evening',E(),st({[SAT]:day(full)}))).push,null);
+    eq('飲食：remind.food 是 false，不看飲食',(await run('evening',E(),st({[SAT]:day(full)},{profile:{remind:{food:false}}}))).push,null);
+    eq('飲食：開啟、沒有 meals → 飲食',(await run('evening',E(),st({[SAT]:day(full)},F))).push,'家琳今天還沒記：飲食');
+    eq('飲食：開啟、只有已刪除的餐點 → 飲食',(await run('evening',E(),st({[SAT]:day({...full,meals:ml({deleted:true})})},F))).push,'家琳今天還沒記：飲食');
+    eq('飲食：開啟、只有沒有 at 的殘缺項目 → 飲食',(await run('evening',E(),st({[SAT]:day({...full,meals:{x:{attempts:{a:{status:'done'}}}}})},F))).push,'家琳今天還沒記：飲食');
+    eq('飲食：估算中的餐點算有紀錄',(await run('evening',E(),st({[SAT]:day({...full,meals:ml({attempts:{a:{status:'pending',startedAt:1}}})})},F))).push,null);
+    eq('飲食：估算失敗的餐點也算有紀錄',(await run('evening',E(),st({[SAT]:day({...full,meals:ml({attempts:{a:{status:'failed',startedAt:1,err:'refused'}}})})},F))).push,null);
+    eq('飲食：排在最後，到期檢查接在後面',(await run('evening',E(),st({[SAT]:day({am:full.am,med:full.med})},{...F,records:[rec('thy_lab','2026-05-07',{interval:6})]}))).push,'家琳今天還沒記：晚上體重、飲食；甲狀腺抽血 11/7 到期');
+    eq('飲食：早上不看飲食',(await run('morning',M(),st({[SAT]:day(full)},F))).push,null);}
   eq('不認得的檢查代號不列入',await ev({records:[rec('unknown_exam','2020-01-01')]}),'家琳今天還沒記：晚上體重');
   eq('月底加月份：5/31 + 5 個月 = 10/31（今天到期）',await ev({records:[rec('thy_lab','2026-05-31',{interval:5})]}),'家琳今天還沒記：晚上體重；甲狀腺抽血 10/31 到期');
   r=await run('evening',E(),st(need,{records:[rec('thy_lab','2026-05-07',{interval:6}),rec('gi_colo','2016-01-01',{interval:120,nextDue:'2026-11-02'})]}),{pageSize:1});

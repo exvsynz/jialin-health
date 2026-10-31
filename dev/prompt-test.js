@@ -10,7 +10,7 @@ const ROOT=path.join(__dirname,'..');
 const read=f=>fs.readFileSync(path.join(ROOT,f),'utf8');
 
 const KINDS={morning:{docs:['settings/profile','system/heartbeat','days/{今天}'],cases:['m-both','m-med','err'],exams:false},
-  evening:{docs:['settings/profile','system/heartbeat','days/{今天}','records','settings/intervals','meddose'],cases:['e-pm','e-exam','e-many','e-recheck','e-legacy','err'],exams:true},
+  evening:{docs:['settings/profile','system/heartbeat','days/{今天}','records','settings/intervals','meddose'],cases:['e-pm','e-exam','e-many','e-recheck','e-legacy','e-food','err'],exams:true},
   weekly:{docs:['settings/profile','system/heartbeat','days','exercise','records','settings/intervals','meddose'],cases:['w-full','w-empty','err'],exams:true}};
 const COMMON=[
   ['artifact 網址','https://claude.ai/artifact/LJViyfLqXv2VdD5krdJahh'],
@@ -49,6 +49,8 @@ for(const [kind,spec] of Object.entries(KINDS)){
   if(!spec.docs.includes('records'))check(`${kind}：不讀 records`,!s.includes('collection `records`'));
   if(kind!=='weekly')check(`${kind}：沒有值的定義`,s.includes('`null`、`false`、`0`、空字串'));
   check(`${kind}：服藥看 med.taken`,kind==='weekly'?s.includes('其中 `med.taken` 是 `true` 的也算進 a'):s.includes('`med.taken` 不是 `true` 就是缺'));
+  if(kind==='evening')check('evening：飲食提醒（remind.food 開啟才看、有 at 且沒刪除才算、排最後、不讀 mealthumbs）',s.includes('`remind.food` 是 `true` 時')&&s.includes('`at` 是數字，而且它的 `deleted` 不是 `true`')&&s.includes('「早上體重」「服藥」「晚上體重」「飲食」')&&s.includes('不讀 `mealthumbs`')&&s.includes('估算中、估算失敗的餐點都算有紀錄'));
+  else check(kind+'：不看飲食',!s.includes('`remind.food` 是 `true` 時'));
   if(kind==='weekly')check('weekly：服藥分母和頁面一致（追蹤起點、今天還沒服藥先不算、還沒有紀錄的寫法）',s.includes('| `days`，本週一之前最早的 31 筆 |')&&s.includes('**追蹤起點**')&&s.includes('今天（週日）而且 `med.taken` 不是 `true` → 先不算')&&s.includes('「、服藥還沒有紀錄」'));
   if(kind==='weekly')check('weekly：本週 7 天依日期 ID 讀；days 只有本週一之前那一次查詢',s.includes('各做一次 `get`，collection `days`')&&s.split('collection `days`，`query').length===2&&s.includes('`query.where` `[["date","<",週一]]`'));
   const tbl=(s.split('| 代號 | 名稱 | 預設間隔（月） |')[1]||'').split(/\n\s*\n/)[0];

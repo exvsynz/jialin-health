@@ -202,7 +202,7 @@ system/heartbeat {
   - 多項用「、」接。
   - 已逾期寫「名稱已逾期」，`interval` 0 寫「名稱待安排」。
   - 只有檢查到期、沒有缺漏時，不推播（8.2）。
-- `remind.food` 的檢查等 C 階段再加。現在的提示詞不讀 `meals`。
+- `remind.food` 的檢查在 C 階段加入晚上的提示詞（`docs/specs/phase-C.md` 第 6 節）：開啟時，今天的 `days` 沒有有效的 `meals` 就列「飲食」，排在最後。不讀 `mealthumbs`。
 - B 階段起（`docs/specs/phase-B.md` 3.4、9.4）：多讀 `meddose`，劑量或製劑變更後的「TSH 複查（劑量變更後）」當成一項檢查，一起列入 7 天內到期；週報同樣列入 30 天內到期。
 
 ### 3.4 週報（每週日 20:1x）

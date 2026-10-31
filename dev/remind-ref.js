@@ -28,6 +28,8 @@ const PUSH_REQUESTED='Mobile push requested.'; // 正式排程的 PushNotificati
 const RECENT_MAX=21,SENT_DAYS=7,WINDOW_DAYS={evening:7,weekly:30},ERR_MSG='提醒檢查失敗：讀不到資料';
 
 const remindOf=(profile,k)=>{const v=profile?.remind?.[k];return typeof v==='boolean'?v:k!=='food'};
+/* 有飲食紀錄：meals 裡至少一個物件，at 是數字，而且沒有刪除（估算中、估算失敗的都算；沒有 at 的殘缺項目不算） */
+const hasFood=d=>{const ms=d&&d.meals;return!!ms&&typeof ms==='object'&&Object.values(ms).some(m=>m&&typeof m==='object'&&typeof m.at==='number'&&Number.isFinite(m.at)&&m.deleted!==true)};
 const isPaused=(profile,date)=>{const f=profile?.pauseFrom,t=profile?.pauseTo;return !!(f&&t&&date>=f&&date<=t)};
 const mdShort=ds=>(+ds.slice(5,7))+'/'+(+ds.slice(8));
 const daysFrom=(a,b)=>D.dnum(b)-D.dnum(a);
@@ -168,6 +170,7 @@ async function execute(kind,api,mode){
     else{
       const d=data.days[date]||{};
       entry.missing=ITEMS.filter(([k])=>CHECK[kind].includes(k)&&(k==='med'?d.med?.taken!==true:!d[k])).map(([,l])=>l); // 和頁面相同：服藥看 med.taken；體重沒有值就是缺
+      if(kind==='evening'&&remindOf(profile,'food')&&!hasFood(d))entry.missing.push('飲食'); // C 階段：飲食提醒開啟時才看，排在最後
       if(entry.missing.length){
         entry.msg='家琳今天還沒記：'+entry.missing.join('、');
         if(kind==='evening'){const x=dueItems(data,date,WINDOW_DAYS.evening);if(x.length)entry.msg+='；'+x.map(y=>examPhrase(y,true)).join('、')}

@@ -81,7 +81,7 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 
 1. ~~主架構、體重體脂、服藥、運動、月經、補登、暫停、匯出匯入~~（已完成）
 2. 用藥細節與回診摘要：頁面已完成（`docs/specs/phase-B.md`），待 GPT 審查與發布
-3. 飲食照片：上傳前壓縮、只存縮圖、Claude 估熱量以範圍呈現、不設熱量目標
+3. 飲食照片：頁面與晚上提示詞的飲食檢查已完成（`docs/specs/phase-C.md`），待 GPT 審查與發布。發布時 capabilities 要加 `sample: { images: true }`（規格第 11 節）
 4. 提醒：每天兩次排程檢查（07:2x、22:2x，台北時間），有缺才推播；每週日 20:1x 週報。頁面與提示詞已完成（`docs/specs/phase-A.md`、`ops/scheduled/`），排程任務待在 claude.ai 建立
 
 設計與臨床依據見 `docs/`。

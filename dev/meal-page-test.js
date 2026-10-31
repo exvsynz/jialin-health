@@ -118,9 +118,12 @@ const mealsOf=(doc)=>Object.entries((doc&&doc.meals)||{});
     await tap(page,'#mealRetry');await wait(1500);[id,m]=mealsOf(await doc('days/'+T))[0]||[];
     check('再存一次：只重送縮圖與旗標',m.thumb===true&&!!(await doc('mealthumbs/'+id))&&await page.evaluate(()=>document.querySelector('#mealPend').hidden),m.thumb);
     await page.context().close()}
-  {const {page,doc}=await open({time:NOW,cfg:{latencyComp:true,sample:{delay:1200}}});await wait(700);
-    await snap(page,await photo(page,1200,900));await wait(800);
-    await page.evaluate(()=>{window.__mock.cfg.failNext={code:'unavailable',count:2}});await wait(1600);
+  {const {page,doc}=await open({time:NOW,cfg:{latencyComp:true,sample:{delay:4000}}});await wait(700);
+    await snap(page,await photo(page,1200,900));
+    /* 等餐點與縮圖旗標都寫好，再讓接下來的兩次寫入失敗：那就是估算結果的寫回（不受整體測試負載的時間影響） */
+    for(let i=0;i<60;i++){const d=await doc('days/'+T);if(mealsOf(d)[0]&&mealsOf(d)[0][1].thumb===true)break;await wait(100)}
+    await page.evaluate(()=>{window.__mock.cfg.failNext={code:'unavailable',count:2}});
+    for(let i=0;i<80;i++){if(/估算結果沒有存到/.test(await toastText(page)))break;await wait(100)}
     let [id,m]=mealsOf(await doc('days/'+T))[0]||[];
     check('估算結果寫回失敗：提示，餐點仍是 pending',/估算結果沒有存到/.test(await toastText(page))&&Object.values(m.attempts)[0].status==='pending',Object.values(m.attempts));
     await tap(page,'#mealRetry');await wait(1200);[id,m]=mealsOf(await doc('days/'+T))[0]||[];
