@@ -1,24 +1,23 @@
 # 已建立的排程任務
 
-2026-10-30 由 claude.ai 依 `docs/specs/phase-A.md` 第 7 節建立。2026-10-31 通知管道從 `tool` 改成 `platform`（切換中，見下）。
+2026-10-30 由 claude.ai 依 `docs/specs/phase-A.md` 第 7 節建立。2026-10-31 改成 `platform` 通知管道，三個任務重建（舊任務已由使用者在 app 刪除）。
 
-## 目前狀態（2026-10-31 09:15 台北）
+| 名稱 | ID | 時間（台北） |
+|---|---|---|
+| 家琳提醒・早上 | `trig_014BPbk8eY8KqhG3CjrNkEJ8` | 每天 07:23 |
+| 家琳提醒・晚上 | `trig_01UfU7TbMFWLbey57UPZLpyG` | 每天 22:21 |
+| 家琳週報 | `trig_01LaeGtz1Ujrxyg32QSef6NK` | 週日 20:14 |
 
-| 名稱 | ID | 時間（台北） | 通知管道 | 狀態 |
-|---|---|---|---|---|
-| 家琳提醒・早上 | `trig_01MdtFkvqKB14X3efw24nPqu` | 每天 07:23 | `platform`，完成通知開啟 | 新建，使用中 |
-| （舊，請刪除）家琳提醒・早上 | `trig_01DHxi7ut795tPb7BetTEr7m` | 每天 07:23 | `tool`，完成通知關閉 | 待使用者在 app 刪除 |
-| 家琳提醒・晚上 | `trig_011SzzP2uhnQnYLbTdYB6J9Q` | 每天 22:21 | `tool`，完成通知關閉 | 使用者刪除後，改建 `platform` 版 |
-| 家琳週報 | `trig_01ETPCvt3kkAseLL6QRF6qwu` | 週日 20:14 | `tool`，完成通知關閉 | 使用者刪除後，改建 `platform` 版 |
-
-- 提示詞是 main 上 `morning.md`、`evening.md`、`weekly.md` 分隔線以下的內容（B 版，2026-10-31 00:42–00:43 UTC 以 update_trigger 同步，對應 commit 046152b）。這次只把第一行改成 `platform`。
+- 通知管道：`platform`。三個任務的完成通知（push）都開啟，email 關閉。
+- 提示詞：main 上 `morning.md`、`evening.md`、`weekly.md` 分隔線以下的內容（B 版提示詞，第一行是 `platform`）。2026-10-31 01:24 UTC 建立。
 - 每次執行都開新的工作階段，核准設定為自動核准。
+- 已刪除的舊任務：`trig_01DHxi7ut795tPb7BetTEr7m`（早上）、`trig_011SzzP2uhnQnYLbTdYB6J9Q`（晚上）、`trig_01ETPCvt3kkAseLL6QRF6qwu`（週報），都是 `tool` 版；還有一個只存在幾分鐘的 `platform` 早上任務 `trig_01MdtFkvqKB14X3efw24nPqu`。
 
 ## 為什麼改成 `platform`
 
 - 2026-10-31 07:24 早上任務的心跳是 `delivery: "tool_sent"`（工具回「Mobile push requested.」），但使用者手機沒收到。2026-10-30 23:25 的測試用同樣方式有收到。工具回報已送出，不代表手機收到。
-- `platform` 是用排程任務的完成通知送出最終回覆，和使用者其他每天、每月的排程任務相同。
-- 排程任務的完成通知不能用 update_trigger 修改，所以要重建任務。claude.ai 停用或刪除舊任務會被權限擋下，舊任務由使用者在 app 刪除。
+- `platform` 用排程任務的完成通知送出最終回覆，和使用者其他每天、每月的排程任務相同。
+- 排程任務的完成通知不能用 update_trigger 修改，只能重建。claude.ai 停用或刪除任務會被權限擋下，要由使用者在 app 操作。
 
 ## 驗證紀錄
 
@@ -32,4 +31,4 @@
 
 ## 改提示詞時
 
-`ops/scheduled/*.md` 改了以後，排程任務不會自動更新。要回到 claude.ai，用 update_trigger 換掉對應任務的提示詞，並更新這份文件。
+`ops/scheduled/*.md` 改了以後，排程任務不會自動更新。要回到 claude.ai，用 update_trigger 換掉對應任務的提示詞，並更新這份文件。完成通知的開關不能用 update_trigger 改。
