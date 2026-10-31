@@ -1,6 +1,6 @@
 # 已建立的排程任務
 
-2026-10-30 由 claude.ai 依 `docs/specs/phase-A.md` 第 7 節建立。2026-10-31 改成 `platform` 通知管道，三個任務重建（舊任務已由使用者在 app 刪除）。
+2026-10-30 由 claude.ai 依 `docs/specs/phase-A.md` 第 7 節建立。2026-10-31 先改成 `platform`（任務重建），同一天再改成 `calendar`（用 update_trigger 換提示詞）。
 
 | 名稱 | ID | 時間（台北） |
 |---|---|---|
@@ -8,26 +8,29 @@
 | 家琳提醒・晚上 | `trig_01UfU7TbMFWLbey57UPZLpyG` | 每天 22:21 |
 | 家琳週報 | `trig_01LaeGtz1Ujrxyg32QSef6NK` | 週日 20:14 |
 
-- 通知管道：`platform`。三個任務的完成通知（push）都開啟，email 關閉。
-- 提示詞：main 上 `morning.md`、`evening.md`、`weekly.md` 分隔線以下的內容（B 版提示詞，第一行是 `platform`）。2026-10-31 01:24 UTC 建立。
+- 通知管道：`calendar`。有缺才在 Google 日曆 primary 建活動：送出前那次取的時間捨去秒數加 5 分鐘開始、長 5 分鐘、開始時 popup 提醒、標成有空、不寄通知信，說明欄放頁面網址。
+- 日曆連接器登入的是家琳的帳號（chialin0721@gmail.com，primary 的擁有者），所以提醒會出現在家琳的手機。她的日曆預設提醒是 30 分鐘前；活動用自己的提醒，不用預設。
+- 提示詞：main 上 `morning.md`、`evening.md`、`weekly.md` 分隔線以下的內容。2026-10-31 02:06–02:08 UTC 以 update_trigger 同步，對應 commit ef96ba9。
+- 完成通知：三個任務建立時開了 push（`platform` 時期），update_trigger 不能關。實測這個通知送不到手機，所以留著也不會吵。要關的話在 app 的任務設定裡關。
 - 每次執行都開新的工作階段，核准設定為自動核准。
-- 已刪除的舊任務：`trig_01DHxi7ut795tPb7BetTEr7m`（早上）、`trig_011SzzP2uhnQnYLbTdYB6J9Q`（晚上）、`trig_01ETPCvt3kkAseLL6QRF6qwu`（週報），都是 `tool` 版；還有一個只存在幾分鐘的 `platform` 早上任務 `trig_01MdtFkvqKB14X3efw24nPqu`。
+- 已刪除的舊任務（使用者在 app 刪除）：`trig_01DHxi7ut795tPb7BetTEr7m`、`trig_011SzzP2uhnQnYLbTdYB6J9Q`、`trig_01ETPCvt3kkAseLL6QRF6qwu`（`tool` 版），`trig_01MdtFkvqKB14X3efw24nPqu`（`platform` 版早上）。claude.ai 停用或刪除任務會被權限擋下。
 
-## 為什麼改成 `platform`
+## 為什麼改成 `calendar`
 
-- 2026-10-31 07:24 早上任務的心跳是 `delivery: "tool_sent"`（工具回「Mobile push requested.」），但使用者手機沒收到。2026-10-30 23:25 的測試用同樣方式有收到。工具回報已送出，不代表手機收到。
-- `platform` 用排程任務的完成通知送出最終回覆，和使用者其他每天、每月的排程任務相同。
-- 排程任務的完成通知不能用 update_trigger 修改，只能重建。claude.ai 停用或刪除任務會被權限擋下，要由使用者在 app 操作。
+| 時間 | 管道 | 心跳 | 手機 |
+|---|---|---|---|
+| 2026-10-30 23:25 | `tool`（一次性測試） | 「Mobile push requested.」 | 收到 |
+| 2026-10-31 07:24 | `tool`（正式排程） | `tool_sent` | 沒收到 |
+| 2026-10-31 09:29 | `platform`（一次性測試，完成通知開啟） | `platform` | 沒收到 |
+| 2026-10-31 09:53 | Google 日曆活動（手動建立，開始時 popup） | — | 家琳的手機有響 |
+
+推播工具和排程完成通知都不可靠；日曆提醒由 Google 日曆 app 送出，而且直接送到家琳本人。
 
 ## 驗證紀錄
 
-- 2026-10-30 23:25 一次性測試（`tool`）：
-  - 排程工作階段裡有 `PushNotification`，回傳「Mobile push requested.」。
-  - 使用者手機收到推播。
-  - ArtifactData 寫入不需人工核准。
-- 2026-10-31 07:24 早上任務（`tool`）：心跳 `tool_sent`，手機沒收到。
-- `platform` 待測：有缺時應推播；全部記完時（最後回覆是「（無需提醒）」）應不推播。
-- 規格第 5 步的情境實測（無缺、暫停、關閉、時段外、重複）還沒做：「立即執行」被權限擋下。改由實際執行，從 `system/heartbeat` 驗證。
+- 2026-10-31 09:29／09:34（`platform` 一次性測試）：有缺時 `delivery: platform`；第二次 `skipped: duplicate`、`delivery: none`。邏輯正確，但手機都沒收到。
+- 2026-10-31 10:12（`calendar` 一次性測試，先清掉當天的早上 `sent`）：排程工作階段能用日曆連接器建活動，不需要人工核准。心跳 `delivery: calendar`、`missing: ["早上體重"]`；家琳的日曆出現「家琳今天還沒記：早上體重」，10:17–10:22，popup 0 分鐘、有空、說明有網址，和參考實作的參數一致。
+- 規格第 5 步的情境實測（無缺、暫停、關閉、時段外）還沒做：「立即執行」被權限擋下。改由實際執行，從 `system/heartbeat` 驗證。
 
 ## 改提示詞時
 
