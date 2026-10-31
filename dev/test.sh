@@ -12,6 +12,7 @@ node dev/sample-mock-test.js
 node dev/data-test.js
 node dev/render-test.js
 node dev/weight-test.js
+node dev/bf-test.js "$@"
 node dev/review6-test.js
 node dev/review7-test.js
 node dev/remind-test.js "$@"

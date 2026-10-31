@@ -64,13 +64,12 @@ const tap=(page,sel)=>page.evaluate(s=>document.querySelector(s).click(),sel); /
       check(L+'寫入失敗時體重面板保持開啟',openSheet);
       await page.context().close()}
 
-    /* 6. 只點體脂分頁不存體脂 */
+    /* 6. 體脂帶上次的值但沒動：不存體脂（頁籤已拿掉，體脂和體重在同一個畫面） */
     {const {page,doc}=await open({time:NOW,cfg:{latencyComp,seed:{['days/2026-10-29']:{date:'2026-10-29',am:{w:52.3,bf:24.1,at:'07:00'}}}}});
       await wait(400);await page.click('[data-wslot="am"]');await wait(300);
-      await page.click('[data-wseg="bf"]');await wait(250);await page.click('[data-wseg="w"]');await wait(250);
       await page.click('#wsSave');await wait(500);
       const d=await doc('days/'+T);
-      check(L+'切到體脂分頁沒調整就不存體脂',d&&d.am&&d.am.bf==null,d&&d.am);
+      check(L+'體脂帶上次的值、沒動就不存體脂',d&&d.am&&d.am.bf==null,d&&d.am);
       await page.context().close()}
   }
 

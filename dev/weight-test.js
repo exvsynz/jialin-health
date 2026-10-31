@@ -25,9 +25,8 @@ const sheet=page=>page.evaluate(()=>({
     s=await sheet(page);
     check('第一次使用：輸入後顯示刻度尺與數值',s.rulerShown&&s.big.startsWith('51.4'),s);
     check('第一次使用：輸入後可以記下',!s.saveDisabled&&s.save.includes('51.4'),s);
-    await page.click('[data-wseg="bf"]');await wait(250);s=await sheet(page);
-    check('第一次使用：體脂沒有紀錄也走鍵盤',s.kbdShown&&!s.rulerShown,s);
-    await page.click('[data-wseg="w"]');await wait(250);
+    const bf=await page.evaluate(()=>({row:document.querySelector('#bfRow').hidden,hint:!document.querySelector('#bfHint').hidden,kbdBf:!document.querySelector('#kbdBf').closest('[hidden]'),state:document.querySelector('#bfState').textContent}));
+    check('第一次使用：體脂從來沒有記過，不顯示體脂刻度尺，提示用鍵盤（鍵盤的體脂欄也在）',bf.row&&bf.hint&&bf.kbdBf&&bf.state==='未記',bf);
     await page.click('#wsSave');await wait(400);
     const d=await doc('days/'+T);
     check('第一次使用：存入 51.4、沒有體脂',d?.am?.w===51.4&&d.am.bf==null,d?.am);

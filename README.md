@@ -60,6 +60,7 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 - `dev/check.sh`：抽出 `<script>` 跑 `node --check`；確認發布檔裡沒有 mock、`print`、`alert`、`confirm`；確認外部資源只來自允許的來源。
 - `dev/date-test.js`：直接從 `src/index.html` 的 `date helpers` 區塊抽出函式，測試台北時區、凌晨 4 點換日、月底加月份。
 - `dev/data-test.js`、`dev/render-test.js`、`dev/weight-test.js`：資料寫入情境、重繪不打斷輸入、體重面板。
+- `dev/bf-test.js`：體重與體脂在同一個面板（兩把刻度尺各自捲動、體脂未記／已記與「不記」、儲存鈕、鍵盤兩欄）、一位小數、體脂圖、最近紀錄三欄，以及 380×820、380×667 深淺色的版面與截圖。
 - `dev/heartbeat-test.js`：從 `src/index.html` 抽出 `heartbeat helpers` 區塊，測試「上次檢查」的文字與 26 小時警示的邊界。
 - `dev/remind-test.js`：設定頁提醒區塊（開關寫入、撤銷、多裝置、停用狀態、寫入失敗）、心跳即時更新、今天頁的「提醒可能停了」、版面與截圖。
 - `dev/remind-ref.js`、`dev/fake-artifact-data.js`、`dev/remind-ref-test.js`：照排程提示詞的步驟，對 ArtifactData 測試替身（參數照工具 schema 檢查、版本條件、分頁、失敗注入、推播工具）實際執行的參考實作與情境測試，並和頁面的 `dueOf` 比對。

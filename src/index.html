@@ -203,7 +203,10 @@ dialog.sheet[open]{animation:up .24s ease-out}
 .sheet-body{padding:12px max(18px,env(safe-area-inset-left,0px)) 18px max(18px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:14px}
 .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:8px auto 0}
 .sheet-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.wbig{font-family:var(--f-num);font-weight:300;font-size:3.6rem;line-height:1;text-align:center;font-variant-numeric:tabular-nums}
+.wsbody{gap:12px}
+.wstitle{font-size:1rem;font-weight:500;color:var(--muted)}
+.wsec{display:flex;flex-direction:column;gap:8px}
+.wbig{font-family:var(--f-num);font-weight:300;font-size:3.2rem;line-height:1;text-align:center;font-variant-numeric:tabular-nums}
 .wbig small{font-size:1.1rem;font-weight:400;margin-left:4px}
 .wbig.untouched{color:var(--muted)}
 .ruler{position:relative;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;height:64px;border-radius:12px;background:var(--sunk);touch-action:pan-x;overscroll-behavior:contain}
@@ -216,11 +219,29 @@ dialog.sheet[open]{animation:up .24s ease-out}
 .tk span{position:absolute;top:34px;left:6px;transform:translateX(-50%);font-family:var(--f-num);font-size:.72rem;color:var(--muted);white-space:nowrap}
 .needle{position:relative;height:0}
 .needle::after{content:"";position:absolute;left:50%;top:-64px;width:3px;height:40px;margin-left:-1.5px;border-radius:2px;background:var(--accent);pointer-events:none}
+/* body fat: a smaller number and a shorter ruler, ±0.1 on either side of it */
+.bfsec{border-top:1px solid var(--line);padding-top:10px}
+.bfhead{display:flex;align-items:center;gap:10px;min-height:36px}
+.bfbig{font-family:var(--f-num);font-weight:300;font-size:1.75rem;line-height:1;font-variant-numeric:tabular-nums}
+.bfbig small{font-size:.85rem;font-weight:400;margin-left:3px}
+.bfbig.untouched{color:var(--muted)}
+.bfstate{font-size:.78rem;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.bfstate.on{color:var(--ink);border-color:var(--ink)}
+.bfrow{display:grid;grid-template-columns:56px minmax(0,1fr) 56px;gap:8px;align-items:center}
+.bfrow button{min-height:44px;padding:0;font-family:var(--f-num)}
+.rwrap.short{min-width:0}
+.ruler.short{height:44px}
+.ruler.short .tk::before{height:9px}
+.ruler.short .tk.h::before{height:14px}
+.ruler.short .tk.f::before{height:20px}
+.ruler.short .tk span{top:23px;font-size:.68rem}
+.needle.short::after{top:-44px;height:26px}
 .steps{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .steps button{min-height:56px;font-family:var(--f-num);font-size:1.15rem}
 .savebtn{min-height:56px;font-size:1.05rem}
-#wSheet.saving #rulerWrap,#wSheet.saving .steps,#wSheet.saving .seg{opacity:.5;pointer-events:none}
-.kbd{display:flex;gap:8px;align-items:center}
+#wSheet.saving .rwrap,#wSheet.saving .steps,#wSheet.saving .bfrow,#wSheet.saving #bfClear{opacity:.5;pointer-events:none}
+.kbd{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kbd .field span{font-size:.8rem;color:var(--muted)}
 .menu{display:flex;flex-direction:column}
 .menu button{border:0;border-top:1px solid var(--line);border-radius:0;background:transparent;text-align:left;min-height:56px;display:flex;justify-content:space-between;align-items:center;padding:0 4px;font-size:1rem}
 .menu button:first-child{border-top:0}
@@ -254,6 +275,11 @@ dialog.sheet[open]{animation:up .24s ease-out}
 .loglist li{display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:.9rem;flex-wrap:wrap}
 .loglist li:first-child{border-top:0;padding-top:0}
 .loglist li:last-child{padding-bottom:0}
+/* weight log: date / morning / evening in three columns that stay on one line at 380px */
+.loglist li.logrow{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);column-gap:8px;align-items:center}
+.lgd{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+.lgd button{padding:6px 4px}
+.lgv{white-space:nowrap}
 
 /* exams */
 .next{overflow:hidden}
@@ -389,7 +415,8 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
       <div class="legend"><span><i style="background:var(--w-am)"></i>早上 7 日平均</span><span><i style="background:var(--w-am);opacity:.4;height:8px;width:8px;border-radius:50%"></i>早上</span><span><i style="background:transparent;border:1.5px solid var(--w-pm);height:8px;width:8px;border-radius:50%"></i>晚上</span><span><i style="background:var(--band);height:10px"></i>月經</span></div>
       <div class="chart" id="wChart"></div>
     </div></div>
-    <div class="sect"><h2 class="lbl">體脂（早上 7 日平均）</h2><div class="blk grp">
+    <div class="sect"><h2 class="lbl">體脂</h2><div class="blk grp">
+      <div class="legend" id="bfLegend"><span><i style="background:var(--w-am)"></i>早上 7 日平均</span><span><i style="background:var(--w-am);opacity:.4;height:8px;width:8px;border-radius:50%"></i>早上</span><span><i style="background:transparent;border:1.5px solid var(--w-pm);height:8px;width:8px;border-radius:50%"></i>晚上</span><span><i style="background:var(--band);height:10px"></i>月經</span></div>
       <div class="chart" id="bfChart"></div>
       <p class="hint" style="margin:0">家用體脂計只適合看同一台、同時段的長期方向。</p>
     </div></div>
@@ -536,13 +563,23 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
 <!-- weight sheet -->
 <dialog class="sheet" id="wSheet" aria-labelledby="wsTitle">
   <div class="grab"></div>
-  <div class="sheet-body">
-    <div class="sheet-head"><div class="seg" role="group" aria-label="項目"><button type="button" data-wseg="w" aria-pressed="true">體重</button><button type="button" data-wseg="bf" aria-pressed="false">體脂</button></div><span class="sub" id="wsTitle"></span></div>
-    <div class="wbig untouched" id="wsBig" aria-live="polite"></div>
-    <div class="sub" style="text-align:center" id="wsHint"></div>
-    <div id="rulerWrap"><div class="ruler" id="ruler" tabindex="0" aria-label="左右滑動調整數值"><div class="track" id="track"></div></div><div class="needle"></div></div>
-    <div class="steps" id="wsSteps"><button type="button" data-step="-1">−0.1</button><button type="button" data-step="1">＋0.1</button></div>
-    <div class="kbd" id="kbdRow" hidden><input id="kbdIn" type="number" inputmode="decimal" step="0.1" aria-label="直接輸入"></div>
+  <div class="sheet-body wsbody">
+    <h2 class="wstitle" id="wsTitle"></h2>
+    <div class="wsec">
+      <div class="wbig untouched" id="wsBig" aria-live="polite"></div>
+      <div class="sub" style="text-align:center" id="wsHint"></div>
+      <div class="rwrap" id="rulerWrap"><div class="ruler" id="ruler" tabindex="0" aria-label="體重刻度尺，左右滑動調整"><div class="track" id="track"></div></div><div class="needle"></div></div>
+      <div class="steps" id="wsSteps"><button type="button" data-step="-1">−0.1</button><button type="button" data-step="1">＋0.1</button></div>
+    </div>
+    <div class="wsec bfsec">
+      <div class="bfhead"><span class="lbl">體脂</span><span class="bfbig untouched" id="bfBig" aria-live="polite"></span><span class="bfstate" id="bfState">未記</span><span class="grow"></span><button type="button" class="ghost" id="bfClear" hidden>不記</button></div>
+      <div class="bfrow" id="bfRow"><button type="button" data-bfstep="-1" aria-label="體脂 −0.1">−0.1</button><div class="rwrap short" id="bfRulerWrap"><div class="ruler short" id="bfRuler" tabindex="0" aria-label="體脂刻度尺，左右滑動調整"><div class="track" id="bfTrack"></div></div><div class="needle short"></div></div><button type="button" data-bfstep="1" aria-label="體脂 ＋0.1">＋0.1</button></div>
+      <div class="sub" id="bfHint" hidden>第一次記錄體脂，請用鍵盤輸入</div>
+    </div>
+    <div class="kbd" id="kbdRow" hidden>
+      <label class="field"><span>體重 kg</span><input id="kbdIn" type="number" inputmode="decimal" step="0.1"></label>
+      <label class="field"><span>體脂 %（可留空）</span><input id="kbdBf" type="number" inputmode="decimal" step="0.1"></label>
+    </div>
     <button type="button" class="primary savebtn" id="wsSave"></button>
     <div class="row"><button type="button" class="ghost" id="kbdBtn">用鍵盤輸入</button><span class="grow"></span><button type="button" class="ghost" id="wsClose">關閉</button></div>
   </div>
@@ -1060,7 +1097,7 @@ function renderToday(){
     const pend=!v&&!paused&&(s==='am'||evening);
     b.classList.toggle('pend',pend);b.classList.toggle('isdone',!!v);b.classList.toggle('ghostval',!v);
     const dv=v||!ready?null:defaultVal(s,'w');const show=v?v.w.toFixed(1):dv!=null?dv.toFixed(1):'—';
-    b.innerHTML=`<span class="lbl" style="${pend?'color:inherit;opacity:.75':''}">${label}${v?' <span class="tick">✓</span>':''}</span><span class="big">${show}<small>kg</small></span><span class="sub">${v?(v.bf!=null?'體脂 '+v.bf+'%　':'')+esc(v.at||''):'點一下記錄'}</span>`;
+    b.innerHTML=`<span class="lbl" style="${pend?'color:inherit;opacity:.75':''}">${label}${v?' <span class="tick">✓</span>':''}</span><span class="big">${show}<small>kg</small></span><span class="sub">${v?(v.bf!=null?'體脂 '+Number(v.bf).toFixed(1)+'%　':'')+esc(v.at||''):'點一下記錄'}</span>`;
     b.disabled=!canWrite||!ready;
   });
   renderSpark();
@@ -1354,73 +1391,82 @@ $('#thClear').addEventListener('click',async()=>{const b=$('#thClear'),v=$('#thM
   for(const [d,ms] of Object.entries(byDay)){try{await writeDay(d,{meals:ms})}catch(_){}}
   b.classList.remove('armed');b.textContent='清除舊縮圖';toast(fail?`已清除 ${ok} 張縮圖，${fail} 張失敗`:`已清除 ${ok} 張縮圖`);renderMealSetup()});
 
-/* ---- weight sheet with ruler ---- */
-const TICK=12;let ws={slot:'am',seg:'w',w:null,bf:null,src:'none',min:0,touched:false,bfTouched:false};
-function buildRuler(center){
-  const span=ws.seg==='w'?100:80; // ±10 kg / ±8 %
-  ws.min=r1(Math.max(ws.seg==='w'?20:3,center-span/10));
-  const max=r1(Math.min(ws.seg==='w'?200:70,center+span/10));
-  const n=Math.round((max-ws.min)*10);
-  const half=Math.max(0,($('#ruler').clientWidth||340)/2-TICK/2);
+/* ---- weight sheet: weight on top, body fat below, each with its own ruler ---- */
+const TICK=12;let ws={slot:'am',w:null,bf:null,bf0:null,bfSaved:false,src:'none',touched:false,bfTouched:false};
+/* each ruler keeps its own range, scroll position and "ignore scroll while re-centring" state, so one never moves the other */
+const RL={w:{el:'#ruler',track:'#track',span:100,lo:20,hi:200,min:0,sup:false,supT:0},bf:{el:'#bfRuler',track:'#bfTrack',span:80,lo:3,hi:70,min:0,sup:false,supT:0}};
+function buildRuler(k,center){const R=RL[k];
+  R.min=r1(Math.max(R.lo,center-R.span/10));const max=r1(Math.min(R.hi,center+R.span/10));
+  const n=Math.round((max-R.min)*10);
+  const half=Math.max(0,($(R.el).clientWidth||(k==='w'?340:200))/2-TICK/2);
   let h=`<div style="flex:none;width:${half}px"></div>`;
-  for(let i=0;i<=n;i++){const v=r1(ws.min+i/10);const t=Math.round(v*10);const cls=t%10===0?'f':t%5===0?'h':'';h+=`<div class="tk ${cls}">${t%10===0?`<span>${v.toFixed(0)}</span>`:''}</div>`}
+  for(let i=0;i<=n;i++){const v=r1(R.min+i/10);const t=Math.round(v*10);const cls=t%10===0?'f':t%5===0?'h':'';h+=`<div class="tk ${cls}">${t%10===0?`<span>${v.toFixed(0)}</span>`:''}</div>`}
   h+=`<div style="flex:none;width:${half}px"></div>`;
-  $('#track').innerHTML=h;
-}
-let suppress=false,supT;
-/* rebuilding the ruler resets its scroll position; ignore scroll events until it is re-centred */
-function rebuild(v){suppress=true;clearTimeout(supT);buildRuler(v);requestAnimationFrame(()=>{rulerTo(v);supT=setTimeout(()=>suppress=false,180)})}
+  $(R.track).innerHTML=h}
+/* rebuilding a ruler resets its scroll position; ignore its scroll events until it is re-centred */
+function rebuild(k,v){const R=RL[k];R.sup=true;clearTimeout(R.supT);buildRuler(k,v);requestAnimationFrame(()=>{rulerTo(k,v);R.supT=setTimeout(()=>R.sup=false,180)})}
 /* always jump, never animate: a smooth scroll reports in-between positions that would overwrite the value */
-function rulerTo(v){$('#ruler').scrollTo({left:Math.round((v-ws.min)*10)*TICK,behavior:'auto'})}
-function curVal(){return ws.seg==='w'?ws.w:ws.bf}
-function setCur(v){if(ws.saving)return;v=r1(v);if(ws.seg==='w'){ws.w=v;ws.touched=true}else{ws.bf=v;ws.bfTouched=true}paintSheet()}
+function rulerTo(k,v){const R=RL[k];if(v!=null)$(R.el).scrollTo({left:Math.round((v-R.min)*10)*TICK,behavior:'auto'})}
+const valOf=k=>k==='w'?ws.w:ws.bf;
+function setVal(k,v){if(ws.saving)return;v=r1(v);if(k==='w'){ws.w=v;ws.touched=true}else{ws.bf=v;ws.bfTouched=true}paintSheet()}
+/* body fat is stored only when 已記: touched here, or already stored in this slot */
+const bfStored=()=>ws.bfTouched&&ws.bf!=null;
 function paintSheet(){
-  const v=curVal(),isW=ws.seg==='w',none=v==null;const big=$('#wsBig');
-  big.innerHTML=`${none?'—':v.toFixed(1)}<small>${isW?'kg':'%'}</small>`;
-  big.classList.toggle('untouched',isW?!ws.touched:!ws.bfTouched);
-  $('#rulerWrap').hidden=none;$('#wsSteps').hidden=none;
+  const w=ws.w,big=$('#wsBig');
+  big.innerHTML=`${w==null?'—':w.toFixed(1)}<small>kg</small>`;big.classList.toggle('untouched',!ws.touched);
+  $('#rulerWrap').hidden=w==null;$('#wsSteps').hidden=w==null;
   const prev=(days[ws.date]||{})[ws.slot];
-  $('#wsHint').textContent=none?(isW?'第一次記錄，請輸入體重':'第一次記錄體脂，請輸入'):isW?(prev?'已記錄 '+prev.w+' kg，可修改':ws.src==='est'?'預設為今早加平常的早晚差':'預設為上次量的'):(ws.bfTouched?'會一起存':'沒動就不存體脂');
+  $('#wsHint').textContent=w==null?'第一次記錄，請輸入體重':prev?'已記錄 '+prev.w.toFixed(1)+' kg，可修改':ws.src==='est'?'預設為今早加平常的早晚差':'預設為上次量的';
+  const bf=ws.bf,on=bfStored();
+  $('#bfBig').innerHTML=`${bf==null?'—':bf.toFixed(1)}<small>%</small>`;$('#bfBig').classList.toggle('untouched',!on);
+  const st=$('#bfState');st.textContent=on?'已記':'未記';st.classList.toggle('on',on);
+  $('#bfRow').hidden=bf==null;$('#bfHint').hidden=bf!=null;
+  $('#bfClear').hidden=!(ws.bfTouched&&!(ws.bfSaved&&ws.bf===ws.bf0)); // undo only a change made in this sheet
   /* an estimate (evening = morning + usual gap) must be confirmed on the ruler; a last measurement may be kept as is */
-  const btn=$('#wsSave'),bf=ws.bfTouched&&ws.bf!=null?`・${ws.bf.toFixed(1)}%`:'';
-  $('#wSheet').classList.toggle('saving',ws.saving);
+  const btn=$('#wsSave');$('#wSheet').classList.toggle('saving',!!ws.saving);
   if(ws.saving){btn.textContent='儲存中…';btn.disabled=true}
-  else if(ws.w==null){btn.textContent='先輸入體重';btn.disabled=true}
+  else if(w==null){btn.textContent='先輸入體重';btn.disabled=true}
   else if(!ws.touched&&ws.src==='est'){btn.textContent='撥尺確認晚上體重';btn.disabled=true}
-  else{btn.textContent=(ws.touched?'記下 ':'和上次一樣 ')+ws.w.toFixed(1)+' kg'+bf;btn.disabled=false}
-  if(!$('#kbdRow').hidden&&document.activeElement!==$('#kbdIn'))$('#kbdIn').value=none?'':v.toFixed(1);
+  else{btn.textContent=(ws.touched?'記下 ':'和上次一樣 ')+w.toFixed(1)+' kg'+(on?'・'+bf.toFixed(1)+'%':'（體脂未記）');btn.disabled=false}
+  if(!$('#kbdRow').hidden){if(document.activeElement!==$('#kbdIn'))$('#kbdIn').value=w==null?'':w.toFixed(1);
+    if(document.activeElement!==$('#kbdBf')){$('#kbdBf').value=on?bf.toFixed(1):'';$('#kbdBf').placeholder=bf==null?'':bf.toFixed(1)}}
 }
-function showKbd(on){$('#kbdRow').hidden=!on;$('#kbdBtn').textContent=on?'收起鍵盤':'用鍵盤輸入';if(on){const v=curVal();$('#kbdIn').value=v==null?'':v.toFixed(1);$('#kbdIn').focus()}}
+function showKbd(on){$('#kbdRow').hidden=!on;$('#kbdBtn').textContent=on?'收起鍵盤':'用鍵盤輸入';if(on){paintSheet();$('#kbdIn').focus()}}
 /* with no earlier value there is nothing to centre a ruler on: type the first one */
-function showInput(){if(curVal()==null)showKbd(true);else rebuild(curVal())}
+function showInput(){if(ws.w==null)showKbd(true);else rebuild('w',ws.w);if(ws.bf!=null)rebuild('bf',ws.bf)}
+/* body fat starts from the last measurement (same slot first, then the other one), shown as 未記 until moved */
+function lastBf(slot){return lastSlotVal(slot,'bf',viewDate)??lastSlotVal(slot==='am'?'pm':'am','bf',viewDate+'~')}
 function openSheet(slot){
-  const d=days[viewDate]||{};
-  const dw=defaultOf(slot,'w');
-  ws={slot,date:viewDate,seg:'w',w:dw.v,bf:defaultVal(slot,'bf'),src:dw.src,min:0,touched:!!d[slot],bfTouched:d[slot]?.bf!=null,saving:false};
+  const d=days[viewDate]||{},dw=defaultOf(slot,'w'),saved=d[slot]?.bf!=null,bf0=saved?d[slot].bf:lastBf(slot);
+  ws={slot,date:viewDate,w:dw.v,bf:bf0,bf0,bfSaved:saved,src:dw.src,touched:!!d[slot],bfTouched:saved,saving:false};
   $('#wsTitle').textContent=(viewDate===logicalToday()?'':cmd(viewDate)+' ')+(slot==='am'?'早上':'晚上');
-  $$('[data-wseg]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.wseg==='w')));
   showKbd(false);
   $('#wSheet').showModal();
   paintSheet();showInput();
 }
 $$('[data-wslot]').forEach(b=>b.addEventListener('click',()=>openSheet(b.dataset.wslot)));
-$$('[data-wseg]').forEach(b=>b.addEventListener('click',()=>{if(ws.saving)return;ws.seg=b.dataset.wseg;$$('[data-wseg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));if(curVal()!=null)showKbd(false);paintSheet();showInput()}));
-$('#ruler').addEventListener('scroll',()=>{if(suppress||ws.saving)return;const i=Math.round($('#ruler').scrollLeft/TICK);const v=r1(ws.min+i/10);if(v!==curVal()){if(ws.seg==='w'){ws.w=v;ws.touched=true}else{ws.bf=v;ws.bfTouched=true}paintSheet()}},{passive:true});
-$('#ruler').addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setCur(curVal()+(e.key==='ArrowRight'?0.1:-0.1));rulerTo(curVal())}});
-$$('[data-step]').forEach(b=>b.addEventListener('click',()=>{if(curVal()==null)return;setCur(curVal()+Number(b.dataset.step)/10);rulerTo(curVal())}));
+for(const k of ['w','bf']){const R=RL[k];
+  $(R.el).addEventListener('scroll',()=>{if(R.sup||ws.saving)return;const v=r1(R.min+Math.round($(R.el).scrollLeft/TICK)/10);if(v!==valOf(k))setVal(k,v)},{passive:true});
+  $(R.el).addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();if(valOf(k)==null)return;setVal(k,valOf(k)+(e.key==='ArrowRight'?0.1:-0.1));rulerTo(k,valOf(k))}})}
+$$('[data-step]').forEach(b=>b.addEventListener('click',()=>{if(ws.w==null)return;setVal('w',ws.w+Number(b.dataset.step)/10);rulerTo('w',ws.w)}));
+$$('[data-bfstep]').forEach(b=>b.addEventListener('click',()=>{if(ws.bf==null)return;setVal('bf',ws.bf+Number(b.dataset.bfstep)/10);rulerTo('bf',ws.bf)}));
+$('#bfClear').addEventListener('click',()=>{if(ws.saving)return;ws.bf=ws.bf0;ws.bfTouched=ws.bfSaved;paintSheet();if(ws.bf!=null)rulerTo('bf',ws.bf)});
 $('#kbdBtn').addEventListener('click',()=>showKbd($('#kbdRow').hidden));
-$('#kbdIn').addEventListener('change',()=>{if(ws.saving)return;const v=num($('#kbdIn').value);const lo=ws.seg==='w'?20:3,hi=ws.seg==='w'?200:70;if(v==null||v<lo||v>hi){toast(ws.seg==='w'?'體重請填 20–200':'體脂請填 3–70');return}setCur(v);rebuild(v)});
+$('#kbdIn').addEventListener('change',()=>{if(ws.saving)return;const v=num($('#kbdIn').value);if(v==null||v<20||v>200){toast('體重請填 20–200');return}setVal('w',v);rebuild('w',v)});
+$('#kbdBf').addEventListener('change',()=>{if(ws.saving)return;const raw=$('#kbdBf').value.trim();
+  if(raw===''){ws.bf=ws.bf0;ws.bfTouched=ws.bfSaved;paintSheet();if(ws.bf!=null)rebuild('bf',ws.bf);return} // left empty: body fat not recorded this time
+  const v=num(raw);if(v==null||v<3||v>70){toast('體脂請填 3–70');return}setVal('bf',v);rebuild('bf',v)});
 $('#wsClose').addEventListener('click',()=>$('#wSheet').close());
 $('#wsSave').addEventListener('click',async()=>{
   const my=ws;if(my.w==null||my.saving)return;
   const slot=my.slot,date=my.date;const prev=(days[date]||{})[slot]||null;
   const at=date===logicalToday()?nowHM():(prev?.at||'補登');
-  const val={w:my.w,bf:my.bfTouched?my.bf:(prev?.bf??null),at};
+  const val={w:my.w,bf:my.bfTouched&&my.bf!=null?my.bf:(prev?.bf??null),at}; // 未記 keeps whatever this slot already had
   my.saving=true;paintSheet();
   const mine=()=>ws===my&&$('#wSheet').open; // a sheet reopened meanwhile is not this save's to close
-  try{await writeDay(date,{[slot]:val});if(mine())$('#wSheet').close();toast(`已記錄 ${val.w.toFixed(1)} kg`,[['撤銷',()=>writeDay(date,{[slot]:prev}).catch(writeErr)]])}
+  try{await writeDay(date,{[slot]:val});if(mine())$('#wSheet').close();toast(`已記錄 ${val.w.toFixed(1)} kg${val.bf!=null&&my.bfTouched?'・'+val.bf.toFixed(1)+'%':''}`,[['撤銷',()=>writeDay(date,{[slot]:prev}).catch(writeErr)]])}
   catch(e){writeErr(e)}
-  finally{my.saving=false;if(mine()){paintSheet();rulerTo(curVal())}}
+  finally{my.saving=false;if(mine()){paintSheet();rulerTo('w',ws.w);rulerTo('bf',ws.bf)}}
 });
 
 /* ---- med ---- */
@@ -1517,16 +1563,17 @@ function renderWeight(){
   $$('#wRange button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.days===wDays)));
   const end=dnum(logicalToday()),start=end-wDays+1;const keys=Object.keys(days).sort();
   const am=[],pm=[],bf=[],bands=[];
-  for(const k of keys){const d=days[k],n=dnum(k);if(d.am?.w!=null)am.push({d:n,v:d.am.w});if(d.pm?.w!=null)pm.push({d:n,v:d.pm.w});if(d.am?.bf!=null)bf.push({d:n,v:d.am.bf});if(d.period)bands.push(n)}
+  const bfpm=[];
+  for(const k of keys){const d=days[k],n=dnum(k);if(d.am?.w!=null)am.push({d:n,v:d.am.w});if(d.pm?.w!=null)pm.push({d:n,v:d.pm.w});if(d.am?.bf!=null)bf.push({d:n,v:d.am.bf});if(d.pm?.bf!=null)bfpm.push({d:n,v:d.pm.bf});if(d.period)bands.push(n)}
   const inR=p=>p.d>=start&&p.d<=end;
   drawLineChart($('#wChart'),{start,end,dots:am.filter(inR),hollow:pm.filter(inR),line:rolling(am,7).filter(inR),bands});
-  drawLineChart($('#bfChart'),{start,end,line:rolling(bf,7).filter(inR),bands,unit:'%'});
+  drawLineChart($('#bfChart'),{start,end,dots:bf.filter(inR),hollow:bfpm.filter(inR),line:rolling(bf,7).filter(inR),bands,unit:'%'});
   const mean=(a,b)=>{const v=am.filter(p=>p.d>=a&&p.d<=b).map(p=>p.v);return v.length?v.reduce((x,y)=>x+y,0)/v.length:null};
   const m1=mean(end-6,end),m0=mean(end-13,end-7),m30=mean(end-29,end);const diff=m1!=null&&m0!=null?r1(m1-m0):null;
   const cnt=keys.filter(k=>dnum(k)>end-7&&days[k].am).length;
   $('#wStats').innerHTML=kvRows([['近 7 天早上平均',m1!=null?m1.toFixed(1)+' kg':'—'],['和前 7 天相比',diff!=null?(diff>0?'+':'')+diff.toFixed(1)+' kg':'—'],['近 30 天平均',m30!=null?m30.toFixed(1)+' kg':'—'],['近 7 天早上有量',cnt+' / 7 天']]);
   const recent=keys.filter(k=>days[k].am||days[k].pm).reverse().slice(0,20);
-  $('#wLog').innerHTML=recent.length?recent.map(k=>{const d=days[k];const f=s=>d[s]?`${d[s].w}${d[s].bf!=null?'・'+d[s].bf+'%':''}`:'—';return`<li><button type="button" class="ghost num" data-go="${k}">${fmt(k)}（${wd(k)}）</button><span>早 <span class="num">${f('am')}</span></span><span class="muted">晚 <span class="num">${f('pm')}</span></span>${d.period?'<span class="chip">月經</span>':''}</li>`}).join(''):'<li class="muted">還沒有紀錄。</li>';
+  $('#wLog').innerHTML=recent.length?recent.map(k=>{const d=days[k];const f=s=>d[s]?`${Number(d[s].w).toFixed(1)}${d[s].bf!=null?'・'+Number(d[s].bf).toFixed(1)+'%':''}`:'—';return`<li class="logrow"><span class="lgd"><button type="button" class="ghost num" data-go="${k}" aria-label="${cmd(k)}，補登這天">${md(k)} ${wd(k)}</button>${d.period?'<span class="chip">月經</span>':''}</span><span class="lgv">早 <span class="num">${f('am')}</span></span><span class="lgv muted">晚 <span class="num">${f('pm')}</span></span></li>`}).join(''):'<li class="muted">還沒有紀錄。</li>';
 }
 $$('#wRange button').forEach(b=>b.addEventListener('click',()=>{wDays=+b.dataset.days;renderWeight()}));
 
