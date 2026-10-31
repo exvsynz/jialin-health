@@ -165,6 +165,30 @@ textarea{min-height:110px;resize:vertical}
 .vh{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;opacity:0;cursor:pointer;font-size:0} /* the file input covers its label: it is the touch target */
 .mealpend{flex-basis:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.85rem;color:var(--warn)}
 .mealpend button{color:var(--accent)}
+.mealpend2{padding:6px 10px 6px 16px}
+.snap2{background:var(--surface);color:var(--accent);border:1px solid var(--line)}
+.meal-days{display:flex;flex-direction:column;gap:14px}
+.meallist{list-style:none;margin:0;padding:0}
+.meallist li{border-top:1px solid var(--line)}
+.meallist li:first-child{border-top:0}
+.mealitem{display:flex;gap:12px;align-items:flex-start;width:100%;border:0;border-radius:0;background:transparent;text-align:left;padding:10px 12px;color:inherit}
+.thumbbox{flex:none;width:72px;height:72px;border-radius:10px;background:var(--sunk);overflow:hidden;display:block}
+.thumbbox img{width:100%;height:100%;object-fit:cover;display:block}
+.mtext{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.mtext .d{overflow-wrap:anywhere}
+.mact{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 12px 8px 96px;font-size:.85rem;color:var(--muted)}
+.mact button{color:var(--accent);flex:none;white-space:nowrap}
+.mthumb img{display:block;max-width:min(100%,320px);width:auto;height:auto;border-radius:12px} /* natural size, never enlarged */
+.mitems{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.mitems li{overflow-wrap:anywhere}
+.mstatus{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:.88rem;color:var(--muted)}
+.mstatus:empty{display:none}
+.mstatus button{color:var(--accent)}
+.row.nowrap{flex-wrap:nowrap}
+.row.nowrap input{flex:1}
+.row.nowrap button{flex:none}
+.refs p{margin:0 0 10px;overflow-wrap:anywhere}
+.refs p:last-child{margin:0}
 .switch{min-width:64px;min-height:44px;border-radius:999px}
 .switch[aria-pressed="true"]{background:var(--band);border-color:var(--c-breast);color:var(--c-breast)}
 .examcard{width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;text-align:left}
@@ -386,6 +410,20 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
     <div class="sect"><h2 class="lbl">最近紀錄</h2><div class="blk grp"><ul class="loglist" id="exLog"></ul></div></div>
   </section>
 
+  <!-- MEALS -->
+  <section class="panel" id="p-meals" hidden>
+    <div class="row"><label class="snap snap2" id="albumSnap"><input type="file" accept="image/*" id="albumFile" class="vh">從相簿加入</label><span class="grow"></span></div>
+    <div class="blk mealpend mealpend2" id="mealsPend" hidden><span id="mealsPendT"></span><button type="button" class="ghost" id="mealsRetry">再存一次</button></div>
+    <p class="small muted" id="mealCov" hidden></p>
+    <div class="meal-days" id="mealDays"></div>
+    <button type="button" id="mealMore" hidden>顯示更早的 7 天</button>
+    <div class="sect"><h2 class="lbl">依據</h2><div class="blk grp small refs" id="mealRef">
+      <p><b>為什麼給範圍</b>：一項研究用 52 張標準化照片，比較 2024 年的三個通用模型。表現較好的兩個，熱量的平均絕對百分比誤差約 36%；份量越大越容易估少。<br><span class="muted">Fridolfsson J, et al. Curr Dev Nutr 2025;9:107556，doi:10.1016/j.cdnut.2025.107556</span></p>
+      <p><b>補一句的用處</b>：另一項研究在照片之外，補上照片看不出的資訊（油的種類與用量、甜味劑、乳品脂肪、肉的種類），熱量誤差下降；再補上食材與份量，誤差最低。<br><span class="muted">Rodríguez-Jiménez M, et al. Nutrients 2025;17:3613，doi:10.3390/nu17223613</span></p>
+      <p><b>估算只是參考</b>：照片看不出用了多少油、醬料或湯底，這部分可能多算，也可能少算。估算不適合用來精確計算。<br><span class="muted">Nakagawa S, Yamamoto A. Nutrients 2026;18:2892，doi:10.3390/nu18172892；Isobe T, et al. Nutrients 2026;18:966，doi:10.3390/nu18060966；Fridolfsson 2025</span></p>
+    </div></div>
+  </section>
+
   <!-- EXAMS -->
   <section class="panel" id="p-exams" hidden>
     <div class="row"><span class="grow"></span><button class="primary" id="btnAdd" type="button">＋ 新增檢查紀錄</button></div>
@@ -530,6 +568,57 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
   </form>
 </dialog>
 
+<!-- one meal -->
+<dialog class="sheet" id="dlgMeal" data-keep aria-labelledby="mealTitle">
+  <form class="dlg" id="mealForm" novalidate>
+    <div class="grab"></div>
+    <div class="dlg-head"><h2 id="mealTitle">餐點</h2><button type="button" class="ghost" data-close>關閉</button></div>
+    <div class="dlg-body">
+      <div class="mthumb" id="mThumbBox"><img id="mThumb" alt="" hidden></div>
+      <ul class="mitems" id="mItems"></ul>
+      <div class="sub" id="mInfo"></div>
+      <div class="mstatus" id="mStatus"></div>
+      <div class="lbl" id="mTypeLbl">餐別</div>
+      <div class="chips" id="mType" role="group" aria-labelledby="mTypeLbl"></div>
+      <div class="field"><label for="mTime">時間</label><input type="time" id="mTime"></div>
+      <div class="field"><label for="mNote">補充份量</label>
+        <div class="row nowrap"><input id="mNote" maxlength="60" autocomplete="off" placeholder="例如：半碗飯、有湯、兩人分"><button type="button" id="mReest">重新估算</button></div></div>
+      <div class="grid2">
+        <div class="field"><label for="mLo">熱量最低 kcal</label><input type="number" id="mLo" inputmode="numeric" min="0" max="4000" step="10"></div>
+        <div class="field"><label for="mHi">熱量最高 kcal</label><input type="number" id="mHi" inputmode="numeric" min="0" max="4000" step="10"></div>
+      </div>
+      <button type="button" class="ghost" id="mRevert" hidden>改回估算值</button>
+      <div class="grid2">
+        <div class="field"><label for="mRef">秤重參考值 kcal</label><input type="number" id="mRef" inputmode="numeric" min="0" max="5000"></div>
+        <div class="field"><label for="mRefSrc">換算來源</label><input id="mRefSrc" maxlength="40" autocomplete="off" placeholder="例如：便當標示"></div>
+      </div>
+      <div class="hint">秤重後換算的熱量，用來檢查估算準不準</div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="danger" id="mDel">刪除</button>
+      <span style="flex:1"></span>
+      <button type="button" data-close>取消</button>
+      <button type="submit" class="primary" id="mSave">儲存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- album: confirm date and time -->
+<dialog class="sheet" id="dlgAlbum" data-keep aria-labelledby="albumTitle">
+  <form class="dlg" id="albumForm" novalidate>
+    <div class="grab"></div>
+    <div class="dlg-head"><h2 id="albumTitle">這一餐的時間</h2><button type="button" class="ghost" data-close>取消</button></div>
+    <div class="dlg-body">
+      <div class="grid2">
+        <div class="field"><label for="aDate">日期</label><input type="date" id="aDate"></div>
+        <div class="field"><label for="aTime">時間</label><input type="time" id="aTime"></div>
+      </div>
+      <div class="hint">從 LINE 等存下來的照片，預設可能是存檔時間，請確認。</div>
+    </div>
+    <div class="dlg-foot"><span style="flex:1"></span><button type="submit" class="primary" id="aOk">加入</button></div>
+  </form>
+</dialog>
+
 <!-- more sheet -->
 <dialog class="sheet" id="moreSheet" aria-label="更多">
   <div class="grab"></div>
@@ -537,6 +626,7 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
     <div class="menu">
       <button type="button" data-nav="weight">體重與體脂<span class="chev" aria-hidden="true">›</span></button>
       <button type="button" data-nav="exercise">運動紀錄<span class="chev" aria-hidden="true">›</span></button>
+      <button type="button" data-nav="meals">飲食<span class="chev" aria-hidden="true">›</span></button>
       <button type="button" data-nav="exams">定期檢查<span class="chev" aria-hidden="true">›</span></button>
       <button type="button" data-nav="meds">用藥<span class="chev" aria-hidden="true">›</span></button>
       <button type="button" data-nav="summary">回診摘要<span class="chev" aria-hidden="true">›</span></button>
@@ -878,7 +968,7 @@ function writeErr(e){if(e&&e.message==='nodb')return;toast(e&&e.code==='invalid_
 function isPaused(date){const f=profile.pauseFrom,t=profile.pauseTo;return !!(f&&t&&date>=f&&date<=t)}
 
 /* ================= navigation ================= */
-const PAGES={today:'',weight:'體重與體脂',exercise:'運動紀錄',exams:'定期檢查',meds:'用藥',summary:'回診摘要',setup:'設定與備份'};
+const PAGES={today:'',weight:'體重與體脂',exercise:'運動紀錄',meals:'飲食',exams:'定期檢查',meds:'用藥',summary:'回診摘要',setup:'設定與備份'};
 let cur='today';
 function show(p){
   if(!(p in PAGES))p='today';
@@ -896,7 +986,7 @@ $('#backBtn').addEventListener('click',()=>go('today'));
 $('#moreBtn').addEventListener('click',()=>{$('#dPick').value=viewDate;$('#dPick').max=logicalToday();$('#moreSheet').showModal()});
 $$('[data-nav]').forEach(b=>b.addEventListener('click',()=>{$('#moreSheet').close();go(b.dataset.nav)}));
 $('#dPick').addEventListener('change',e=>{if(e.target.value){$('#moreSheet').close();setView(e.target.value);go('today')}});
-function renderCur(){({today:renderToday,weight:renderWeight,exercise:renderExercise,exams:renderExams,meds:renderMeds,summary:renderSummary,setup:renderSetup})[cur]()}
+function renderCur(){({today:renderToday,weight:renderWeight,exercise:renderExercise,meals:renderMeals,exams:renderExams,meds:renderMeds,summary:renderSummary,setup:renderSetup})[cur]()}
 
 /* ================= TODAY ================= */
 function isAfterEvening(date){if(date<logicalToday())return true;const h=tpeNow().h;return h>=18||h<4}
@@ -1015,7 +1105,8 @@ const SAMPLE_CODES=[...HIDE_CODES,...BUG_CODES,'image_rejected','cancelled','ses
   sampleState=sampleNs?'ok':'off';renderCur()})();
 /* in this open page only: estimates running, the 1280 photos, thumbnails read, and meals not fully saved */
 const inflight=new Map(),bigPhotos=new Map(),thumbCache=new Map(),pendingMeals=new Map();
-const newId=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+let idSeq=0; /* ids sort in creation order even within one millisecond, so equal startedAt ties break the same way everywhere */
+const newId=p=>p+Date.now().toString(36)+(idSeq++%1679616).toString(36).padStart(4,'0')+Math.random().toString(36).slice(2,6);
 function pendOf(id,date){let e=pendingMeals.get(id);if(!e){e={id,date,baseOk:true,thumbDone:true,fail:new Set(),results:{}};pendingMeals.set(id,e)}return e}
 const unsavedMeals=()=>[...pendingMeals.values()].filter(e=>e.fail.size||Object.keys(e.results).length);
 function decodeImage(file){
@@ -1092,6 +1183,124 @@ function renderMealRow(){
 $('#mealFile').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(f)addMeal(f,'camera',Date.now())});
 $('#mealGo').addEventListener('click',()=>go('meals'));
 $('#mealRetry').addEventListener('click',retryMeals);
+/* ---- meals page ---- */
+let mealSpan=7,mealOpen=null,albumPick=null;
+const fmtK=n=>Math.round(n).toLocaleString('en-US');
+const mealName=m=>MEAL_NAME[m.meal]||(validAt(m)?MEAL_NAME[mealTypeAt(m.at)]:'餐點');
+/* what each failure lets the viewer do (sample.d.ts): retry unchanged, change the input, or only fill in by hand */
+const EST_ERR={not_granted:['沒有允許使用 Claude，可以手動填熱量',null],rate_limited:['估算次數太多，稍後再估','retry'],session_expired:['請重新登入 claude.ai 後再估','retry'],
+  upstream_error:['估算中斷','retry'],cancelled:['已停止','retry'],invalid:['估算結果看不懂','retry'],
+  empty_completion:['沒有估算結果，可以補充份量再估，或手動填熱量','note'],refused:['這張照片沒有估算結果，可以補充份量再估，或手動填熱量','note'],
+  image_rejected:['這張照片無法估算，可以手動填熱量',null]};
+for(const c of HIDE_CODES)if(!EST_ERR[c])EST_ERR[c]=['這個檢視無法估算，可以手動填熱量',null];
+for(const c of BUG_CODES)EST_ERR[c]=['估算沒有完成，可以手動填熱量',null];
+function mealStatus(v){const a=v.latest;if(!a)return null;
+  if(a.status==='pending'){if(inflight.has(a.id))return{t:'估算中…',act:'stop',aid:a.id};return estQuiet(a,Date.now(),inflight)?{t:'估算很久沒有更新，可能還在另一台裝置進行',act:'retry',label:'重新估算'}:{t:'估算中…'}}
+  if(a.status==='failed'){const [t,act]=EST_ERR[a.err]||EST_ERR.upstream_error;return{t,act}}
+  return null}
+function kcalText(v){if(v.notFood&&!v.kcal)return'看不出是餐點';if(!v.kcal)return'';const{lo,hi}=v.kcal;
+  let t=lo===hi?`約 ${fmtK(lo)} kcal`:`約 ${fmtK(lo)}–${fmtK(hi)} kcal`;
+  if(v.src==='manual')return t+'（手動）';if(v.confidence)t+='・信心'+CONF_NAME[v.confidence];
+  if(v.truncated)t+='（回覆不完整）';if(v.stale)t+='（補充份量前的估算）';return t}
+function actBtn(st,v,id,date){if(!st||!st.act)return'';
+  if(st.act==='stop')return`<button type="button" class="ghost" data-stop="${esc(st.aid)}">停止</button>`;
+  if(!canEstimate()||v.count>=MAX_ATTEMPTS)return'';
+  if(st.act==='note')return`<button type="button" class="ghost" data-note="${esc(id)}" data-md="${date}">補充份量</button>`;
+  return`<button type="button" class="ghost" data-retry="${esc(id)}" data-md="${date}">${st.label||'再估一次'}</button>`}
+/* thumbnails: read by id only, at most 4 at a time, kept for this open page; never listened to or queried */
+const thumbQ=[],thumbBusy=new Set();
+function wantThumb(id){if(thumbCache.has(id)||thumbBusy.has(id)||thumbQ.includes(id))return;thumbQ.push(id);pumpThumbs()}
+function pumpThumbs(){while(db&&thumbBusy.size<4&&thumbQ.length){const id=thumbQ.shift();thumbBusy.add(id);
+  db.doc('mealthumbs/'+id).get().then(s=>{const t=s.exists&&s.data().thumb;thumbCache.set(id,typeof t==='string'&&t.startsWith('data:image/')?t:false)},()=>thumbCache.set(id,false))
+    .finally(()=>{thumbBusy.delete(id);paintThumb(id);pumpThumbs()})}}
+function paintThumb(id){const t=thumbCache.get(id);document.querySelectorAll('img[data-th]').forEach(im=>{if(im.dataset.th!==id)return;if(typeof t==='string'){if(im.src!==t)im.src=t;im.hidden=false}else im.hidden=true})}
+async function getThumb(id){if(thumbCache.has(id))return thumbCache.get(id)||null;
+  try{const s=await db.doc('mealthumbs/'+id).get(),t=s.exists&&s.data().thumb;const ok=typeof t==='string'&&t.startsWith('data:image/')?t:false;thumbCache.set(id,ok);return ok||null}catch(_){return null}}
+function uriBlob(u){const i=u.indexOf(','),mime=(u.slice(0,i).match(/data:([^;,]+)/)||[])[1]||'image/jpeg',bin=atob(u.slice(i+1)),a=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)a[k]=bin.charCodeAt(k);return new Blob([a],{type:mime})}
+/* a new attempt: the photo of this open page, else the thumbnail; written as pending before the call, so it never creates a meal */
+async function reEstimate(id,date,note){if(!canSave()||!canEstimate())return;
+  const m=(days[date]?.meals||{})[id];if(!validAt(m))return;if(mealView(m).count>=MAX_ATTEMPTS){toast('已經估了 5 次，請手動填熱量');return}
+  let blob=bigPhotos.get(id),src='photo';if(!blob){const t=await getThumb(id);if(!t){toast('沒有照片可以估算，請手動填熱量');return}blob=uriBlob(t);src='thumb'}
+  const aid=newId('a');
+  try{await writeDay(date,{meals:{[id]:{note,attempts:{[aid]:{status:'pending',startedAt:Date.now(),imgSrc:src,note,promptVer:PROMPT_VER}}}}})}catch(e){writeErr(e);return}
+  estimate(id,date,aid,blob,note,true)}
+function renderMeals(){
+  const uns=unsavedMeals().length;$('#mealsPend').hidden=!uns;if(uns)$('#mealsPendT').textContent=uns+' 餐沒有存到';
+  const al=$('#albumSnap');al.hidden=!canEstimate();const dis=!ready||!canWrite;al.setAttribute('aria-disabled',String(dis));$('#albumFile').disabled=dis;
+  if(!loaded.days){$('#mealDays').innerHTML='<p class="muted">資料載入中…</p>';$('#mealMore').hidden=true;$('#mealCov').hidden=true;return}
+  const today=logicalToday(),from=addDays(today,-(mealSpan-1));
+  const all=Object.keys(days).filter(k=>validDate(k)&&k<=today&&dayMeals(days[k]).length).sort().reverse(),shown=all.filter(k=>k>=from);
+  $('#mealMore').hidden=!all.some(k=>k<from);
+  $('#mealDays').innerHTML=shown.length?shown.map(k=>{const t=dayTotal(days[k]),has=t.n-t.none;
+    const head=(has?`約 ${fmtK(t.lo)}–${fmtK(t.hi)} kcal`:'')+(t.none?(has?'・':'')+t.none+' 餐沒有熱量':'');
+    return`<div class="sect"><div class="sect-head"><h2 class="lbl">${md(k)} 週${wd(k)}</h2><span class="sub num">${head}</span></div><ul class="blk meallist">${dayMeals(days[k]).map(m=>{const v=mealView(m),st=mealStatus(v),kc=kcalText(v),nm=mealName(m);
+      return`<li><button type="button" class="mealitem" data-mo="${esc(m.id)}" data-md="${k}"><span class="thumbbox"><img data-th="${esc(m.id)}" alt="${nm}照片" hidden></span><span class="mtext"><span>${nm} <span class="num">${hmOf(m.at)}</span></span>${v.desc?`<span class="sub d">${esc(v.desc)}</span>`:''}${kc?`<span class="sub num">${esc(kc)}</span>`:''}</span></button>${st?`<div class="mact"><span>${esc(st.t)}</span>${actBtn(st,v,m.id,k)}</div>`:''}</li>`}).join('')}</ul></div>`}).join('')
+    :`<p class="muted">${mealSpan>7?'這段期間':'這 7 天'}沒有飲食紀錄</p>`;
+  document.querySelectorAll('#mealDays img[data-th]').forEach(im=>{const id=im.dataset.th;if(thumbCache.has(id))paintThumb(id);else wantThumb(id)});
+  const c=coverage(days),L=[];
+  if(c.n)L.push(`秤重參考 ${c.n} 餐：${c.in} 餐落在第一次估算的範圍內（${c.above} 餐估低、${c.below} 餐估高），範圍寬度中位數 ${fmtK(c.width)} kcal`);
+  if(c.failed)L.push(`另有 ${c.failed} 餐沒有估算結果`);if(c.thumbOnly)L.push(`其中 ${c.thumbOnly} 餐是用縮圖估的`);
+  if(c.withNote.n)L.push(`補充份量後再估：${c.withNote.n} 餐中 ${c.withNote.in} 餐落在範圍內`);
+  $('#mealCov').hidden=!L.length;$('#mealCov').innerHTML=L.map(esc).join('<br>');
+  renderMealSheet()}
+function mealAct(e){const b=e.target.closest('button');if(!b)return false;
+  if(b.dataset.stop){inflight.get(b.dataset.stop)?.ctl.abort();return true}
+  if(b.dataset.retry){const m=(days[b.dataset.md]?.meals||{})[b.dataset.retry];if(m)reEstimate(b.dataset.retry,b.dataset.md,cleanNote(m.note));return true}
+  if(b.dataset.note){if(mealOpen&&mealOpen.id===b.dataset.note)$('#mNote').focus();else openMeal(b.dataset.note,b.dataset.md,true);return true}
+  return false}
+$('#mealDays').addEventListener('click',e=>{if(mealAct(e))return;const b=e.target.closest('[data-mo]');if(b)openMeal(b.dataset.mo,b.dataset.md)});
+$('#mealMore').addEventListener('click',()=>{mealSpan+=7;renderMeals()});
+$('#mealsRetry').addEventListener('click',retryMeals);
+/* ---- one meal: fields are filled when it opens and never refilled by a snapshot; only the changed keys are sent ---- */
+function openMeal(id,date,focusNote=false){const m=(days[date]?.meals||{})[id];if(!validAt(m))return;
+  const man=m.manual&&typeof m.manual==='object'&&validKcal(m.manual.kcalLo,m.manual.kcalHi)?m.manual:null;
+  const init={meal:MEAL_NAME[m.meal]?m.meal:mealTypeAt(m.at),time:hmOf(m.at),note:typeof m.note==='string'?m.note:'',lo:man?String(man.kcalLo):'',hi:man?String(man.kcalHi):'',
+    ref:m.ref&&Number.isFinite(m.ref.kcal)?String(m.ref.kcal):'',refSrc:m.ref&&typeof m.ref.src==='string'?m.ref.src:''};
+  mealOpen={id,date,init,type:init.meal};
+  $('#mTime').value=init.time;$('#mNote').value=init.note;$('#mLo').value=init.lo;$('#mHi').value=init.hi;$('#mRef').value=init.ref;$('#mRefSrc').value=init.refSrc;
+  const v=mealView(m);$('#mLo').placeholder=v.done&&!v.notFood?String(v.done.kcalLo):'';$('#mHi').placeholder=v.done&&!v.notFood?String(v.done.kcalHi):'';
+  $('#dlgMeal').showModal();renderMealSheet();if(focusNote)$('#mNote').focus()}
+function renderMealSheet(){if(!mealOpen||!$('#dlgMeal').open)return;const {id,date,init}=mealOpen,m=(days[date]?.meals||{})[id];if(!m)return;
+  const v=mealView(m),nm=MEAL_NAME[mealOpen.type];
+  $('#mealTitle').textContent=nm+' '+init.time;
+  const im=$('#mThumb');im.dataset.th=id;im.alt=nm+'照片';if(thumbCache.has(id))paintThumb(id);else{im.hidden=true;wantThumb(id)}
+  $('#mItems').innerHTML=v.items.map(x=>`<li>${esc(x.name)}${x.portion?'　'+esc(x.portion):''}</li>`).join('');
+  const kc=kcalText(v),d=v.done;
+  $('#mInfo').textContent=[kc,d?'估算 '+md(logicalOf(d.at||d.startedAt))+' '+hmOf(d.at||d.startedAt)+(d.imgSrc==='thumb'?'・用縮圖估算':''):'',v.count?'估了 '+v.count+' 次（最多 '+MAX_ATTEMPTS+' 次）':''].filter(Boolean).join('　');
+  const st=mealStatus(v);$('#mStatus').innerHTML=st?`<span>${esc(st.t)}</span>${actBtn(st,v,id,date)}`:'';
+  $('#mType').innerHTML=MEAL_TYPES.map(([k,n])=>`<button type="button" data-mt="${k}" aria-pressed="${mealOpen.type===k}">${n}</button>`).join('');
+  const lat=v.latest&&typeof v.latest.note==='string'?v.latest.note:'';
+  $('#mReest').disabled=!canEstimate()||!ready||!canWrite||v.count>=MAX_ATTEMPTS||cleanNote($('#mNote').value)===lat;
+  $('#mRevert').hidden=!(m.manual&&validKcal(m.manual.kcalLo,m.manual.kcalHi)&&d&&!d.notFood);
+  $('#mSave').disabled=$('#mDel').disabled=!canWrite}
+$('#mStatus').addEventListener('click',mealAct);
+$('#mType').addEventListener('click',e=>{const b=e.target.closest('[data-mt]');if(!b||!mealOpen)return;mealOpen.type=b.dataset.mt;renderMealSheet()});
+$('#mNote').addEventListener('input',renderMealSheet);
+$('#mReest').addEventListener('click',()=>{if(!mealOpen)return;const note=cleanNote($('#mNote').value);$('#mNote').value=note;mealOpen.init.note=note;reEstimate(mealOpen.id,mealOpen.date,note).then(renderMealSheet)});
+$('#mRevert').addEventListener('click',async()=>{if(!mealOpen||!canSave())return;const {id,date}=mealOpen;
+  try{await writeDay(date,{meals:{[id]:{manual:null}}});$('#mLo').value=$('#mHi').value='';mealOpen.init.lo=mealOpen.init.hi='';toast('已改回估算值')}catch(e){writeErr(e)}});
+$('#mDel').addEventListener('click',async()=>{if(!mealOpen||!canSave())return;const {id,date}=mealOpen,nm=MEAL_NAME[mealOpen.init.meal];
+  try{await writeDay(date,{meals:{[id]:{deleted:true}}});$('#dlgMeal').close();toast('已刪除'+nm,[['撤銷',()=>writeDay(date,{meals:{[id]:{deleted:false}}}).catch(writeErr)]])}catch(e){writeErr(e)}});
+$('#dlgMeal').addEventListener('close',()=>{mealOpen=null});
+$('#mealForm').addEventListener('submit',async ev=>{ev.preventDefault();if(!mealOpen||!canSave())return;
+  const {id,date,init}=mealOpen,f={time:$('#mTime').value,note:cleanNote($('#mNote').value),lo:$('#mLo').value.trim(),hi:$('#mHi').value.trim(),ref:$('#mRef').value.trim(),refSrc:$('#mRefSrc').value.trim().slice(0,40)};const patch={};
+  if(mealOpen.type!==init.meal)patch.meal=mealOpen.type;
+  if(/^\d\d:\d\d$/.test(f.time)&&f.time!==init.time)patch.at=atOf(date,f.time); // the logical day never changes: 00:00–03:59 is the next calendar day
+  if(f.note!==init.note)patch.note=f.note;
+  if(f.lo!==init.lo||f.hi!==init.hi){if(f.lo===''&&f.hi==='')patch.manual=null;
+    else{const lo=+(f.lo===''?f.hi:f.lo),hi=+(f.hi===''?f.lo:f.hi);if(!validKcal(lo,hi)){toast('熱量要在 0–4000 之間，最低不能大於最高');return}patch.manual={kcalLo:Math.round(lo),kcalHi:Math.round(hi),at:Date.now()}}}
+  if(f.ref!==init.ref||f.refSrc!==init.refSrc){if(f.ref==='')patch.ref=null;else{const r=+f.ref;if(!Number.isFinite(r)||r<0||r>5000){toast('秤重參考值要在 0–5000 之間');return}patch.ref={kcal:Math.round(r),src:f.refSrc}}}
+  if(!Object.keys(patch).length){$('#dlgMeal').close();return}
+  $('#mSave').disabled=true;try{await writeDay(date,{meals:{[id]:patch}});$('#dlgMeal').close();toast('已更新')}catch(e){writeErr(e)}finally{$('#mSave').disabled=false}});
+/* ---- from the album: confirm the date and time first; a file's time may be when it was saved, not when it was eaten ---- */
+$('#albumFile').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;albumPick=f;
+  const today=logicalToday(),lm=f.lastModified;let d,t;
+  if(Number.isFinite(lm)&&lm<=Date.now()&&logicalOf(lm)>=addDays(today,-30)){d=logicalOf(lm);t=hmOf(lm)}else{d=viewDate;t=nowHM()}
+  $('#aDate').max=today;$('#aDate').value=d;$('#aTime').value=t;$('#dlgAlbum').showModal()});
+$('#albumForm').addEventListener('submit',ev=>{ev.preventDefault();const d=$('#aDate').value,t=$('#aTime').value;
+  if(!validDate(d)||!/^\d\d:\d\d$/.test(t)){toast('請填日期和時間');return}if(d>logicalToday()){toast('日期不能在未來');return}
+  const at=atOf(d,t);if(at>Date.now()+60000){toast('時間不能在未來');return}
+  const f=albumPick;albumPick=null;$('#dlgAlbum').close();if(f)addMeal(f,'album',at)});
 
 /* ---- weight sheet with ruler ---- */
 const TICK=12;let ws={slot:'am',seg:'w',w:null,bf:null,src:'none',min:0,touched:false,bfTouched:false};

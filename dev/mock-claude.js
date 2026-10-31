@@ -17,7 +17,7 @@
    acquire() 依 db.d.ts 的租約語意：沒有人持有或已過期才給；不會自己建立文件。 */
 (function(){
   const cfg=window.__mockCfg||{};
-  const store=new Map(), listeners=new Set(), writes=[], leases=new Map();
+  const store=new Map(), listeners=new Set(), writes=[], leases=new Map(), reads=[], active={}, maxActive={};
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const clone=o=>o==null?o:JSON.parse(JSON.stringify(o));
   const freeze=o=>{if(o&&typeof o==='object'){Object.freeze(o);Object.values(o).forEach(freeze)}return o};
@@ -49,7 +49,8 @@
   }
   function docRef(p){if(segs(p).length%2)throw new TypeError('document path needs an even number of segments: '+p);const r={
     id:segs(p).pop(),path:p,
-    async get(){const gd=cfg.getDelay||{},ms=gd[p];if(ms!=null)delete gd[p];await sleep(ms??cfg.latency??0);return docSnap(p)},
+    async get(){const gd=cfg.getDelay||{},ms=gd[p];if(ms!=null)delete gd[p];const k=segs(p)[0];reads.push(p);active[k]=(active[k]||0)+1;maxActive[k]=Math.max(maxActive[k]||0,active[k]);
+      try{await sleep(ms??cfg.latency??0);return docSnap(p)}finally{active[k]--}},
     set(d){return write('set',p,()=>store.set(p,clone(d)),d)},
     async update(d){if(!store.has(p)){await sleep(cfg.latency||0);throw err('invalid_argument')}return write('update',p,()=>store.set(p,merge(store.get(p),d)),d)},
     delete(){return write('delete',p,()=>store.delete(p))},
@@ -64,7 +65,7 @@
     path:p,
     doc(id){return docRef(p+'/'+(id||newId()))},
     async add(d){const r=docRef(p+'/'+newId());await r.set(d);return r},
-    async get(){await sleep(cfg.latency||0);return colSnap(p)},
+    async get(){reads.push('collection:'+p);await sleep(cfg.latency||0);return colSnap(p)},
     onSnapshot(next,error){return listen('col',p,next,error,()=>colSnap(p))},
     where(){return q},orderBy(){return q},limit(){return q}
   };return q}
@@ -73,7 +74,7 @@
   const downloads={async save(f){if(cfg.downloadError)throw err(cfg.downloadError);window.__lastDownload=f}};
   for(const[p,b]of Object.entries(cfg.seed||{}))store.set(p,clone(b));
   /* 測試用：不經過 onSnapshot 直接改資料，模擬另一台裝置的寫入尚未送達 */
-  window.__mock={store,writes,cfg,leases,holdLease:(p,ms)=>leases.set(p,{holder:'other-device',exp:Date.now()+ms}),releaseLease:p=>leases.delete(p),silentSet:(p,b)=>store.set(p,clone(b)),silentDelete:p=>store.delete(p),externalSet:(p,b)=>{store.set(p,clone(b));notify(p)},
+  window.__mock={store,writes,cfg,leases,reads,maxActive,listenPaths:()=>[...listeners].filter(l=>!l.dead).map(l=>l.kind+':'+l.path),holdLease:(p,ms)=>leases.set(p,{holder:'other-device',exp:Date.now()+ms}),releaseLease:p=>leases.delete(p),silentSet:(p,b)=>store.set(p,clone(b)),silentDelete:p=>store.delete(p),externalSet:(p,b)=>{store.set(p,clone(b));notify(p)},
     /* 讓已經在運作的監聽中途失敗（例如連線中斷） */
     breakListener:p=>{for(const l of listeners)if(!l.dead&&l.path===p){l.dead=true;l.error&&l.error(err('unavailable'))}},
     /* 送出一份帶舊內容的快照給文件監聽者，不改 store：模擬另一台裝置延遲送達的舊快照 */

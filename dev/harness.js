@@ -39,10 +39,10 @@ async function launch(){browser=browser||await chromium.launch();return browser}
 async function close(){if(browser)await browser.close();browser=null}
 
 /* 開一頁：time 是台北時間 ISO（含 +08:00），cfg 傳給假物件 */
-/* install:true 用可推進的假時鐘（page.clock.runFor）；init 是額外的頁面初始化 script */
-async function open({time='2026-10-30T08:00:00+08:00',cfg={},width=380,height=820,scheme='light',mobile=true,hash='',install=false,init=''}={}){
+/* install:true 用可推進的假時鐘（page.clock.runFor）；init 是額外的頁面初始化 script；tz 是瀏覽器的時區（例如 'America/New_York'） */
+async function open({time='2026-10-30T08:00:00+08:00',cfg={},width=380,height=820,scheme='light',mobile=true,hash='',install=false,init='',tz}={}){
   const b=await launch();
-  const ctx=await b.newContext({viewport:{width,height},colorScheme:scheme,deviceScaleFactor:mobile?2:1,hasTouch:mobile,isMobile:mobile});
+  const ctx=await b.newContext({viewport:{width,height},colorScheme:scheme,deviceScaleFactor:mobile?2:1,hasTouch:mobile,isMobile:mobile,...(tz?{timezoneId:tz}:{})});
   const page=await ctx.newPage();
   const errors=[];
   page.on('pageerror',e=>errors.push('pageerror: '+e.message));
