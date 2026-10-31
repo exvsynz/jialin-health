@@ -28,9 +28,10 @@ const mealsOf=(doc)=>Object.entries((doc&&doc.meals)||{});
     const r=await page.evaluate(()=>({row:document.querySelector('#mealRow').hidden,snap:document.querySelector('#mealSnap').hidden,sub:document.querySelector('#mealSub').textContent}));
     check('能力檢查：不能估算但今天有餐點 → 保留列、隱藏「拍一餐」',!r.row&&r.snap&&r.sub==='今天 1 餐',r);
     await page.context().close()}
-  {const {page}=await open({time:NOW,cfg:{latencyComp:true,sample:{limitsDelay:1500}}});await wait(500);
+  {const {page}=await open({time:NOW,cfg:{latencyComp:true,sample:{limitsDelay:5000}}});await wait(500); // 延遲遠大於頁面載入時間，不受整體測試負載影響
     const before=await page.evaluate(()=>({row:document.querySelector('#mealRow').hidden,dis:document.querySelector('#mealSnap').getAttribute('aria-disabled'),inp:document.querySelector('#mealFile').disabled}));
-    await wait(1500);const after=await page.evaluate(()=>document.querySelector('#mealSnap').getAttribute('aria-disabled'));
+    for(let i=0;i<80;i++){if((await page.evaluate(()=>document.querySelector('#mealSnap').getAttribute('aria-disabled')))==='false')break;await wait(100)}
+    const after=await page.evaluate(()=>document.querySelector('#mealSnap').getAttribute('aria-disabled'));
     check('能力檢查完成前：飲食列已出現，「拍一餐」停用',!before.row&&before.dis==='true'&&before.inp,before);
     check('能力檢查完成後：「拍一餐」可以按',after==='false',after);
     await page.context().close()}
