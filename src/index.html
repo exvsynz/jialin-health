@@ -476,6 +476,7 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
         <label class="tgl"><span class="grow">早上提醒 <span class="sub">07:2x</span></span><input type="checkbox" role="switch" data-remind="morning"></label>
         <label class="tgl"><span class="grow">晚上提醒 <span class="sub">22:2x</span></span><input type="checkbox" role="switch" data-remind="evening"></label>
         <label class="tgl"><span class="grow">週報 <span class="sub">週日 20:1x</span></span><input type="checkbox" role="switch" data-remind="weekly"></label>
+        <label class="tgl"><span class="grow">飲食提醒 <span class="sub">22:2x，今天沒有飲食紀錄時</span></span><input type="checkbox" role="switch" data-remind="food"></label>
       </div>
     </div></div>
     <form class="panel" id="profForm" novalidate>
@@ -512,6 +513,14 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
       </div>
       <div class="row"><span class="grow"></span><button type="submit" class="primary">儲存間隔</button></div>
     </form>
+
+    <div class="sect" id="mealSect"><h2 class="lbl">飲食</h2><div class="blk grp">
+      <p class="small" style="margin:0" id="mealCap"></p>
+      <p class="small" style="margin:0" id="mealUse"></p>
+      <div class="field"><label for="thMonth">清除這個月以前的縮圖</label><input type="month" id="thMonth"></div>
+      <p class="hint" style="margin:0" id="thInfo"></p>
+      <div class="row"><span class="grow"></span><button type="button" class="danger" id="thClear">清除舊縮圖</button></div>
+    </div></div>
 
     <div class="sect"><h2 class="lbl">資料備份</h2><div class="blk grp">
       <p class="small" style="margin:0">所有紀錄只存在這個頁面的資料庫裡。建議每個月匯出一次，存到雲端硬碟；匯出的檔案可以在這裡匯入還原。</p>
@@ -1266,7 +1275,7 @@ function renderMealSheet(){if(!mealOpen||!$('#dlgMeal').open)return;const {id,da
   const im=$('#mThumb');im.dataset.th=id;im.alt=nm+'照片';if(thumbCache.has(id))paintThumb(id);else{im.hidden=true;wantThumb(id)}
   $('#mItems').innerHTML=v.items.map(x=>`<li>${esc(x.name)}${x.portion?'　'+esc(x.portion):''}</li>`).join('');
   const kc=kcalText(v),d=v.done;
-  $('#mInfo').textContent=[kc,d?'估算 '+md(logicalOf(d.at||d.startedAt))+' '+hmOf(d.at||d.startedAt)+(d.imgSrc==='thumb'?'・用縮圖估算':''):'',v.count?'估了 '+v.count+' 次（最多 '+MAX_ATTEMPTS+' 次）':''].filter(Boolean).join('　');
+  $('#mInfo').textContent=[kc,d?'估算 '+md(logicalOf(d.at||d.startedAt))+' '+hmOf(d.at||d.startedAt)+(d.imgSrc==='thumb'?'・用縮圖估算':''):'',v.count?'估了 '+v.count+' 次（最多 '+MAX_ATTEMPTS+' 次）':'',m.thumbCleared?'縮圖已清除':''].filter(Boolean).join('　');
   const st=mealStatus(v);$('#mStatus').innerHTML=st?`<span>${esc(st.t)}</span>${actBtn(st,v,id,date)}`:'';
   $('#mType').innerHTML=MEAL_TYPES.map(([k,n])=>`<button type="button" data-mt="${k}" aria-pressed="${mealOpen.type===k}">${n}</button>`).join('');
   const lat=v.latest&&typeof v.latest.note==='string'?v.latest.note:'';
@@ -1301,6 +1310,25 @@ $('#albumForm').addEventListener('submit',ev=>{ev.preventDefault();const d=$('#a
   if(!validDate(d)||!/^\d\d:\d\d$/.test(t)){toast('請填日期和時間');return}if(d>logicalToday()){toast('日期不能在未來');return}
   const at=atOf(d,t);if(at>Date.now()+60000){toast('時間不能在未來');return}
   const f=albumPick;albumPick=null;$('#dlgAlbum').close();if(f)addMeal(f,'album',at)});
+
+/* ---- settings: estimate status, thumbnail space, clearing old thumbnails (only when asked, twice) ---- */
+function thumbList(before){const L=[];for(const [d,day] of Object.entries(days))if(validDate(d)&&(!before||d<before))for(const [id,m] of Object.entries((day&&day.meals)||{}))
+  if(m&&typeof m==='object'&&m.thumb===true&&!m.thumbCleared)L.push({id,d,b:Number.isFinite(m.thumbBytes)?m.thumbBytes:0});return L}
+const toMB=b=>(b/1048576).toFixed(b<1048576?2:1);
+function renderMealSetup(){
+  const im=sampleLim;$('#mealCap').textContent=sampleState==='checking'?'照片估算：檢查中…':canEstimate()?`照片估算：可以使用（每次最多 ${im.maxCount} 張，單張上限 ${(im.maxInputBytes/1048576).toFixed(1)} MB）`:'照片估算：這個檢視無法使用';
+  const all=thumbList();$('#mealUse').textContent=loaded.days?`縮圖約 ${toMB(all.reduce((a,x)=>a+x.b,0))} MB（${all.length} 張）`:'縮圖用量：資料載入中…';
+  const mo=$('#thMonth'),v=mo.value,L=/^\d{4}-\d\d$/.test(v)?thumbList(v+'-01'):[];
+  $('#thInfo').textContent=v?`${v.replace('-','/')} 以前有 ${L.length} 張縮圖，約 ${toMB(L.reduce((a,x)=>a+x.b,0))} MB。上次匯出：${profile.lastExport||'沒有紀錄'}`:'選一個月份，清除那個月以前的縮圖。餐點的文字與熱量會保留。';
+  const b=$('#thClear');b.disabled=!canWrite||!ready||!L.length;if(!L.length){b.classList.remove('armed');b.textContent='清除舊縮圖'}}
+$('#thMonth').addEventListener('input',()=>{$('#thClear').classList.remove('armed');$('#thClear').textContent='清除舊縮圖';renderMealSetup()});
+$('#thClear').addEventListener('click',async()=>{const b=$('#thClear'),v=$('#thMonth').value;if(!canSave()||!/^\d{4}-\d\d$/.test(v))return;const L=thumbList(v+'-01');if(!L.length)return;
+  if(!b.classList.contains('armed')){b.classList.add('armed');b.textContent=`再按一次清除 ${L.length} 張`;return}
+  b.disabled=true;let ok=0,fail=0;const byDay={};
+  for(const x of L){let done=false;for(let t=0;t<4&&!done;t++){try{await db.doc('mealthumbs/'+x.id).delete();done=true}catch(e){if(e&&(e.code==='resource_exhausted'||e.code==='unavailable'))await sleep(1200*(t+1));else break}}
+    if(done){ok++;thumbCache.set(x.id,false);(byDay[x.d]=byDay[x.d]||{})[x.id]={thumb:false,thumbCleared:true}}else fail++;b.textContent=`清除中 ${ok+fail}/${L.length}`}
+  for(const [d,ms] of Object.entries(byDay)){try{await writeDay(d,{meals:ms})}catch(_){}}
+  b.classList.remove('armed');b.textContent='清除舊縮圖';toast(fail?`已清除 ${ok} 張縮圖，${fail} 張失敗`:`已清除 ${ok} 張縮圖`);renderMealSetup()});
 
 /* ---- weight sheet with ruler ---- */
 const TICK=12;let ws={slot:'am',seg:'w',w:null,bf:null,src:'none',min:0,touched:false,bfTouched:false};
@@ -1792,6 +1820,7 @@ function renderSetup(){
   /* a form opens for editing only once its saved values have arrived from the server */
   $$('#p-setup input,#p-setup button').forEach(x=>{if(x.id==='btnExport'||x.id==='impCancel')return;const f=x.closest('#profForm,#remindSect')?loaded.profile:x.closest('#ivForm')?loaded.intervals:true;x.disabled=!canWrite||!f});
   renderRemind();
+  renderMealSetup();
   $('#lastExport').textContent=profile.lastExport?'上次匯出：'+profile.lastExport:'還沒有匯出過。';
 }
 /* reminders: switches save on their own, outside the profile form; only the changed key is sent, so another device's switch is kept */
@@ -1830,32 +1859,56 @@ $('#ivForm').addEventListener('submit',async ev=>{ev.preventDefault();if(!canSav
   const ver=formEdits.ivForm;
   try{await queued('settings/intervals',()=>mergeDoc('settings/intervals',next));if(formEdits.ivForm===ver){formDirty.ivForm=false;document.activeElement&&document.activeElement.blur()}toast('間隔已儲存')}catch(e){writeErr(e)}});
 async function readAll(col){const s=await db.collection(col).get();const o={};s.docs.forEach(d=>o[d.id]=d.data());return o}
-$('#btnExport').addEventListener('click',async()=>{if(!db){toast('資料庫未連線');return}
+/* thumbnails are read one by one by id (never by querying the collection); a backup says whether it holds them all */
+async function exportAll(withThumbs=true){if(!db){toast('資料庫未連線');return}
   const dl=await window.claude?.use?.('downloads');if(!dl){toast('這個檢視無法下載檔案，請在 claude.ai 開啟頁面');return}
-  try{const out={app:'jialin-health',version:2,exportedAt:new Date().toISOString(),collections:{}};for(const c of ['days','exercise','records','settings','meddose'])out.collections[c]=await readAll(c);
-    await dl.save({filename:'家琳健康追蹤備份-'+logicalToday()+'.json',data:JSON.stringify(out,null,1)});if(ready)saveProfile({lastExport:fmt(logicalToday())});toast('已匯出')}
-  catch(e){toast(e&&e.code==='declined'?'已取消匯出':'匯出失敗，請稍後再試')}});
+  const out={app:'jialin-health',version:3,exportedAt:new Date().toISOString(),collections:{},thumbs:{included:'none'}};
+  try{for(const c of ['days','exercise','records','settings','meddose'])out.collections[c]=await readAll(c);
+    if(withThumbs){const ids=[];for(const day of Object.values(out.collections.days))for(const [id,m] of Object.entries((day&&day.meals)||{}))if(m&&m.thumb===true&&!m.thumbCleared)ids.push(id);
+      const th={},missing=[];let i=0;
+      for(const id of ids){i++;if(i%10===1)toast(`匯出中 ${i}/${ids.length}`);let s=null;
+        for(let t=0;t<4;t++){try{s=await db.doc('mealthumbs/'+id).get();break}catch(e){if(e&&(e.code==='resource_exhausted'||e.code==='unavailable'))await sleep(1200*(t+1));else break}}
+        if(s&&s.exists)th[id]=s.data();else missing.push(id)}
+      out.collections.mealthumbs=th;out.thumbs=missing.length?{included:'partial',missing}:{included:'all'}}}
+  catch(e){toast('匯出失敗，請稍後再試');return}
+  const tag=out.thumbs.included==='none'?'-不含縮圖':out.thumbs.included==='partial'?`-缺${out.thumbs.missing.length}張縮圖`:'';
+  try{await dl.save({filename:'家琳健康追蹤備份-'+logicalToday()+tag+'.json',data:JSON.stringify(out,null,1)});if(ready)saveProfile({lastExport:fmt(logicalToday())});
+    toast(out.thumbs.included==='partial'?`已匯出，有 ${out.thumbs.missing.length} 張縮圖沒有匯出`:'已匯出')}
+  catch(e){if(e&&e.code==='too_large'&&withThumbs)toast('檔案太大',[['匯出（不含縮圖）',()=>exportAll(false)]]);else toast(e&&e.code==='declined'?'已取消匯出':'匯出失敗，請稍後再試')}}
+$('#btnExport').addEventListener('click',()=>exportAll(true));
 let pendingImport=null;
 /* records whose medication details, draw context or new settings would be replaced by a backup that lacks them */
 function importLoses(c){let n=0;
-  for(const [id,b] of Object.entries(c.days||{})){const cur=days[id]?.med,bm=(b&&b.med)||{};if(!cur)continue;
-    if(['mode','interfere','doseSrc'].some(k=>cur[k]!=null&&!(k in bm)))n++}
+  /* days merge: only a field the backup also has, with another value, is replaced */
+  for(const [id,b] of Object.entries(c.days||{})){const cur=days[id]?.med,bm=b&&b.med;if(!cur||!bm||typeof bm!=='object')continue;
+    if(['mode','interfere','doseSrc'].some(k=>cur[k]!=null&&k in bm&&JSON.stringify(cur[k])!==JSON.stringify(bm[k])))n++}
   for(const [id,b] of Object.entries(c.records||{})){const cur=records.find(x=>x.id===id);if(cur?.drawCtx&&!(b&&b.drawCtx))n++}
   const bp=c.settings?.profile;if(bp&&['tshRecheckWeeks','lastVisit','remind'].some(k=>profile[k]!=null&&!(k in bp)))n++;
   return n}
+/* meals a backup brings back to an older state: same id, different hand-edited fields; and how many of them are deleted now */
+function importMealBack(c){let n=0,back=0;const F=['manual','note','meal','at','deleted','ref'];
+  for(const [d,b] of Object.entries(c.days||{}))for(const [id,bm] of Object.entries((b&&b.meals)||{})){const cm=days[d]?.meals?.[id];if(!cm||!bm||typeof bm!=='object')continue;
+    if(F.some(k=>k in bm&&JSON.stringify(cm[k]??null)!==JSON.stringify(bm[k]??null))){n++;if(cm.deleted===true&&bm.deleted!==true)back++}}
+  return{n,back}}
 $('#impFile').addEventListener('change',async ev=>{const f=ev.target.files[0];if(!f)return;
   try{const j=JSON.parse(await f.text());if(j.app!=='jialin-health'||!j.collections)throw 0;pendingImport=j;const c=j.collections;
-    const old=!c.meddose,lose=importLoses(c); // a backup from before dose changes, or one whose records lack fields the current ones have
-    $('#impPreview').innerHTML=`備份時間 ${esc((j.exportedAt||'').slice(0,10))}：日紀錄 ${Object.keys(c.days||{}).length} 天、運動 ${Object.keys(c.exercise||{}).length} 筆、定期檢查 ${Object.keys(c.records||{}).length} 筆、劑量變更 ${Object.keys(c.meddose||{}).length} 筆。<br>匯入會用備份內容覆蓋相同日期與相同編號的紀錄，其他紀錄保留。`
-      +(old?'<br>這份備份比用藥功能舊；相同日期的服藥細節、抽血情境會被備份內容取代。建議先匯出目前的資料。':lose?`<br>有 ${lose} 筆紀錄的服藥細節、抽血情境或設定，會被備份內容取代。建議先匯出目前的資料。`:'')
+    const old=!c.meddose,lose=importLoses(c),mb=importMealBack(c); // a backup from before dose changes, or one whose records lack fields the current ones have
+    const nMeals=Object.values(c.days||{}).reduce((a,d)=>a+Object.values((d&&d.meals)||{}).filter(validAt).length,0),nTh=Object.keys(c.mealthumbs||{}).length,thInc=j.thumbs&&j.thumbs.included;
+    $('#impPreview').innerHTML=`備份時間 ${esc((j.exportedAt||'').slice(0,10))}：日紀錄 ${Object.keys(c.days||{}).length} 天、運動 ${Object.keys(c.exercise||{}).length} 筆、定期檢查 ${Object.keys(c.records||{}).length} 筆、劑量變更 ${Object.keys(c.meddose||{}).length} 筆。<br>飲食 ${nMeals} 餐、縮圖 ${nTh} 張。<br>日紀錄會合併：相同日期、相同欄位的值會改成備份的值；備份裡沒有的欄位（包括之後新增的餐點）保留。其他紀錄以相同編號的備份內容覆蓋。`
+      +(thInc==='none'?'<br>這份備份不含縮圖。':thInc==='partial'?`<br>這份備份缺 ${(j.thumbs.missing||[]).length} 張縮圖。`:'')
+      +(mb.n?`<br>${mb.n} 餐會改回備份時的內容${mb.back?`（其中 ${mb.back} 餐是目前已刪除、匯入後會回來）`:''}。`:'')
+      +(old?'<br>這份備份比用藥功能舊；相同編號的檢查紀錄會失去抽血情境。建議先匯出目前的資料。':lose?`<br>有 ${lose} 筆紀錄的服藥細節、抽血情境或設定，會被備份內容取代。建議先匯出目前的資料。`:'')
       +(c.meddose&&Object.keys(c.meddose).length?'<br>備份之後才刪除的劑量變更，會依備份內容回來。':'');
     $('#impPreview').hidden=false;$('#impActions').hidden=false;$('#impGo').classList.remove('armed');$('#impGo').textContent='確認匯入'}
   catch(e){toast('這不是本工具匯出的備份檔');ev.target.value=''}});
 $('#impCancel').addEventListener('click',()=>{pendingImport=null;$('#impPreview').hidden=true;$('#impActions').hidden=true;$('#impFile').value=''});
 $('#impGo').addEventListener('click',async()=>{if(!pendingImport||!db)return;const b=$('#impGo');if(!b.classList.contains('armed')){b.classList.add('armed');b.textContent='再按一次開始匯入';return}
-  b.disabled=true;let n=0,fail=0;const COLS=['days','exercise','records','settings','meddose'];const total=COLS.reduce((a,c)=>a+Object.keys(pendingImport.collections[c]||{}).length,0);
+  b.disabled=true;let n=0,fail=0;const COLS=['days','exercise','records','settings','meddose','mealthumbs'];const total=COLS.reduce((a,c)=>a+Object.keys(pendingImport.collections[c]||{}).length,0);
   for(const [col,docs] of Object.entries(pendingImport.collections)){if(!COLS.includes(col))continue;
-    for(const [id,data] of Object.entries(docs||{})){let ok=false;for(let t=0;t<4&&!ok;t++){try{await db.doc(col+'/'+id).set(data);ok=true}catch(e){if(e&&(e.code==='resource_exhausted'||e.code==='unavailable'))await new Promise(r=>setTimeout(r,1200*(t+1)));else break}}
+    for(const [id,data] of Object.entries(docs||{})){let ok=false;
+      /* days merge (an estimate landing now, or a meal another device just added, is kept); everything else is replaced by id */
+      const put=col==='days'?()=>queued('days/'+id,()=>mergeDoc('days/'+id,data)):()=>db.doc(col+'/'+id).set(data);
+      for(let t=0;t<4&&!ok;t++){try{await put();ok=true}catch(e){if(e&&(e.code==='resource_exhausted'||e.code==='unavailable'))await new Promise(r=>setTimeout(r,1200*(t+1)));else break}}
       ok?n++:fail++;b.textContent=`匯入中 ${n+fail}/${total}`}}
   toast(fail?`匯入完成 ${n} 筆，${fail} 筆失敗`:`匯入完成，共 ${n} 筆`);b.disabled=false;$('#impCancel').click()});
 

@@ -20,10 +20,10 @@ async function layout(page,label){
 }
 
 (async()=>{
-  /* 舊 profile 沒有 remind：三個開關都開，沒有飲食開關；沒有心跳文件 */
+  /* 舊 profile 沒有 remind：三個開關都開，飲食開關關閉；沒有心跳文件 */
   {const {page,errors}=await open({time:NOW,hash:'setup',cfg:{latencyComp:true,seed:seed()}});await wait(500);
     check('沒有 remind：早上、晚上、週報都開',(await sw(page,'morning')).checked&&(await sw(page,'evening')).checked&&(await sw(page,'weekly')).checked);
-    check('沒有飲食開關',!(await page.$('[data-remind="food"]')));
+    check('飲食開關（C 階段加入）：舊 profile 沒有 remind.food 時是關閉',await page.$eval('[data-remind="food"]',i=>!i.checked));
     check('沒有心跳：顯示還沒有收到',(await txt(page,'#hbLine'))==='還沒有收到排程檢查。',await txt(page,'#hbLine'));
     check('沒有心跳：不警示',(await txt(page,'#hbWarn'))===null);
     check('提醒區塊在設定頁最上面',await page.evaluate(()=>document.querySelector('#p-setup').firstElementChild.id==='remindSect'));

@@ -62,7 +62,13 @@ const txt=(page,s)=>page.evaluate(s=>{const e=document.querySelector(s);return e
     const bk={app:'jialin-health',version:2,exportedAt:'2026-10-20T00:00:00Z',collections:{days:{'2026-10-29':{date:'2026-10-29',med:{taken:true,at:'07:20',dose:50}}},meddose:{}}};
     const {page}=await open({time:NOW,hash:'setup',cfg:{latencyComp:true,seed:s}});await wait(500);
     await page.setInputFiles('#impFile',{name:'b.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bk))});await wait(300);
-    check('第 5 點：要覆蓋的紀錄缺服藥細節，預覽警告會被取代',(await txt(page,'#impPreview')).includes('會被備份內容取代'),await txt(page,'#impPreview'));
+    check('第 5 點（C 階段 D6 改成合併）：備份缺服藥細節時保留，不警告',!(await txt(page,'#impPreview')).includes('會被備份內容取代'),await txt(page,'#impPreview'));
+    await page.context().close()}
+  {const s=seed();s['days/2026-10-29']={...s['days/2026-10-29'],med:{taken:true,at:'07:20',dose:50,mode:'bedtime',interfere:{coffee:true}}};
+    const bk={app:'jialin-health',version:2,exportedAt:'2026-10-20T00:00:00Z',collections:{days:{'2026-10-29':{date:'2026-10-29',med:{taken:true,at:'07:20',dose:50,mode:'fasting_am'}}},meddose:{}}};
+    const {page}=await open({time:NOW,hash:'setup',cfg:{latencyComp:true,seed:s}});await wait(500);
+    await page.setInputFiles('#impFile',{name:'b.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bk))});await wait(300);
+    check('第 5 點（合併後）：備份的服藥方式和目前不同時，預覽警告會被取代',(await txt(page,'#impPreview')).includes('有 1 筆紀錄的服藥細節、抽血情境或設定，會被備份內容取代'),await txt(page,'#impPreview'));
     await page.context().close()}
 
   /* 第 6 點：正在改摘要期間時，遠端重繪不把日期改回預設 */

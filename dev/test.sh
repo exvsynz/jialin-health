@@ -20,5 +20,6 @@ node dev/prompt-test.js
 node dev/med-page-test.js "$@"
 node dev/meal-page-test.js
 node dev/meal-page2-test.js "$@"
+node dev/meal-setup-test.js
 node dev/review-b-test.js
 node dev/e2e.js "$@"

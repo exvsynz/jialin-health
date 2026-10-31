@@ -8,7 +8,7 @@
      seed:{path:body}, latency:ms, latencyComp:bool, firstSnapDelay:ms, snapDelay:{path:ms},
      cacheFirst:{path:body|null}（先送 fromCache:true 的快照，serverDelay 毫秒後才送伺服器快照）, serverDelay:ms,
      failListen:[path], denyWrites:bool, failNext:{code,count}, canWrite:bool, noDb:bool,
-     noDownloads:bool（沒有下載能力）, downloadError:code（下載時丟出這個錯誤，例如 'declined'）,
+     noDownloads:bool（沒有下載能力）, downloadError:code（下載時丟出這個錯誤，例如 'declined'）, downloadErrorCount:n（只有前 n 次丟錯）,
      downloadsReject:code（取得下載能力時就丟錯）, downloadsDelay:ms（取得下載能力要等多久）,
      acquireError:{code,count}（acquire 前 count 次丟出這個錯誤）, acquireDelay:ms, noAcquire:bool（文件參照沒有 acquire）,
      getDelay:{path:ms}（這個路徑下一次 get 要等多久，只作用一次）, quota:[路徑前綴]（set／update reject quota_exceeded）, failPath:{prefix,code,count}（這個前綴的寫入前 count 次失敗）,
@@ -71,7 +71,7 @@
   };return q}
   const db={doc:docRef,collection:colRef};
   const user={can:async()=>cfg.canWrite===false?false:true,canEdit:async()=>cfg.canWrite!==false,isOwner:async()=>true,id:async()=>'u1',me:async()=>({id:'u1',name:''})};
-  const downloads={async save(f){if(cfg.downloadError)throw err(cfg.downloadError);window.__lastDownload=f}};
+  const downloads={async save(f){(window.__downloads=window.__downloads||[]).push(f.filename);if(cfg.downloadError&&(cfg.downloadErrorCount==null||cfg.downloadErrorCount-->0))throw err(cfg.downloadError);window.__lastDownload=f}};
   for(const[p,b]of Object.entries(cfg.seed||{}))store.set(p,clone(b));
   /* 測試用：不經過 onSnapshot 直接改資料，模擬另一台裝置的寫入尚未送達 */
   window.__mock={store,writes,cfg,leases,reads,maxActive,listenPaths:()=>[...listeners].filter(l=>!l.dead).map(l=>l.kind+':'+l.path),holdLease:(p,ms)=>leases.set(p,{holder:'other-device',exp:Date.now()+ms}),releaseLease:p=>leases.delete(p),silentSet:(p,b)=>store.set(p,clone(b)),silentDelete:p=>store.delete(p),externalSet:(p,b)=>{store.set(p,clone(b));notify(p)},

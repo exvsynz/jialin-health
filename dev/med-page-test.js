@@ -320,7 +320,7 @@ const txt=(page,s)=>page.evaluate(s=>{const e=document.querySelector(s);return e
   {const {page}=await open({time:NOW,hash:'setup',cfg:{latencyComp:true,seed:full()}});await wait(500);
     await page.click('#btnExport');await wait(500);
     exported=JSON.parse(await page.evaluate(()=>window.__lastDownload.data));
-    check('匯出：版本 2，包含劑量變更（含已刪除的），不包含 system',exported.version===2&&Object.keys(exported.collections).sort().join()==='days,exercise,meddose,records,settings'&&exported.collections.meddose.gone?.deleted===true,Object.keys(exported.collections));
+    check('匯出：版本 3（C 階段加入縮圖），包含劑量變更（含已刪除的），不包含 system',exported.version===3&&Object.keys(exported.collections).sort().join()==='days,exercise,mealthumbs,meddose,records,settings'&&exported.thumbs?.included==='all'&&exported.collections.meddose.gone?.deleted===true,Object.keys(exported.collections));
     await page.context().close()}
   {const {page,doc}=await open({time:NOW,hash:'setup',cfg:{latencyComp:true,seed:{}}});await wait(500);
     await page.setInputFiles('#impFile',{name:'b.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(exported))});await wait(300);
@@ -335,9 +335,9 @@ const txt=(page,s)=>page.evaluate(s=>{const e=document.querySelector(s);return e
   {const old={app:'jialin-health',version:1,exportedAt:'2026-09-01T00:00:00Z',collections:{days:{'2026-10-29':{date:'2026-10-29',am:{w:52},med:{taken:true,at:'07:00',dose:50}}}}};
     const {page,doc}=await open({time:NOW,hash:'setup',cfg:{latencyComp:true,seed:full()}});await wait(500);
     await page.setInputFiles('#impFile',{name:'old.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(old))});await wait(300);
-    check('舊備份：預覽警告會取代服藥細節、建議先匯出',(await txt(page,'#impPreview')).includes('比用藥功能舊')&&(await txt(page,'#impPreview')).includes('先匯出'));
+    check('舊備份：預覽警告比用藥功能舊、建議先匯出',(await txt(page,'#impPreview')).includes('比用藥功能舊')&&(await txt(page,'#impPreview')).includes('先匯出'));
     await page.click('#impGo');await page.click('#impGo');await wait(800);
-    check('舊備份：相同日期的紀錄被備份取代（還原語意），劑量變更保留',!(await doc('days/2026-10-29')).med.mode&&(await doc('meddose/a'))?.dose===75);
+    check('舊備份：日紀錄合併（C 階段 D6），備份沒有的服藥方式保留，備份有的欄位改成備份的值；劑量變更保留',(await doc('days/2026-10-29')).med.mode==='bedtime'&&(await doc('days/2026-10-29')).med.dose===50&&(await doc('meddose/a'))?.dose===75,(await doc('days/2026-10-29')).med);
     await page.context().close()}
 
   /* B5：設定頁的劑量 */
