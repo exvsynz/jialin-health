@@ -1,6 +1,6 @@
 # C 階段規格：飲食照片
 
-2026-10-31 擬定，依據 `docs/plan-phase-2-4.md` 的 C 節。第二版：依 GPT 規格審查修訂（`docs/reviews/phase-C-independent-review.md`，逐點處理在 `docs/reviews/2026-10-31-phase-C-spec-review-response.md`）。狀態：待使用者確認（第 10 節）。
+2026-10-31 擬定，依據 `docs/plan-phase-2-4.md` 的 C 節。第二版：依 GPT 規格審查修訂（`docs/reviews/phase-C-independent-review.md`，逐點處理在 `docs/reviews/2026-10-31-phase-C-spec-review-response.md`）。狀態：2026-10-31 使用者確認 D1–D7 全部照建議（第 10 節），實作中。
 
 範圍：
 - 今天頁的「拍一餐」
@@ -977,7 +977,7 @@ confidence 只能是 "low"、"mid"、"high"。desc、name、portion 用繁體中
 
 ---
 
-## 10. 決定（請使用者確認）
+## 10. 決定（2026-10-31 使用者確認：D1–D7 全部照建議）
 
 第二版依 GPT 審查補上條件。D1–D5 是第一版就有的，D6、D7 是這一版新增的。
 

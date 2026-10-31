@@ -764,18 +764,31 @@ async function retry1(fn){try{return await fn()}catch(e){if(e?.code!=='unavailab
 const TAB='t'+Math.random().toString(36).slice(2);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 /* merge into a document; create it only when the store says it is missing, so a stale local copy never replaces it.
-   Creating runs under the platform's short lease (acquire), so two devices that both find it missing never both create it. */
+   Creating runs under the platform's short lease (acquire), so two devices that both find it missing never both create it.
+   A failed acquire is not a lease: retry, and give up rather than create unprotected. Only a runtime without leases creates without one. */
+const LEASE_MS=10000,LEASE_SAFE=7000;let noLeaseNoted=false;
 async function mergeDoc(path,patch,init={}){
-  const ref=db.doc(path);
+  const ref=db.doc(path),body={...init,...patch};
   try{return await retry1(()=>ref.update(patch))}
   catch(e){if(e?.code!=='invalid_argument')throw e;
+    let last=e;
     for(let i=0;i<6;i++){
-      let lease={acquired:true};try{lease=await ref.acquire({holder:TAB,ttlMs:3000})}catch(_){} // no lease support: fall back to get, then set
-      if(lease.acquired){const s=await retry1(()=>ref.get());return retry1(()=>s.exists?ref.update({...init,...patch}):ref.set({...init,...patch}))}
+      const t0=Date.now();let lease=null; // null: this runtime has no leases
+      if(typeof ref.acquire==='function'){
+        try{lease=await ref.acquire({holder:TAB,ttlMs:LEASE_MS})}
+        catch(e2){if(e2?.code!=='capability_removed'&&e2?.code!=='capability_disabled'){last=e2;await sleep(400+Math.random()*400);continue}}
+      }
+      if(!lease){if(!noLeaseNoted){noLeaseNoted=true;console.warn('db: no lease support (acquire), creating '+path+' without a lease')}
+        const s=await retry1(()=>ref.get());return retry1(()=>s.exists?ref.update(body):ref.set(body))}
+      if(lease.acquired){const s=await retry1(()=>ref.get());
+        if(s.exists)return retry1(()=>ref.update(body));
+        if(Date.now()-t0>LEASE_SAFE)continue; // the lease may lapse before the write lands: take it again
+        try{return await ref.set(body)}catch(e2){if(e2?.code!=='unavailable')throw e2;last=e2;continue} // a retried create re-checks under a fresh lease
+      }
       await sleep(400); // another device is creating it: merge once it exists
       try{return await retry1(()=>ref.update(patch))}catch(e2){if(e2?.code!=='invalid_argument')throw e2}
     }
-    throw e}
+    throw last}
 }
 function canSave(){if(!db){toast('資料庫未連線，無法儲存');return false}if(!ready){toast('資料還在載入，請稍候');return false}return true}
 async function writeDay(date,patch){

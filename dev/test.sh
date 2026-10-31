@@ -6,6 +6,8 @@ dev/check.sh
 node dev/date-test.js
 node dev/heartbeat-test.js
 node dev/med-test.js
+node dev/merge-test.js
+node dev/sample-mock-test.js
 node dev/data-test.js
 node dev/render-test.js
 node dev/weight-test.js

@@ -63,7 +63,9 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 - `dev/med-test.js`：從 `src/index.html` 抽出 `med helpers` 區塊，測試劑量、可計日、TSH 複查狀態、到期算法、回診摘要與三種輸出的跳脫。
 - `dev/med-page-test.js`：服藥細節、用藥頁、TSH 複查與到期卡、抽血表單、回診摘要、匯出匯入、設定頁劑量、版面與截圖。
 - `dev/e2e.js`：跑主要流程，並在 380／1280 寬 × 淺色／深色下截圖到 `dev/screenshots/`（不進版控），同時檢查水平捲動、觸控目標與文字對比。
-- `dev/mock-claude.js`：記憶體版的 `window.claude`，可切換寫入延遲、「自寫立即可見」、首筆快照延遲、監聽失敗等情境。只用合成資料。
+- `dev/merge-test.js`：建立當天文件的租約：取得租約失敗時不會沒有租約就建立、沒有租約支援時照舊、租約快到期時不寫。
+- `dev/sample-mock-test.js`：mock 的 `sample` 是否照 0.2.94 的型別定義（參數檢查、錯誤碼、快取、同意、中止）。
+- `dev/mock-claude.js`：記憶體版的 `window.claude`，可切換寫入延遲、「自寫立即可見」、首筆快照延遲、監聽失敗、租約錯誤、容量已滿等情境，以及依 `docs/contract/0.2.94/sample.d.ts` 的 `sample`。只用合成資料。
 - 用 `SRC=舊檔路徑 node dev/xxx-test.js` 可以對舊版本跑同一組測試，確認測試抓得到問題。
 
 需要 Node 與 Playwright（Chromium）。
