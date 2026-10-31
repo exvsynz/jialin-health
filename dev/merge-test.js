@@ -57,5 +57,28 @@ const sets=page=>page.evaluate(p=>window.__mock.writes.filter(w=>w.op==='set'&&w
     check('M6 他機持有租約時：兩邊的欄位都保留',d?.am?.w===52.3&&d?.med?.taken===true,d);
     await page.context().close()}
 
+  /* M7（程式審查 C2，使用者選乙）：這台建立當天之後，另一台遲到的建立整份蓋掉它；約 12 秒後重讀，補回整個不見的欄位 */
+  {const {page,doc}=await open({install:true,cfg:{latencyComp:true}});await page.clock.runFor(800);
+    await tap(page,'#medBtn');await page.clock.runFor(1500);
+    check('M7 前提：這台建立了當天，有服藥',(await doc(P))?.med?.taken===true);
+    await page.evaluate(([p,b])=>window.__mock.externalSet(p,b),[P,{date:T,am:{w:52.3,bf:null,at:'07:00'}}]); // 另一台遲到的 set 落地
+    await page.clock.runFor(3000);
+    check('M7 遲到的建立剛落地：服藥暫時不見了（重現審查的情境）',!(await doc(P))?.med,await doc(P));
+    await page.clock.runFor(10000);
+    const d=await doc(P);
+    check('M7 約 12 秒後重讀：補回服藥，另一台的早上體重也保留',d?.med?.taken===true&&d?.am?.w===52.3,d);
+    await page.context().close()}
+  /* M8 核對只補「整個不見」的欄位：另一台之後改了同一個欄位的值，不蓋回去；沒有建立文件時不核對 */
+  {const {page,doc}=await open({install:true,cfg:{latencyComp:true}});await page.clock.runFor(800);
+    await tap(page,'#medBtn');await page.clock.runFor(1500);
+    await page.evaluate(([p])=>{const d=JSON.parse(JSON.stringify(window.__mock.store.get(p)));d.med={...d.med,at:'09:00',mode:'bedtime'};window.__mock.externalSet(p,d)},[P]);
+    await page.clock.runFor(13000);
+    check('M8 另一台之後改了同一個欄位：不蓋回去',(await doc(P))?.med?.at==='09:00'&&(await doc(P)).med.mode==='bedtime',(await doc(P))?.med);
+    await page.context().close()}
+  {const {page}=await open({install:true,cfg:{latencyComp:true,seed:{[P]:{date:T}}}});await page.clock.runFor(800);
+    await tap(page,'#medBtn');await page.clock.runFor(14000);
+    check('M8 文件本來就存在（只有 update）：之後不再多讀一次',(await page.evaluate(p=>window.__mock.reads.filter(x=>x===p).length,P))===0);
+    await page.context().close()}
+
   await close();process.exit(summary()?1:0);
 })().catch(e=>{console.error(e);process.exit(1)});

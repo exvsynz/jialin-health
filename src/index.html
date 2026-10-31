@@ -944,9 +944,18 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 /* merge into a document; create it only when the store says it is missing, so a stale local copy never replaces it.
    Creating runs under the platform's short cooperative lease (acquire): it keeps two devices from creating at the same moment,
    but nothing fences a create that was sent in time and lands after the lease lapsed, so a very late create can still replace
-   another device's first write of that day (docs/specs/phase-C.md 2.5). A failed acquire is not a lease: retry, and give up
+   another device's first write of that day; verifyCreate puts such fields back if this page is still open (docs/specs/phase-C.md 2.5). A failed acquire is not a lease: retry, and give up
    rather than create unprotected. Only a runtime without leases creates without one. */
-const LEASE_MS=10000,LEASE_SAFE=7000;let noLeaseNoted=false;
+const LEASE_MS=10000,LEASE_SAFE=7000,VERIFY_MS=12000;let noLeaseNoted=false;
+/* after this page creates a document, read it once more after the lease could have lapsed: a late create from another device may have
+   replaced it whole. Only fields that are gone entirely are written back (update merges, so the other device's fields stay);
+   a field that is there with another value is someone's later edit and is left alone. Works only while the page stays open. */
+function goneOf(cur,mine){const out={};for(const [k,v] of Object.entries(mine)){if(k==='updatedAt')continue;
+  if(!cur||typeof cur!=='object'||!(k in cur))out[k]=v;
+  else if(v&&typeof v==='object'&&!Array.isArray(v)&&cur[k]&&typeof cur[k]==='object'&&!Array.isArray(cur[k])){const g=goneOf(cur[k],v);if(Object.keys(g).length)out[k]=g}}
+  return out}
+function verifyCreate(path,body){setTimeout(()=>queued(path,async()=>{const ref=db.doc(path);
+  try{const s=await retry1(()=>ref.get());if(!s.exists)return;const g=goneOf(s.data(),body);if(Object.keys(g).length)await retry1(()=>ref.update(g))}catch(_){}}),VERIFY_MS)}
 async function mergeDoc(path,patch,init={}){
   const ref=db.doc(path),body={...init,...patch};
   try{return await retry1(()=>ref.update(patch))}
@@ -959,11 +968,12 @@ async function mergeDoc(path,patch,init={}){
         catch(e2){if(e2?.code!=='capability_removed'&&e2?.code!=='capability_disabled'){last=e2;await sleep(400+Math.random()*400);continue}}
       }
       if(!lease){if(!noLeaseNoted){noLeaseNoted=true;console.warn('db: no lease support (acquire), creating '+path+' without a lease')}
-        const s=await retry1(()=>ref.get());return retry1(()=>s.exists?ref.update(body):ref.set(body))}
+        const s=await retry1(()=>ref.get());if(s.exists)return retry1(()=>ref.update(body));await retry1(()=>ref.set(body));verifyCreate(path,body);return}
       if(lease.acquired){const s=await retry1(()=>ref.get());
         if(s.exists)return retry1(()=>ref.update(body));
         if(Date.now()-t0>LEASE_SAFE)continue; // the lease may lapse before the write lands: take it again
-        try{return await ref.set(body)}catch(e2){if(e2?.code!=='unavailable')throw e2;last=e2;continue} // a retried create re-checks under a fresh lease
+        try{await ref.set(body)}catch(e2){if(e2?.code!=='unavailable')throw e2;last=e2;continue} // a retried create re-checks under a fresh lease
+        verifyCreate(path,body);return
       }
       await sleep(400); // another device is creating it: merge once it exists
       try{return await retry1(()=>ref.update(patch))}catch(e2){if(e2?.code!=='invalid_argument')throw e2}
