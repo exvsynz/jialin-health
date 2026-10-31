@@ -9,7 +9,7 @@
 - 設定頁的飲食提醒開關，與晚上排程提示詞的飲食檢查
 - 匯出與匯入
 
-`sample` 的用法以 runtime contract **0.2.94** 的型別定義為準（計畫寫的是 0.2.92）。這份規格讀的是 artifact-capabilities 技能隨附的 `0.2.94/sample.d.ts`、`claude.d.ts`、`db.d.ts`、`downloads.d.ts`（2026-10-31）。型別定義沒有寫的數值或行為，都在 7.3 列出，不猜。
+`sample` 的用法以 runtime contract **0.2.94** 的型別定義為準（計畫寫的是 0.2.92）。這份規格讀的是 `docs/contract/0.2.94/` 的 `sample.d.ts`、`claude.d.ts`、`db.d.ts`、`downloads.d.ts`（2026-10-31 從 artifact-capabilities 技能隨附的檔案複製，未修改）。型別定義沒有寫的數值或行為，都在 7.3 列出，不猜。
 
 ---
 
