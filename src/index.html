@@ -954,11 +954,17 @@ function goneOf(cur,mine){const out={};for(const [k,v] of Object.entries(mine)){
   if(!cur||typeof cur!=='object'||!(k in cur))out[k]=v;
   else if(v&&typeof v==='object'&&!Array.isArray(v)&&cur[k]&&typeof cur[k]==='object'&&!Array.isArray(cur[k])){const g=goneOf(cur[k],v);if(Object.keys(g).length)out[k]=g}}
   return out}
-function verifyCreate(path,body){setTimeout(()=>queued(path,async()=>{const ref=db.doc(path);
-  try{const s=await retry1(()=>ref.get());if(!s.exists)return;const g=goneOf(s.data(),body);if(Object.keys(g).length)await retry1(()=>ref.update(g))}catch(_){}}),VERIFY_MS)}
+/* what this page last wrote to a document it created: the create, then every later confirmed patch (null, deleted:true and results included),
+   so a check never brings back a value this page has since undone */
+const ownSince={};
+const plainObj=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
+function mergeInto(a,b){for(const [k,v] of Object.entries(b)){if(plainObj(v)&&plainObj(a[k]))mergeInto(a[k],v);else a[k]=plainObj(v)?JSON.parse(JSON.stringify(v)):v}return a}
+function noteOwn(path,patch){if(ownSince[path])mergeInto(ownSince[path],patch)}
+function verifyCreate(path,body){ownSince[path]=JSON.parse(JSON.stringify(body));setTimeout(()=>queued(path,async()=>{const ref=db.doc(path),mine=ownSince[path];delete ownSince[path];
+  try{const s=await retry1(()=>ref.get());if(!s.exists||!mine)return;const g=goneOf(s.data(),mine);if(Object.keys(g).length)await retry1(()=>ref.update(g))}catch(_){}}),VERIFY_MS)}
 async function mergeDoc(path,patch,init={}){
   const ref=db.doc(path),body={...init,...patch};
-  try{return await retry1(()=>ref.update(patch))}
+  try{await retry1(()=>ref.update(patch));noteOwn(path,patch);return}
   catch(e){if(e?.code!=='invalid_argument')throw e;
     let last=e;
     for(let i=0;i<6;i++){
@@ -968,15 +974,15 @@ async function mergeDoc(path,patch,init={}){
         catch(e2){if(e2?.code!=='capability_removed'&&e2?.code!=='capability_disabled'){last=e2;await sleep(400+Math.random()*400);continue}}
       }
       if(!lease){if(!noLeaseNoted){noLeaseNoted=true;console.warn('db: no lease support (acquire), creating '+path+' without a lease')}
-        const s=await retry1(()=>ref.get());if(s.exists)return retry1(()=>ref.update(body));await retry1(()=>ref.set(body));verifyCreate(path,body);return}
+        const s=await retry1(()=>ref.get());if(s.exists){await retry1(()=>ref.update(body));noteOwn(path,body);return}await retry1(()=>ref.set(body));verifyCreate(path,body);return}
       if(lease.acquired){const s=await retry1(()=>ref.get());
-        if(s.exists)return retry1(()=>ref.update(body));
+        if(s.exists){await retry1(()=>ref.update(body));noteOwn(path,body);return}
         if(Date.now()-t0>LEASE_SAFE)continue; // the lease may lapse before the write lands: take it again
         try{await ref.set(body)}catch(e2){if(e2?.code!=='unavailable')throw e2;last=e2;continue} // a retried create re-checks under a fresh lease
         verifyCreate(path,body);return
       }
       await sleep(400); // another device is creating it: merge once it exists
-      try{return await retry1(()=>ref.update(patch))}catch(e2){if(e2?.code!=='invalid_argument')throw e2}
+      try{await retry1(()=>ref.update(patch));noteOwn(path,patch);return}catch(e2){if(e2?.code!=='invalid_argument')throw e2}
     }
     throw last}
 }
@@ -1887,7 +1893,8 @@ async function exportAll(withThumbs=true){if(!db){toast('資料庫未連線');re
       const th={},missing=[];let i=0;
       for(const [id,promised] of ids){i++;if(i%10===1)toast(`匯出中 ${i}/${ids.length}`);let s=null;
         for(let t=0;t<4;t++){try{s=await db.doc('mealthumbs/'+id).get();break}catch(e){if(e&&(e.code==='resource_exhausted'||e.code==='unavailable'))await sleep(1200*(t+1));else break}}
-        if(s&&s.exists)th[id]=s.data();else if(promised)missing.push(id)}
+        /* unread is unknown, not absent: it makes the backup partial. Only a read that says it is not there may be expected */
+        if(!s)missing.push(id);else if(s.exists)th[id]=s.data();else if(promised)missing.push(id)}
       out.collections.mealthumbs=th;out.thumbs=missing.length?{included:'partial',missing}:{included:'all'}}}
   catch(e){toast('匯出失敗，請稍後再試');return}
   const tag=out.thumbs.included==='none'?'-不含縮圖':out.thumbs.included==='partial'?`-缺${out.thumbs.missing.length}張縮圖`:'';
@@ -1895,6 +1902,8 @@ async function exportAll(withThumbs=true){if(!db){toast('資料庫未連線');re
     toast(out.thumbs.included==='partial'?`已匯出，有 ${out.thumbs.missing.length} 張縮圖沒有匯出`:'已匯出')}
   catch(e){if(e&&e.code==='too_large'&&withThumbs)toast('檔案太大',[['匯出（不含縮圖）',()=>exportAll(false)]]);else toast(e&&e.code==='declined'?'已取消匯出':'匯出失敗，請稍後再試')}}
 $('#btnExport').addEventListener('click',()=>exportAll(true));
+/* an older backup may carry status:"pending" on an attempt; dropped before merging, so it can never turn a finished estimate back */
+function noPending(day){const d=JSON.parse(JSON.stringify(day||{}));for(const m of Object.values((d&&d.meals)||{}))for(const a of Object.values((m&&m.attempts)||{}))if(a&&a.status==='pending')delete a.status;return d}
 let pendingImport=null;
 /* records whose medication details, draw context or new settings would be replaced by a backup that lacks them */
 function importLoses(c){let n=0;
@@ -1926,7 +1935,7 @@ $('#impGo').addEventListener('click',async()=>{if(!pendingImport||!db)return;con
   for(const [col,docs] of Object.entries(pendingImport.collections)){if(!COLS.includes(col))continue;
     for(const [id,data] of Object.entries(docs||{})){let ok=false;
       /* days merge (an estimate landing now, or a meal another device just added, is kept); everything else is replaced by id */
-      const put=col==='days'?()=>queued('days/'+id,()=>mergeDoc('days/'+id,data)):()=>db.doc(col+'/'+id).set(data);
+      const put=col==='days'?()=>queued('days/'+id,()=>mergeDoc('days/'+id,noPending(data))):()=>db.doc(col+'/'+id).set(data);
       for(let t=0;t<4&&!ok;t++){try{await put();ok=true}catch(e){if(e&&(e.code==='resource_exhausted'||e.code==='unavailable'))await new Promise(r=>setTimeout(r,1200*(t+1)));else break}}
       /* a thumbnail restored by id brings its meal's flags back, or later exports and the clearing tool would skip it */
       if(ok&&col==='mealthumbs'){const d=data&&data.date,has=validDate(d)&&(pendingImport.collections.days?.[d]?.meals?.[id]||days[d]?.meals?.[id]);

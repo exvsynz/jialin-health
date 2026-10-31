@@ -11,7 +11,7 @@
      noDownloads:bool（沒有下載能力）, downloadError:code（下載時丟出這個錯誤，例如 'declined'）, downloadErrorCount:n（只有前 n 次丟錯）,
      downloadsReject:code（取得下載能力時就丟錯）, downloadsDelay:ms（取得下載能力要等多久）,
      acquireError:{code,count}（acquire 前 count 次丟出這個錯誤）, acquireDelay:ms, noAcquire:bool（文件參照沒有 acquire）,
-     getDelay:{path:ms}（這個路徑下一次 get 要等多久，只作用一次）, quota:[路徑前綴]（set／update reject quota_exceeded）, failPath:{prefix,code,count}（這個前綴的寫入前 count 次失敗）,
+     getDelay:{path:ms}（這個路徑下一次 get 要等多久，只作用一次）, quota:[路徑前綴]（set／update reject quota_exceeded）, failPath:{prefix,code,count}（這個前綴的寫入前 count 次失敗）, failGet:{prefix,code,count}（這個前綴的 get 前 count 次失敗）,
      sample:{…}（見檔尾 sample 的說明） }
    writes 的每一筆 set 會記下當時的租約 lease:{holder,valid}，用來檢查「只在持有租約時建立文件」。
    acquire() 依 db.d.ts 的租約語意：沒有人持有或已過期才給；不會自己建立文件。 */
@@ -50,7 +50,7 @@
   function docRef(p){if(segs(p).length%2)throw new TypeError('document path needs an even number of segments: '+p);const r={
     id:segs(p).pop(),path:p,
     async get(){const gd=cfg.getDelay||{},ms=gd[p];if(ms!=null)delete gd[p];const k=segs(p)[0];reads.push(p);active[k]=(active[k]||0)+1;maxActive[k]=Math.max(maxActive[k]||0,active[k]);
-      try{await sleep(ms??cfg.latency??0);return docSnap(p)}finally{active[k]--}},
+      try{await sleep(ms??cfg.latency??0);const fg=cfg.failGet;if(fg&&fg.count>0&&p.startsWith(fg.prefix)){fg.count--;throw err(fg.code)}return docSnap(p)}finally{active[k]--}},
     set(d){return write('set',p,()=>store.set(p,clone(d)),d)},
     async update(d){if(!store.has(p)){await sleep(cfg.latency||0);throw err('invalid_argument')}return write('update',p,()=>store.set(p,merge(store.get(p),d)),d)},
     delete(){return write('delete',p,()=>store.delete(p))},
@@ -93,7 +93,8 @@
      快取照型別定義：鍵含 input、modelTier、model、effort、圖片位元組、呼叫方式；只存成功的回覆（含 truncated）；
      cache:false 不讀不存不共用；{gcTime,refresh}；相同的呼叫同時進行時共用結果。mock 的快取是確定的，正式平台是盡力而為。 */
   const sc=cfg.sample||{};
-  const sampleCalls=[],scache=new Map(),sflight=new Map();let consentP=null;
+  const sampleCalls=[],scache=new Map(),sflight=new Map();let consentP=null,releaseHold=null;
+  const holdP=sc.hold?new Promise(r=>releaseHold=r):null; // hold:true：所有估算等到 __mock.releaseSample() 才回覆
   const IMG_TYPES=['image/jpeg','image/png','image/webp','image/gif'];
   const imgLim=()=>sc.images===null?null:{maxCount:5,maxInputBytes:20000000,mediaTypes:IMG_TYPES.slice(),...(sc.images||{})};
   const sErr=(code,message,text)=>{const e={code,message:message||code};if(text!=null)e.text=text;return e};
@@ -153,6 +154,7 @@
     const run=(async()=>{
       await consentGate(signal);
       await abortable(sc.queueWait||0,signal).catch(()=>{throw sErr('cancelled','aborted')});
+      if(holdP)await new Promise((res,rej)=>{holdP.then(res);signal&&signal.addEventListener('abort',()=>rej(sErr('cancelled','aborted')),{once:true})});
       rec.upstream=true;
       const r=nextReply(input,o);
       await abortable(sc.delay||0,signal).catch(()=>{throw sErr('cancelled','aborted')});
@@ -170,6 +172,6 @@
   sample.json=(input,o)=>sampleCall('json',input,o);
   sample.limits=async()=>{await sleep(sc.limitsDelay??5);if(sc.limitsReject)throw sErr('upstream_error','limits failed');const out={maxPromptBytes:262144};const l=imgLim();if(l)out.images=l;if(sc.tools)out.tools={maxCount:8};if(sc.modelTiers)out.modelTiers=sc.modelTiers.slice();return out};
   Object.freeze(sample);
-  window.__mock.sampleCalls=sampleCalls;window.__mock.sampleCache=scache;
+  window.__mock.sampleCalls=sampleCalls;window.__mock.sampleCache=scache;window.__mock.releaseSample=()=>releaseHold&&releaseHold();
   window.claude={use:async name=>{await sleep(cfg.useDelay??20);if(name==='downloads'){if(cfg.downloadsReject)throw err(cfg.downloadsReject);await sleep(cfg.downloadsDelay||0)}if(cfg.noDb&&name==='db')return null;if(name==='sample')return sc.absent?null:sample;return name==='db'?db:name==='user'?user:name==='downloads'?(cfg.noDownloads?null:downloads):null}};
 })();
