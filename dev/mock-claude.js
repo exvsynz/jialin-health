@@ -84,7 +84,7 @@
        absent:bool（use("sample") 回 null）, limitsReject:bool, limitsDelay:ms,
        images:{maxCount,maxInputBytes,mediaTypes} | null（null：沒宣告圖片）。不給時用 {maxCount:5,maxInputBytes:20000000,mediaTypes:[jpeg,png,webp,gif]},
        modelTiers:[…], tools:bool（limits 回報 tools；預設沒有）,
-       consent:"grant"|"deny"|{wait:ms}（第一次呼叫等 wait 毫秒才答應）, queueWait:ms（每次呼叫排隊的時間）,
+       consent:"grant"|"deny"|{wait:ms,answer?:"deny"}（同意視窗 wait 毫秒後才回答；中途取消的呼叫不影響視窗，之後的呼叫等同一個答案）, queueWait:ms（每次呼叫排隊的時間）,
        replies:[…]（依序取用；空了就用 reply）, reply:回覆（預設是一份合規的估算 JSON）, delay:ms（回覆前等待，可被 signal 中止）,
        tierApplied:"default"|…（預設等於要求的 tier）, noCache:bool（關掉快取，模擬盡力而為沒有命中） }
      回覆的形式：字串（成功）、{text, truncated:true}、{error:code, text?}。
@@ -93,7 +93,7 @@
      快取照型別定義：鍵含 input、modelTier、model、effort、圖片位元組、呼叫方式；只存成功的回覆（含 truncated）；
      cache:false 不讀不存不共用；{gcTime,refresh}；相同的呼叫同時進行時共用結果。mock 的快取是確定的，正式平台是盡力而為。 */
   const sc=cfg.sample||{};
-  const sampleCalls=[],scache=new Map(),sflight=new Map();let consented=null,consentAsked=false;
+  const sampleCalls=[],scache=new Map(),sflight=new Map();let consentP=null;
   const IMG_TYPES=['image/jpeg','image/png','image/webp','image/gif'];
   const imgLim=()=>sc.images===null?null:{maxCount:5,maxInputBytes:20000000,mediaTypes:IMG_TYPES.slice(),...(sc.images||{})};
   const sErr=(code,message,text)=>{const e={code,message:message||code};if(text!=null)e.text=text;return e};
@@ -123,6 +123,11 @@
     return null}
   function nextReply(input,o){if(typeof window.__mock?.sampleRespond==='function')return window.__mock.sampleRespond(input,o);
     if(Array.isArray(sc.replies)&&sc.replies.length)return sc.replies.shift();return sc.reply??DEFAULT_REPLY}
+  /* one consent dialog per view: a call that stops waiting is cancelled, but the dialog stays up and its answer governs every later call */
+  function consentGate(signal){
+    if(!consentP){const c=sc.consent,deny=c==='deny'||(isPlain(c)&&c.answer==='deny');consentP=sleep(isPlain(c)&&c.wait||0).then(()=>!deny)}
+    return new Promise((res,rej)=>{if(signal&&signal.aborted)return rej(sErr('cancelled','aborted'));const on=()=>rej(sErr('cancelled','aborted'));
+      signal&&signal.addEventListener('abort',on,{once:true});consentP.then(ok=>{signal&&signal.removeEventListener('abort',on);ok?res():rej(sErr('not_granted','declined'))})})}
   const abortable=(ms,signal)=>new Promise((res,rej)=>{if(!ms)return res();const t=setTimeout(res,ms);signal&&signal.addEventListener('abort',()=>{clearTimeout(t);rej('abort')},{once:true})});
   async function sampleCall(verb,input,o){
     await Promise.resolve(); // the request leaves on the next microtask
@@ -146,10 +151,7 @@
     if(useCache&&!refresh){const c=scache.get(key);if(c&&Date.now()-c.at<Math.min(gc,c.gc)){rec.cached=true;emit(c.res.text);return verb==='json'?parseLoose(c.res.text).v:{...c.res}}
       if(sflight.has(key)){rec.cached=true;const res=await sflight.get(key);emit(res.text);return verb==='json'?parseLoose(res.text).v:{...res}}}
     const run=(async()=>{
-      if(consented===false)throw sErr('not_granted','declined');
-      if(!consentAsked){consentAsked=true;const c=sc.consent;
-        if(isPlain(c)&&c.wait)await abortable(c.wait,signal).catch(()=>{throw sErr('cancelled','aborted')});
-        consented=c!=='deny';if(!consented)throw sErr('not_granted','declined')}
+      await consentGate(signal);
       await abortable(sc.queueWait||0,signal).catch(()=>{throw sErr('cancelled','aborted')});
       rec.upstream=true;
       const r=nextReply(input,o);

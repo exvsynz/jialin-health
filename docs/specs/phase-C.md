@@ -91,7 +91,7 @@ days/{date}.meals = {
     note,        // 使用者補的份量說明，最多 60 字，可以是空字串
     attempts: {  // 每次估算一個 key，只由那次估算寫入；最多 5 次
       <attemptId>: {
-        status,      // "pending" | "done" | "failed"
+        status,      // "done" | "failed"。開始時不寫 status，沒有 status 就是估算中（審查 C3：估算中的備份匯入時不會把完成的結果改回估算中）
         startedAt,   // 毫秒
         at,          // 毫秒，結束的時間（成功或失敗）
         err,         // 失敗時的錯誤碼（4.4），或頁面自己的 "invalid"（回覆無法解析或不合規則）
@@ -112,7 +112,7 @@ days/{date}.meals = {
 ```
 
 - **誰寫哪些欄位**（R1：沒有交易、沒有條件寫入，只能讓不同的寫入者不碰同一個欄位）：
-  - 建立：除了 `attempts`、`manual`、`ref` 以外的欄位，加上第一次估算的 `attempts.{a0}: { status: "pending", startedAt }`。
+  - 建立：除了 `attempts`、`manual`、`ref` 以外的欄位，加上第一次估算的 `attempts.{a0}: { startedAt, imgSrc, note, promptVer }`（沒有 `status`）。
   - 一次估算：只寫自己的 `attempts.{attemptId}`。估算完成、失敗或停止，都只改這一個 key。
   - 手動改熱量：只寫 `manual`。「改回估算值」寫 `manual: null`（頁面的 db 沒有刪除單一欄位的方法）。
   - 單餐畫面的其他欄位（餐別、時間、補充說明、秤重參考值、刪除）：只送改動的 key。
@@ -184,6 +184,7 @@ A 階段已保留這個 key，預設 `false`。C 階段在設定頁顯示開關�
   - 理由：db.d.ts 說租約到期就自動失效、沒有釋放的動詞，臨界區要在租約內做完。
 - 所有建立 `days` 文件的寫入都要經過 `mergeDoc`。目前只有匯入直接 `set`，改法見 5.6。
 - 限制：租約只協調同樣呼叫 `acquire` 的人（db.d.ts）。排程任務不寫 `days`，所以沒有其他寫入者。
+- **殘餘風險**（程式審查 C2）：租約是合作式的，寫入不帶租約憑證，也沒有條件式建立。一個在租約內送出、卻在租約過期後才落地的 `set`，仍可能蓋掉另一台裝置在那之後建立的同一天。這個修改縮小了範圍（不再無租約建立、租約 10 秒、送出前檢查 7 秒），但**不能保證**兩台裝置同時建立當天時一定都保留。這是 A、B 就有的風險，要完全消除需要改資料模型，處理方案見 `docs/reviews/2026-10-31-phase-C-code-review-response.md`。
 
 ---
 
@@ -299,7 +300,7 @@ const r = await sample(prompt, { images: [jpeg1280], modelTier: "default", signa
   - **`signal`**：每次呼叫新建一個 `AbortController`。飲食頁的估算中餐點有「停止」鍵。
     - 不設逾時：sample.d.ts 明說不要自己做計時器，平台會結束過長的呼叫。
 - **呼叫時機**：只在使用者動作之後，也就是選好照片、按「再估一次」或「重新估算」。不在載入時、不在迴圈裡、不自動重試。
-- **每次呼叫**：先產生新的 `attemptId`，寫入 `attempts.{attemptId}: { status: "pending", startedAt, imgSrc, note }`，結果只寫回這個 key（2.1）。第一次估算的 pending 和餐點建立一起寫入（5.2）。
+- **每次呼叫**：先產生新的 `attemptId`，寫入 `attempts.{attemptId}: { startedAt, imgSrc, note, promptVer }`（不寫 `status`），結果只寫回這個 key（2.1）。第一次估算的 pending 和餐點建立一起寫入（5.2）。
 
 ### 4.2 快取（sample.d.ts）
 
@@ -424,7 +425,7 @@ confidence 只能是 "low"、"mid"、"high"。desc、name、portion 用繁體中
    - 解碼失敗：提示「這張照片打不開」，不寫任何東西。
 3. **先存餐點**（R3）。產生 `mealId` 和第一次估算的 `attemptId`，用 `writeDay` 寫入 `days/{date}.meals.{id}`：
    - `at`、`meal`、`src: "camera"`、`thumb: false`、`thumbBytes`、`note: ""`、`createdAt`
-   - `attempts.{a0}: { status: "pending", startedAt, imgSrc: "photo", note: "" }`
+   - `attempts.{a0}: { startedAt, imgSrc: "photo", note: "", promptVer }`（不寫 `status`）
 
    寫入期間顯示「儲存中…」。成功後才提示「已存一餐，估算中」，飲食列的副標更新。不跳頁。
 4. **同時開始估算**：呼叫 `sample`，不等第 3 步。估算的結果要等第 3 步成功才寫回（第 6 步）。
@@ -554,7 +555,10 @@ confidence 只能是 "low"、"mid"、"high"。desc、name、portion 用繁體中
     - 不會自動執行，也不會在空間滿時自己刪。
 - **匯出**：
   - `version` 改成 3，`collections` 多一個 `mealthumbs`。
-  - 讀法：從 `days` 裡所有 `thumb: true` 的餐點（含已刪除）取 id，逐一 `get()`。不查詢整個集合（2.2）。
+  - 讀法：從 `days` 裡可能有縮圖的餐點（含已刪除）取 id，逐一 `get()`。不查詢整個集合（2.2）。
+    - 「可能有縮圖」：`thumb: true`，或 `thumbBytes > 0`（縮圖做好了，但 `thumb: true` 可能沒寫成，審查 C1）。不看 `thumbCleared`，一律讀讀看。
+    - 讀不到的只有 `thumb: true` 而且沒有 `thumbCleared` 的才算缺圖；其他的本來就可能不存在。
+    - 清除舊縮圖的清單用同樣的規則（不含 `thumbCleared`）。縮圖因空間已滿放棄時，餐點的 `thumbBytes` 改成 0。
   - `resource_exhausted`、`unavailable` 依現有匯入的退避方式重試。
   - 匯出時顯示進度「匯出中 n/N」。
   - **備份標明縮圖是否完整**（R5）：備份檔多一個 `thumbs` 欄位：
@@ -582,6 +586,7 @@ confidence 只能是 "low"、"mid"、"high"。desc、name、portion 用繁體中
     - `days` 其他欄位的警告改成「相同日期、相同欄位的值會改成備份的值；備份裡沒有的欄位保留」。B 階段的「服藥細節會被取代」只剩相同欄位不同值的情況。
     - `records`、`settings` 的現有警告不變。
   - 縮圖：
+    - 匯入一張縮圖成功後，對應的餐點（備份或目前資料裡有）改成 `thumb: true`、`thumbCleared: false`；這一步失敗也算那一筆失敗（審查 C1：清除後再還原，旗標要跟著回來）。
     - 備份缺的縮圖，目標資料庫有就保留，因為不會被覆蓋。
     - 匯入後不重寫任何 `thumb` 旗標，畫面一律以讀得到縮圖為準（2.2、4.5）。
   - **限制**：匯入和另一台裝置同時改同一餐的同一個欄位時，以後寫的為準（db.d.ts：last-writer-wins）。
@@ -625,7 +630,7 @@ confidence 只能是 "low"、"mid"、"high"。desc、name、portion 用繁體中
 |---|---|---|
 | 1 | **為什麼給範圍**：一項研究用 52 張標準化照片，比較 2024 年的三個通用模型。表現較好的兩個，熱量的平均絕對百分比誤差約 36%；份量越大越容易估少。 | Fridolfsson J, et al. *Curr Dev Nutr* 2025;9:107556，doi:10.1016/j.cdnut.2025.107556。讀全文：摘要結果段、Results（ChatGPT-4o 與 Claude 3.5 Sonnet 的熱量 MAPE 都是 35.8%）、Discussion |
 | 2 | **補一句的用處**：另一項研究在照片之外，補上照片看不出的資訊（油的種類與用量、甜味劑、乳品脂肪、肉的種類），熱量誤差下降；再補上食材與份量，誤差最低。 | Rodríguez-Jiménez M, et al. *Nutrients* 2025;17:3613，doi:10.3390/nu17223613。讀全文：2.6 節、表 2–4（全部來源合併的熱量 MAE：123 → 92 → 53 kcal） |
-| 3 | **估算只是參考**：照片看不出用了多少油、醬料或湯底，這部分可能多算，也可能少算。估算不適合用來精確計算。 | Nakagawa S, Yamamoto A. *Nutrients* 2026;18:2892，doi:10.3390/nu18172892（讀全文，3.5 節與限制段：脂肪多半來自調味、醬料和吸進菜裡的油，單張照片看不出來）；Isobe T, et al. *Nutrients* 2026;18:966，doi:10.3390/nu18060966（讀全文，3.2 節：醫院餐的脂質反而高估）；Fridolfsson 2025 結論（不適合精確評估） |
+| 3 | **估算只是參考**：照片看不出用了多少油、醬料或湯底，這部分可能多算，也可能少算。估算不適合用來精確計算。 | Nakagawa S, Yamamoto A. *Nutrients* 2026;18:2892，doi:10.3390/nu18172892（讀全文，3.5 節與限制段：脂肪多半來自調味、醬料和吸進菜裡的油，單張照片看不出來）；Nakagawa S, Yamamoto A. *Nutrients* 2026;18:2017，doi:10.3390/nu18122017（讀全文，4.3 節：高湯等看不見的食材，湯底的直接出處；程式審查 C8 補上）；Isobe T, et al. *Nutrients* 2026;18:966，doi:10.3390/nu18060966（讀全文，3.2 節：醫院餐的脂質反而高估）；Fridolfsson 2025 結論（不適合精確評估） |
 
 - **第 1 條的修改**：
   - 「平均誤差」改成「平均絕對百分比誤差」，加上「2024 年的」。

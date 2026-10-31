@@ -47,7 +47,7 @@ const mealsOf=(doc)=>Object.entries((doc&&doc.meals)||{});
     const iBase=w.findIndex(x=>x.path==='days/'+T&&x.keys.includes('"createdAt"')),iThumb=w.findIndex(x=>x.path.startsWith('mealthumbs/')),iFlag=w.findIndex(x=>x.keys.includes('"thumb":true')),iDone=w.findIndex(x=>x.keys.includes('"status":"done"'));
     check('拍一餐：存了一餐，餐別依時間是午餐、src 是 camera',ms.length===1&&m.meal==='lunch'&&m.src==='camera'&&Number.isFinite(m.at),m);
     check('拍一餐：寫入順序是 餐點 → 縮圖 → thumb:true，估算結果在餐點之後',iBase>=0&&iBase<iThumb&&iThumb<iFlag&&iBase<iDone,{iBase,iThumb,iFlag,iDone});
-    check('拍一餐：餐點建立時 thumb:false、估算是 pending',/"thumb":false/.test(w[iBase].keys)&&/"status":"pending"/.test(w[iBase].keys),w[iBase]);
+    check('拍一餐：餐點建立時 thumb:false、估算只有開始的資料（沒有 status 就是估算中，審查 C3）',/"thumb":false/.test(w[iBase].keys)&&/"startedAt"/.test(w[iBase].keys)&&!/"status"/.test(w[iBase].keys),w[iBase]);
     check('拍一餐：估算完成，有 modelTierApplied 與 promptVer',att&&att.length===1&&att[0].status==='done'&&att[0].modelTierApplied==='default'&&att[0].promptVer===1&&att[0].imgSrc==='photo',att);
     check('拍一餐：餐點存好之前顯示「儲存中…」或「已存一餐，估算中」',/儲存中|已存一餐，估算中/.test(midToast),midToast);
     const tinfo=th&&await page.evaluate(src=>new Promise(r=>{const im=new Image();im.onload=()=>r({w:im.naturalWidth,h:im.naturalHeight});im.src=src}),th.thumb);
@@ -125,7 +125,7 @@ const mealsOf=(doc)=>Object.entries((doc&&doc.meals)||{});
     await page.evaluate(()=>{window.__mock.cfg.failNext={code:'unavailable',count:2}});
     for(let i=0;i<80;i++){if(/估算結果沒有存到/.test(await toastText(page)))break;await wait(100)}
     let [id,m]=mealsOf(await doc('days/'+T))[0]||[];
-    check('估算結果寫回失敗：提示，餐點仍是 pending',/估算結果沒有存到/.test(await toastText(page))&&Object.values(m.attempts)[0].status==='pending',Object.values(m.attempts));
+    check('估算結果寫回失敗：提示，這次估算仍是估算中（沒有 status）',/估算結果沒有存到/.test(await toastText(page))&&Object.values(m.attempts)[0].status===undefined,Object.values(m.attempts));
     await tap(page,'#mealRetry');await wait(1200);[id,m]=mealsOf(await doc('days/'+T))[0]||[];
     check('再存一次：寫入已拿到的結果，不再呼叫模型',Object.values(m.attempts)[0].status==='done'&&(await page.evaluate(()=>window.__mock.sampleCalls.length))===1,Object.values(m.attempts));
     await page.context().close()}

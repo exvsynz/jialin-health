@@ -420,7 +420,7 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
     <div class="sect"><h2 class="lbl">依據</h2><div class="blk grp small refs" id="mealRef">
       <p><b>為什麼給範圍</b>：一項研究用 52 張標準化照片，比較 2024 年的三個通用模型。表現較好的兩個，熱量的平均絕對百分比誤差約 36%；份量越大越容易估少。<br><span class="muted">Fridolfsson J, et al. Curr Dev Nutr 2025;9:107556，doi:10.1016/j.cdnut.2025.107556</span></p>
       <p><b>補一句的用處</b>：另一項研究在照片之外，補上照片看不出的資訊（油的種類與用量、甜味劑、乳品脂肪、肉的種類），熱量誤差下降；再補上食材與份量，誤差最低。<br><span class="muted">Rodríguez-Jiménez M, et al. Nutrients 2025;17:3613，doi:10.3390/nu17223613</span></p>
-      <p><b>估算只是參考</b>：照片看不出用了多少油、醬料或湯底，這部分可能多算，也可能少算。估算不適合用來精確計算。<br><span class="muted">Nakagawa S, Yamamoto A. Nutrients 2026;18:2892，doi:10.3390/nu18172892；Isobe T, et al. Nutrients 2026;18:966，doi:10.3390/nu18060966；Fridolfsson 2025</span></p>
+      <p><b>估算只是參考</b>：照片看不出用了多少油、醬料或湯底，這部分可能多算，也可能少算。估算不適合用來精確計算。<br><span class="muted">Nakagawa S, Yamamoto A. Nutrients 2026;18:2892，doi:10.3390/nu18172892；Nakagawa S, Yamamoto A. Nutrients 2026;18:2017，doi:10.3390/nu18122017；Isobe T, et al. Nutrients 2026;18:966，doi:10.3390/nu18060966；Fridolfsson 2025</span></p>
     </div></div>
   </section>
 
@@ -897,7 +897,9 @@ function dayMeals(day){const ms=day&&day.meals;if(!ms||typeof ms!=='object')retu
   return Object.entries(ms).filter(([,m])=>validAt(m)&&m.deleted!==true).map(([id,m])=>({id,...m})).sort((a,b)=>a.at-b.at||(a.id<b.id?-1:1))}
 function dayTotal(day){const o={lo:0,hi:0,n:0,none:0};for(const m of dayMeals(day)){o.n++;const v=mealView(m);if(v.kcal){o.lo+=v.kcal.lo;o.hi+=v.kcal.hi}else o.none++}return o}
 /* a pending attempt nobody here is running has been quiet for 6 minutes: a hint only, it may still be running elsewhere */
-const estQuiet=(a,now,inflight)=>!!a&&a.status==='pending'&&!(inflight&&inflight.has(a.id))&&(!Number.isFinite(a.startedAt)||now-a.startedAt>QUIET_MS);
+/* an attempt is pending until it has a terminal status; the start never writes a status, so a backup taken mid-estimate cannot undo the result */
+const isPending=a=>!!a&&a.status!=='done'&&a.status!=='failed';
+const estQuiet=(a,now,inflight)=>isPending(a)&&!(inflight&&inflight.has(a.id))&&(!Number.isFinite(a.startedAt)||now-a.startedAt>QUIET_MS);
 /* trial comparison against the weighed reference: the first successful estimate of each meal; note-assisted ones listed apart */
 function coverage(days){const o={n:0,in:0,above:0,below:0,width:null,failed:0,thumbOnly:0,withNote:{n:0,in:0}},w=[];
   for(const day of Object.values(days||{}))for(const m of dayMeals(day)){const ref=m.ref&&m.ref.kcal;if(typeof ref!=='number'||!Number.isFinite(ref))continue;
@@ -940,8 +942,10 @@ async function retry1(fn){try{return await fn()}catch(e){if(e?.code!=='unavailab
 const TAB='t'+Math.random().toString(36).slice(2);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 /* merge into a document; create it only when the store says it is missing, so a stale local copy never replaces it.
-   Creating runs under the platform's short lease (acquire), so two devices that both find it missing never both create it.
-   A failed acquire is not a lease: retry, and give up rather than create unprotected. Only a runtime without leases creates without one. */
+   Creating runs under the platform's short cooperative lease (acquire): it keeps two devices from creating at the same moment,
+   but nothing fences a create that was sent in time and lands after the lease lapsed, so a very late create can still replace
+   another device's first write of that day (docs/specs/phase-C.md 2.5). A failed acquire is not a lease: retry, and give up
+   rather than create unprotected. Only a runtime without leases creates without one. */
 const LEASE_MS=10000,LEASE_SAFE=7000;let noLeaseNoted=false;
 async function mergeDoc(path,patch,init={}){
   const ref=db.doc(path),body={...init,...patch};
@@ -1137,7 +1141,7 @@ async function addMeal(file,src,at){
   const id=newId('m'),aid=newId('a'),date=logicalOf(at),now=Date.now();
   const e=pendOf(id,date);
   Object.assign(e,{baseOk:null,thumbDone:false,thumb:ph.thumb,tw:ph.tw,th:ph.th,
-    base:{at,meal:mealTypeAt(at),src,thumb:false,thumbBytes:ph.thumb?ph.thumb.length:0,note:'',createdAt:now,attempts:{[aid]:{status:'pending',startedAt:now,imgSrc:'photo',note:'',promptVer:PROMPT_VER}}}});
+    base:{at,meal:mealTypeAt(at),src,thumb:false,thumbBytes:ph.thumb?ph.thumb.length:0,note:'',createdAt:now,attempts:{[aid]:{startedAt:now,imgSrc:'photo',note:'',promptVer:PROMPT_VER}}}});
   if(ph.big)bigPhotos.set(id,ph.big);
   toast('儲存中…');
   e.basePromise=saveBase(e);
@@ -1151,9 +1155,9 @@ async function saveBase(e){
 async function saveThumb(e){
   if(e.thumbDone)return;
   if(!e.thumb){e.thumbDone=true;toast('這張照片的縮圖太大，沒有存');return}
-  if(!e.thumbSet){if(thumbsOff){e.thumbDone=true;return} // storage was full earlier in this page: text only
+  if(!e.thumbSet){if(thumbsOff){e.thumbDone=true;writeDay(e.date,{meals:{[e.id]:{thumbBytes:0}}}).catch(()=>{});return} // storage was full earlier in this page: text only
     try{await retry1(()=>db.doc('mealthumbs/'+e.id).set({date:e.date,at:e.base.at,thumb:e.thumb,w:e.tw,h:e.th,createdAt:Date.now()}));e.thumbSet=true;thumbCache.set(e.id,e.thumb);e.fail.delete('thumb')}
-    catch(err){if(err?.code==='quota_exceeded'){thumbsOff=true;e.thumbDone=true;e.fail.delete('thumb');toast('資料庫空間已滿，縮圖沒有存到，這餐只有文字。可以到設定頁清除舊縮圖')}else{e.fail.add('thumb');toast('縮圖沒有存到，這餐只有文字')}return}}
+    catch(err){if(err?.code==='quota_exceeded'){thumbsOff=true;e.thumbDone=true;e.fail.delete('thumb');writeDay(e.date,{meals:{[e.id]:{thumbBytes:0}}}).catch(()=>{});toast('資料庫空間已滿，縮圖沒有存到，這餐只有文字。可以到設定頁清除舊縮圖')}else{e.fail.add('thumb');toast('縮圖沒有存到，這餐只有文字')}return}}
   try{await writeDay(e.date,{meals:{[e.id]:{thumb:true}}});e.fail.delete('flag');e.thumbDone=true}catch(_){e.fail.add('flag')}}
 async function flushResults(e){for(const [aid,r] of Object.entries(e.results)){try{await writeDay(e.date,{meals:{[e.id]:{attempts:{[aid]:r}}}});delete e.results[aid]}catch(_){}}}
 function settle(e){if(e.baseOk&&e.thumbDone&&!e.fail.size&&!Object.keys(e.results).length)pendingMeals.delete(e.id)}
@@ -1184,7 +1188,7 @@ function renderMealRow(){
   const row=$('#mealRow'),isToday=viewDate===logicalToday(),ms=dayMeals(days[viewDate]),uns=unsavedMeals().length;
   if(!loaded.days){row.hidden=true;return}
   row.hidden=!(sampleState!=='off'||ms.length||uns);if(row.hidden)return;
-  const est=ms.filter(m=>{const v=mealView(m);return v.latest&&v.latest.status==='pending'&&!estQuiet(v.latest,Date.now(),inflight)}).length;
+  const est=ms.filter(m=>{const v=mealView(m);return isPending(v.latest)&&!estQuiet(v.latest,Date.now(),inflight)}).length;
   $('#mealSub').textContent=(ms.length?(isToday?'今天 ':'這天 ')+ms.length+' 餐':isToday?'今天還沒有':'這天沒有')+(est?'・'+est+' 餐估算中':'');
   const snap=$('#mealSnap'),off=!isToday||sampleState==='off'||sampleOff;snap.hidden=off;
   const dis=sampleState!=='ok'||!ready||!canWrite;snap.setAttribute('aria-disabled',String(dis));$('#mealFile').disabled=dis;
@@ -1204,7 +1208,7 @@ const EST_ERR={not_granted:['沒有允許使用 Claude，可以手動填熱量',
 for(const c of HIDE_CODES)if(!EST_ERR[c])EST_ERR[c]=['這個檢視無法估算，可以手動填熱量',null];
 for(const c of BUG_CODES)EST_ERR[c]=['估算沒有完成，可以手動填熱量',null];
 function mealStatus(v){const a=v.latest;if(!a)return null;
-  if(a.status==='pending'){if(inflight.has(a.id))return{t:'估算中…',act:'stop',aid:a.id};return estQuiet(a,Date.now(),inflight)?{t:'估算很久沒有更新，可能還在另一台裝置進行',act:'retry',label:'重新估算'}:{t:'估算中…'}}
+  if(isPending(a)){if(inflight.has(a.id))return{t:'估算中…',act:'stop',aid:a.id};return estQuiet(a,Date.now(),inflight)?{t:'估算很久沒有更新，可能還在另一台裝置進行',act:'retry',label:'重新估算'}:{t:'估算中…'}}
   if(a.status==='failed'){const [t,act]=EST_ERR[a.err]||EST_ERR.upstream_error;return{t,act}}
   return null}
 function kcalText(v){if(v.notFood&&!v.kcal)return'看不出是餐點';if(!v.kcal)return'';const{lo,hi}=v.kcal;
@@ -1227,12 +1231,12 @@ async function getThumb(id){if(thumbCache.has(id))return thumbCache.get(id)||nul
   try{const s=await db.doc('mealthumbs/'+id).get(),t=s.exists&&s.data().thumb;const ok=typeof t==='string'&&t.startsWith('data:image/')?t:false;thumbCache.set(id,ok);return ok||null}catch(_){return null}}
 function uriBlob(u){const i=u.indexOf(','),mime=(u.slice(0,i).match(/data:([^;,]+)/)||[])[1]||'image/jpeg',bin=atob(u.slice(i+1)),a=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)a[k]=bin.charCodeAt(k);return new Blob([a],{type:mime})}
 /* a new attempt: the photo of this open page, else the thumbnail; written as pending before the call, so it never creates a meal */
-async function reEstimate(id,date,note){if(!canSave()||!canEstimate())return;
-  const m=(days[date]?.meals||{})[id];if(!validAt(m))return;if(mealView(m).count>=MAX_ATTEMPTS){toast('已經估了 5 次，請手動填熱量');return}
-  let blob=bigPhotos.get(id),src='photo';if(!blob){const t=await getThumb(id);if(!t){toast('沒有照片可以估算，請手動填熱量');return}blob=uriBlob(t);src='thumb'}
+async function reEstimate(id,date,note){if(!canSave()||!canEstimate())return false;
+  const m=(days[date]?.meals||{})[id];if(!validAt(m))return false;if(mealView(m).count>=MAX_ATTEMPTS){toast('已經估了 5 次，請手動填熱量');return false}
+  let blob=bigPhotos.get(id),src='photo';if(!blob){const t=await getThumb(id);if(!t){toast('沒有照片可以估算，請手動填熱量');return false}blob=uriBlob(t);src='thumb'}
   const aid=newId('a');
-  try{await writeDay(date,{meals:{[id]:{note,attempts:{[aid]:{status:'pending',startedAt:Date.now(),imgSrc:src,note,promptVer:PROMPT_VER}}}}})}catch(e){writeErr(e);return}
-  estimate(id,date,aid,blob,note,true)}
+  try{await writeDay(date,{meals:{[id]:{note,attempts:{[aid]:{startedAt:Date.now(),imgSrc:src,note,promptVer:PROMPT_VER}}}}})}catch(e){writeErr(e);return false}
+  estimate(id,date,aid,blob,note,true);return true}
 function renderMeals(){
   const uns=unsavedMeals().length;$('#mealsPend').hidden=!uns;if(uns)$('#mealsPendT').textContent=uns+' 餐沒有存到';
   const al=$('#albumSnap');al.hidden=!canEstimate();const dis=!ready||!canWrite;al.setAttribute('aria-disabled',String(dis));$('#albumFile').disabled=dis;
@@ -1285,7 +1289,9 @@ function renderMealSheet(){if(!mealOpen||!$('#dlgMeal').open)return;const {id,da
 $('#mStatus').addEventListener('click',mealAct);
 $('#mType').addEventListener('click',e=>{const b=e.target.closest('[data-mt]');if(!b||!mealOpen)return;mealOpen.type=b.dataset.mt;renderMealSheet()});
 $('#mNote').addEventListener('input',renderMealSheet);
-$('#mReest').addEventListener('click',()=>{if(!mealOpen)return;const note=cleanNote($('#mNote').value);$('#mNote').value=note;mealOpen.init.note=note;reEstimate(mealOpen.id,mealOpen.date,note).then(renderMealSheet)});
+$('#mReest').addEventListener('click',async()=>{if(!mealOpen)return;const {id,date}=mealOpen,note=cleanNote($('#mNote').value);$('#mNote').value=note;
+  const ok=await reEstimate(id,date,note);if(ok&&mealOpen&&mealOpen.id===id)mealOpen.init.note=note; // a failed start leaves the note unsaved, so 儲存 still sends it
+  renderMealSheet()});
 $('#mRevert').addEventListener('click',async()=>{if(!mealOpen||!canSave())return;const {id,date}=mealOpen;
   try{await writeDay(date,{meals:{[id]:{manual:null}}});$('#mLo').value=$('#mHi').value='';mealOpen.init.lo=mealOpen.init.hi='';toast('已改回估算值')}catch(e){writeErr(e)}});
 $('#mDel').addEventListener('click',async()=>{if(!mealOpen||!canSave())return;const {id,date}=mealOpen,nm=MEAL_NAME[mealOpen.init.meal];
@@ -1312,8 +1318,10 @@ $('#albumForm').addEventListener('submit',ev=>{ev.preventDefault();const d=$('#a
   const f=albumPick;albumPick=null;$('#dlgAlbum').close();if(f)addMeal(f,'album',at)});
 
 /* ---- settings: estimate status, thumbnail space, clearing old thumbnails (only when asked, twice) ---- */
+/* a meal may have a thumbnail when its flag says so, or when one was prepared (thumbBytes) and the flag write never landed */
+const mayThumb=m=>!!m&&typeof m==='object'&&(m.thumb===true||(Number.isFinite(m.thumbBytes)&&m.thumbBytes>0));
 function thumbList(before){const L=[];for(const [d,day] of Object.entries(days))if(validDate(d)&&(!before||d<before))for(const [id,m] of Object.entries((day&&day.meals)||{}))
-  if(m&&typeof m==='object'&&m.thumb===true&&!m.thumbCleared)L.push({id,d,b:Number.isFinite(m.thumbBytes)?m.thumbBytes:0});return L}
+  if(mayThumb(m)&&!m.thumbCleared)L.push({id,d,b:Number.isFinite(m.thumbBytes)?m.thumbBytes:0});return L}
 const toMB=b=>(b/1048576).toFixed(b<1048576?2:1);
 function renderMealSetup(){
   const im=sampleLim;$('#mealCap').textContent=sampleState==='checking'?'照片估算：檢查中…':canEstimate()?`照片估算：可以使用（每次最多 ${im.maxCount} 張，單張上限 ${(im.maxInputBytes/1048576).toFixed(1)} MB）`:'照片估算：這個檢視無法使用';
@@ -1824,7 +1832,7 @@ function renderSetup(){
   $('#lastExport').textContent=profile.lastExport?'上次匯出：'+profile.lastExport:'還沒有匯出過。';
 }
 /* reminders: switches save on their own, outside the profile form; only the changed key is sent, so another device's switch is kept */
-const REMIND_NAME={morning:'早上提醒',evening:'晚上提醒',weekly:'週報'};
+const REMIND_NAME={morning:'早上提醒',evening:'晚上提醒',weekly:'週報',food:'飲食提醒'};
 const remindOf=k=>{const v=profile.remind?.[k];return typeof v==='boolean'?v:k!=='food'};
 const remindPending={},remindSeq={};
 function renderHb(){
@@ -1864,11 +1872,12 @@ async function exportAll(withThumbs=true){if(!db){toast('資料庫未連線');re
   const dl=await window.claude?.use?.('downloads');if(!dl){toast('這個檢視無法下載檔案，請在 claude.ai 開啟頁面');return}
   const out={app:'jialin-health',version:3,exportedAt:new Date().toISOString(),collections:{},thumbs:{included:'none'}};
   try{for(const c of ['days','exercise','records','settings','meddose'])out.collections[c]=await readAll(c);
-    if(withThumbs){const ids=[];for(const day of Object.values(out.collections.days))for(const [id,m] of Object.entries((day&&day.meals)||{}))if(m&&m.thumb===true&&!m.thumbCleared)ids.push(id);
+    /* every meal that may have one is read and checked, whatever its flags say; only a promised one that is not there counts as missing */
+    if(withThumbs){const ids=[];for(const day of Object.values(out.collections.days))for(const [id,m] of Object.entries((day&&day.meals)||{}))if(mayThumb(m))ids.push([id,m.thumb===true&&!m.thumbCleared]);
       const th={},missing=[];let i=0;
-      for(const id of ids){i++;if(i%10===1)toast(`匯出中 ${i}/${ids.length}`);let s=null;
+      for(const [id,promised] of ids){i++;if(i%10===1)toast(`匯出中 ${i}/${ids.length}`);let s=null;
         for(let t=0;t<4;t++){try{s=await db.doc('mealthumbs/'+id).get();break}catch(e){if(e&&(e.code==='resource_exhausted'||e.code==='unavailable'))await sleep(1200*(t+1));else break}}
-        if(s&&s.exists)th[id]=s.data();else missing.push(id)}
+        if(s&&s.exists)th[id]=s.data();else if(promised)missing.push(id)}
       out.collections.mealthumbs=th;out.thumbs=missing.length?{included:'partial',missing}:{included:'all'}}}
   catch(e){toast('匯出失敗，請稍後再試');return}
   const tag=out.thumbs.included==='none'?'-不含縮圖':out.thumbs.included==='partial'?`-缺${out.thumbs.missing.length}張縮圖`:'';
@@ -1909,6 +1918,9 @@ $('#impGo').addEventListener('click',async()=>{if(!pendingImport||!db)return;con
       /* days merge (an estimate landing now, or a meal another device just added, is kept); everything else is replaced by id */
       const put=col==='days'?()=>queued('days/'+id,()=>mergeDoc('days/'+id,data)):()=>db.doc(col+'/'+id).set(data);
       for(let t=0;t<4&&!ok;t++){try{await put();ok=true}catch(e){if(e&&(e.code==='resource_exhausted'||e.code==='unavailable'))await new Promise(r=>setTimeout(r,1200*(t+1)));else break}}
+      /* a thumbnail restored by id brings its meal's flags back, or later exports and the clearing tool would skip it */
+      if(ok&&col==='mealthumbs'){const d=data&&data.date,has=validDate(d)&&(pendingImport.collections.days?.[d]?.meals?.[id]||days[d]?.meals?.[id]);
+        if(has){ok=false;for(let t=0;t<4&&!ok;t++){try{await queued('days/'+d,()=>mergeDoc('days/'+d,{meals:{[id]:{thumb:true,thumbCleared:false}}}));ok=true}catch(e){if(e&&(e.code==='resource_exhausted'||e.code==='unavailable'))await sleep(1200*(t+1));else break}}}}
       ok?n++:fail++;b.textContent=`匯入中 ${n+fail}/${total}`}}
   toast(fail?`匯入完成 ${n} 筆，${fail} 筆失敗`:`匯入完成，共 ${n} 筆`);b.disabled=false;$('#impCancel').click()});
 
@@ -1920,7 +1932,9 @@ let lastLogical=logicalToday(),lastEvening=isAfterEvening(lastLogical);
 function clockTick(){const t=logicalToday(),ev=isAfterEvening(t);if(t===lastLogical&&ev===lastEvening)return false;
   if(t!==lastLogical){if(viewDate===lastLogical){viewDate=t;openEx=null}lastLogical=t}lastEvening=ev;return true}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){clockTick();renderCur()}});
-setInterval(()=>{if(clockTick())renderCur();else renderHb()},60000); // the 26-hour warning ages without a snapshot
+/* the 26-hour warning and a quiet estimate both age without a snapshot; only statuses are redrawn, never the meal sheet's fields */
+const anyPending=()=>Object.values(days).some(d=>dayMeals(d).some(m=>isPending(mealView(m).latest)));
+setInterval(()=>{if(clockTick())renderCur();else{renderHb();if(anyPending()){if(cur==='today')renderMealRow();else if(cur==='meals')renderMeals()}}},60000);
 (async()=>{
   try{
     const [d,u]=await Promise.all([window.claude?.use?.('db')??null,window.claude?.use?.('user')??null]);
