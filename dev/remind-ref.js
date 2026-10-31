@@ -1,6 +1,6 @@
 /* 排程提醒的參考實作（docs/specs/phase-A.md 第 3 節）：照 ops/scheduled/*.md 的步驟，對 ArtifactData 測試替身實際執行一次。
    只用於測試，不發布。日期函式直接從 src/index.html 的 date helpers 區塊抽出。
-   execute(kind, api, mode) → { entry, msg, delivery, reply, heartbeatWritten }；mode 是提示詞開頭的通知管道：'tool' | 'platform'
+   execute(kind, api, mode) → { entry, msg, delivery, reply, heartbeatWritten }；mode 是提示詞開頭的通知管道：'tool' | 'platform' | 'calendar'
    run(kind, nowIso, store, opt) 是測試用的簡便寫法：用 store 建立替身後執行。 */
 const fs=require('fs'),path=require('path');
 const {fakeApi,URL}=require('./fake-artifact-data');
@@ -19,7 +19,11 @@ const NO_FOLLOW=[['thy_us','none'],['thy_us','vlowSmall']]; // 「不追蹤」�
 const ITEMS=[['am','早上體重'],['med','服藥'],['pm','晚上體重']];
 const CHECK={morning:['am','med'],evening:['am','med','pm']};
 const KINDS=['morning','evening','weekly'],FIELDS=['run','at','kind','date','missing','paused','ok','skipped','shouldPush','delivery','msg'];
-const SENT_AS=['tool_sent','tool_error','platform']; // 可能已經送出的結果都算送出：寧可少一則，不重複
+const SENT_AS=['tool_sent','tool_error','platform','calendar','calendar_error']; // 可能已經送出的結果都算送出：寧可少一則，不重複
+/* 日曆模式：在家琳的 Google 日曆（連接器帳號的 primary）建一個活動，開始時用 popup 提醒。2026-10-31 實測手機會響（ops/scheduled/DEPLOYED.md）。 */
+const CAL_LEAD_MIN=5,CAL_LEN_MIN=5;
+function calendarEvent(msg,ms){const s=Math.floor(ms/6e4)*6e4+CAL_LEAD_MIN*6e4;const f=t=>tpeIso(t).slice(0,19);
+  return{calendarId:'primary',summary:msg,startTime:f(s),endTime:f(s+CAL_LEN_MIN*6e4),timeZone:'Asia/Taipei',overrideReminders:[{method:'popup',minutes:0}],availability:'AVAILABILITY_FREE',notificationLevel:'NONE',description:'打開 '+URL+' 記錄'}}
 const PUSH_REQUESTED='Mobile push requested.'; // 正式排程的 PushNotification 回傳這句，手機收得到（ops/scheduled/DEPLOYED.md 一次性測試）
 const RECENT_MAX=21,SENT_DAYS=7,WINDOW_DAYS={evening:7,weekly:30},ERR_MSG='提醒檢查失敗：讀不到資料';
 
@@ -132,7 +136,7 @@ async function writeHeartbeat(api,entry,cur,cls,date){
 }
 
 async function execute(kind,api,mode){
-  if(!['tool','platform'].includes(mode))throw new Error('通知管道要是 tool 或 platform');
+  if(!['tool','platform','calendar'].includes(mode))throw new Error('通知管道要是 tool、platform 或 calendar');
   /* 1. 時間與初始紀錄 */
   const t0=api.now();const {date,h}=clock(t0);const at=tpeIso(t0);
   const entry={run:at+'#'+kind+'-'+rand4(),at,kind,date,missing:[],paused:false,ok:true,skipped:null,shouldPush:false,delivery:'none',msg:''};
@@ -174,9 +178,12 @@ async function execute(kind,api,mode){
   const clear=reason=>{entry.skipped=reason;entry.msg='';entry.missing=[]};
   /* 5. 送出前：重複 → 再看一次時間 → 交付 */
   if(entry.msg&&hb.ok&&hb.sent[sentKey(kind,date,cls)])clear('duplicate');
-  if(entry.msg){const c=clock(api.now());if(c.date!==date||!inWindow(kind,c.h,date))clear('late')}
+  let tCheck=null;
+  if(entry.msg){tCheck=api.now();const c=clock(tCheck);if(c.date!==date||!inWindow(kind,c.h,date))clear('late')}
   if(entry.msg){
     if(mode==='platform')entry.delivery='platform';
+    else if(mode==='calendar'){if(!api.hasCalendar)entry.delivery='calendar_missing';
+      else{try{const res=await api.createEvent(calendarEvent(entry.msg,tCheck));entry.delivery=res&&typeof res.id==='string'&&res.id?'calendar':res==='not_created'?'calendar_not_sent':'calendar_error'}catch(e){entry.delivery='calendar_error'}}} // 開始時間用第 2 小步取的時間
     else if(!api.hasPush)entry.delivery='tool_missing';
     else{try{const res=await api.push(entry.msg);entry.delivery=res==='sent'||res===PUSH_REQUESTED?'tool_sent':res==='not_sent'?'tool_not_sent':'tool_error'}catch(e){entry.delivery='tool_error'}} // 只有明確沒送出才是 not_sent；看不出結果算可能已送出
   }
@@ -189,7 +196,7 @@ async function execute(kind,api,mode){
     if(written){const doc=buildDoc(entry,{exists:true,version:written.version,recent:written.recent,sent:written.sent},cls);try{await T.set(api,'system','heartbeat',doc,written.version)}catch(e){}}
   }}
   /* 8. 最終回覆 */
-  const reply={platform:entry.msg,tool_sent:'（已推播）',tool_not_sent:'（推播未送出）',tool_missing:'（推播未送出）',tool_error:'（推播結果未確認）',none:'（無需提醒）'}[entry.delivery];
+  const reply={calendar:'（已建日曆提醒）',calendar_not_sent:'（日曆提醒未建立）',calendar_missing:'（日曆提醒未建立）',calendar_error:'（日曆提醒結果未確認）',platform:entry.msg,tool_sent:'（已推播）',tool_not_sent:'（推播未送出）',tool_missing:'（推播未送出）',tool_error:'（推播結果未確認）',none:'（無需提醒）'}[entry.delivery];
   return{entry,msg:entry.msg,delivery:entry.delivery,reply,heartbeatWritten:!!written};
 }
 
@@ -207,11 +214,11 @@ function storeDocs(store){
   return docs;
 }
 async function run(kind,nowIso,store={},opt={}){
-  const f=opt.fake||fakeApi({docs:storeDocs(store),times:opt.times||[nowIso],push:opt.push===undefined?null:opt.push,failGet:store.readError?{'settings/profile':9}:opt.failGet||{},failList:opt.failList||{},failSet:opt.failSet||0,failSetAfterCommit:opt.failSetAfterCommit||0,beforeSet:opt.beforeSet||null,pageSize:opt.pageSize||1000});
-  const mode=opt.mode||(opt.push!==undefined?'tool':'platform');
+  const f=opt.fake||fakeApi({docs:storeDocs(store),times:opt.times||[nowIso],push:opt.push===undefined?null:opt.push,calendar:opt.calendar===undefined?null:opt.calendar,failGet:store.readError?{'settings/profile':9}:opt.failGet||{},failList:opt.failList||{},failSet:opt.failSet||0,failSetAfterCommit:opt.failSetAfterCommit||0,beforeSet:opt.beforeSet||null,pageSize:opt.pageSize||1000});
+  const mode=opt.mode||(opt.calendar!==undefined?'calendar':opt.push!==undefined?'tool':'platform');
   const out=await execute(kind,f.api,mode);
   if(f.contractErrors.length)throw new Error('ArtifactData 參數不合 schema：'+f.contractErrors.join('；'));
   return{...out,push:out.msg||null,heartbeat:f.doc('system/heartbeat'),fake:f};
 }
 
-module.exports={execute,run,storeDocs,EXAMS,EXAM_NAMES,NO_FOLLOW,dueOf,recheckDue,normalizeRecent,normalizeSent,RECENT_MAX};
+module.exports={calendarEvent,execute,run,storeDocs,EXAMS,EXAM_NAMES,NO_FOLLOW,dueOf,recheckDue,normalizeRecent,normalizeSent,RECENT_MAX};

@@ -5,10 +5,11 @@
 
 ---
 
-**通知管道：`platform`**
+**通知管道：`calendar`**
 
 - `tool`：用推播工具送出。這個排程任務的完成通知要關閉。
 - `platform`：不呼叫推播工具，由排程任務的完成通知送出最終回覆。
+- `calendar`：不呼叫推播工具，在家琳的 Google 日曆建一個提醒活動。這個排程任務的完成通知要關閉。
 
 你是家琳健康追蹤的**每週週報**。照下面的步驟做完就結束，不做其他事。
 
@@ -50,7 +51,7 @@
   - `recent`：不是陣列就當成 `[]`。只留下符合三個條件的項目：是物件；`at` 是有效的毫秒數字，或帶時區（`Z` 或 `+08:00` 這類）的 ISO 時間；`kind` 是 `"morning"`／`"evening"`／`"weekly"`，`date` 是 `YYYY-MM-DD`。每一項只保留 `run`、`at`、`kind`、`date`、`missing`、`paused`、`ok`、`skipped`、`shouldPush`、`delivery`、`msg`。
   - `sent`：不是物件就當成 `{}`。只留下 key 和值都有效的項目：
     - key 是 `種類|日期|類別`：種類是 `morning`／`evening`／`weekly`；日期是 `YYYY-MM-DD`，在今天往前 6 天到今天之間（共 7 個日期，未來的日期不留）；類別是 `remind` 或 `error`。
-    - 值是物件（不是陣列）；`run` 是非空字串；`at` 是有效的毫秒數字或帶時區的 ISO 時間；`delivery` 是 `"tool_sent"`、`"tool_error"` 或 `"platform"`。
+    - 值是物件（不是陣列）；`run` 是非空字串；`at` 是有效的毫秒數字或帶時區的 ISO 時間；`delivery` 是 `"tool_sent"`、`"tool_error"`、`"platform"`、`"calendar"` 或 `"calendar_error"`。
     - 每一項只保留 `run`、`at`、`delivery`。
 
 ## 3. 跳過的判斷（依序，符合一條就停在那一條）
@@ -148,14 +149,22 @@
 1. **重複**：`msg` 不是空字串、第 2 步讀到了心跳，而且整理過的 `sent` 裡有 `weekly|今天|類別` → `skipped` = `"duplicate"`、`msg` = `""`、`missing` = `[]`。
 2. **再看一次時間**：`msg` 不是空字串時（包括讀取失敗的訊息），再取一次現在時間。邏輯日已經不是今天，或不在時段內 → `skipped` = `"late"`、`msg` = `""`、`missing` = `[]`。
 3. **交付**（只送一次，不重試），照開頭的通知管道：
-   - `msg` 是空字串：不要呼叫任何推播工具。`delivery` 維持 `"none"`。
+   - `msg` 是空字串：不要呼叫任何推播工具，也不要建日曆活動。`delivery` 維持 `"none"`。
    - 通知管道是 `tool`：
      - 有送推播通知的工具（例如 PushNotification）：用它送出 `msg` 這一行。工具回報已送出（正式環境回傳的「Mobile push requested.」也算已送出）→ `delivery` = `"tool_sent"`；明確回報沒有送出 → `"tool_not_sent"`；出錯、看不出結果或其他回應 → `"tool_error"`。
      - 沒有這種工具 → `delivery` = `"tool_missing"`。不要改用最終回覆代送。
    - 通知管道是 `platform`：就算有推播工具也不要呼叫。`delivery` = `"platform"`。
+   - 通知管道是 `calendar`：就算有推播工具也不要呼叫。
+     - 有建立 Google 日曆活動的工具（例如 Google Calendar 的 `create_event`）：建一個活動，參數如下。只建一次，不重試。
+       - `calendarId` `primary`；`summary` 是 `msg` 這一行；`timeZone` `Asia/Taipei`。
+       - `startTime`：上面第 2 小步取的時間（台北時間），秒數捨去再加 5 分鐘，格式 `YYYY-MM-DDTHH:MM:00`，不帶時區，例如 `2026-10-31T07:28:00`。`endTime` 是 `startTime` 加 5 分鐘。
+       - `overrideReminders` `[{"method":"popup","minutes":0}]`；`availability` `AVAILABILITY_FREE`；`notificationLevel` `NONE`。
+       - `description`：「打開 https://claude.ai/artifact/LJViyfLqXv2VdD5krdJahh 記錄」。
+     - 工具回傳了活動 id → `delivery` = `"calendar"`；明確回報沒有建立 → `"calendar_not_sent"`；出錯、看不出結果或其他回應 → `"calendar_error"`。
+     - 沒有這種工具 → `delivery` = `"calendar_missing"`。不要改用推播工具或最終回覆代送。
 4. `shouldPush`：`msg` 不是空字串就是 `true`。
 
-`delivery` 記的是送出的過程，不代表手機一定收到。**可能已經送出的（`tool_sent`、`tool_error`、`platform`）都算送出**：心跳讀得到時，每天每個種類與類別只送一次。寧可少一則，也不要重複。
+`delivery` 記的是送出的過程，不代表手機一定收到。**可能已經送出的（`tool_sent`、`tool_error`、`platform`、`calendar`、`calendar_error`）都算送出**：心跳讀得到時，每天每個種類與類別只送一次。寧可少一則，也不要重複。
 
 ## 6. 寫心跳 `system/heartbeat`
 
@@ -164,7 +173,7 @@
 新文件：
 
 - `recent` = `entry` 加上整理過的舊 `recent`（去掉 `run` 和 `entry` 相同的項目），依 `at` 由新到舊排序，只留前 21 筆。每一項都不含 `recent` 和 `sent`。
-- `sent` = 整理過的舊 `sent`。`delivery` 是 `"tool_sent"`、`"tool_error"` 或 `"platform"` 時，再加上 `"weekly|今天|類別": { run, at, delivery }`。
+- `sent` = 整理過的舊 `sent`。`delivery` 是 `"tool_sent"`、`"tool_error"`、`"platform"`、`"calendar"` 或 `"calendar_error"` 時，再加上 `"weekly|今天|類別": { run, at, delivery }`。
 - 新文件 = `recent` 第一筆（最新那筆）的全部欄位，再加上 `recent` 和 `sent`。
 
 寫法（用 `set` 整份取代，不要用 `update`）：
@@ -189,4 +198,7 @@
 - `delivery` 是 `"tool_sent"`：「（已推播）」。
 - `delivery` 是 `"tool_not_sent"` 或 `"tool_missing"`：「（推播未送出）」。
 - `delivery` 是 `"tool_error"`：「（推播結果未確認）」。
+- `delivery` 是 `"calendar"`：「（已建日曆提醒）」。
+- `delivery` 是 `"calendar_not_sent"` 或 `"calendar_missing"`：「（日曆提醒未建立）」。
+- `delivery` 是 `"calendar_error"`：「（日曆提醒結果未確認）」。
 - `delivery` 是 `"none"`：「（無需提醒）」。

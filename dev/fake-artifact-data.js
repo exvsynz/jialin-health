@@ -6,7 +6,8 @@
    語意：寫入已存在的文件必須帶 if_version 而且等於目前版本；建立新文件不帶 if_version；有下一頁才回 next_cursor。
    失敗注入：failGet {路徑:次數}、failList {collection:次數}、failSet（提交前失敗的次數）、failSetAfterCommit（提交後才回報失敗的次數）、
    beforeSet(path, store, nextVer)：模擬另一個工作階段搶先寫入。
-   推播工具：push 是 'sent' | 'not_sent' | 'throw' | 'unknown'（不丟錯，但回傳看不出結果）| 'requested'（回傳正式環境的「Mobile push requested.」）；null 表示沒有推播工具。pushAttempts 是呼叫紀錄，pushAccepted 只記回報已送出的。 */
+   推播工具：push 是 'sent' | 'not_sent' | 'throw' | 'unknown'（不丟錯，但回傳看不出結果）| 'requested'（回傳正式環境的「Mobile push requested.」）；null 表示沒有推播工具。pushAttempts 是呼叫紀錄，pushAccepted 只記回報已送出的。
+   日曆工具：calendar 是 'created' | 'not_created' | 'throw' | 'unknown'；null 表示沒有日曆工具。calendarCalls 記每次建立活動的參數。 */
 const URL='https://claude.ai/artifact/LJViyfLqXv2VdD5krdJahh';
 const SEG='(?!\\.\\.?(?:\\/|$))[A-Za-z0-9_\\-.~:@+]{1,200}';
 const COL_RE=new RegExp('^'+SEG+'(?:\\/'+SEG+'){0,14}$'),ID_RE=new RegExp('^'+SEG+'$');
@@ -35,17 +36,18 @@ function contract(a){
     if('where' in q){if(a.action!=='query')e.push('只有 query 能帶 where');if(!Array.isArray(q.where)||q.where.length>10||q.where.some(w=>!Array.isArray(w)||w.length!==3||typeof w[0]!=='string'||!OPS.includes(w[1])))e.push('query.where 格式不對')}}
   return e;
 }
-function fakeApi({docs={},times=[],failGet={},failList={},failSet=0,failSetAfterCommit=0,beforeSet=null,push=null,pageSize=1000}={}){
+function fakeApi({docs={},times=[],failGet={},failList={},failSet=0,failSetAfterCommit=0,beforeSet=null,push=null,calendar=null,pageSize=1000}={}){
   const store=new Map();let ver=1;
   for(const[p,d]of Object.entries(docs))if(d!==undefined&&d!==null)store.set(p,{data:JSON.parse(JSON.stringify(d)),version:ver++});
   const err=(code,extra={})=>Object.assign(new Error(code),{code,...extra});
   const clone=o=>JSON.parse(JSON.stringify(o));
-  const calls=[],contractErrors=[],pushAttempts=[],pushAccepted=[];let ti=0;
+  const calls=[],contractErrors=[],pushAttempts=[],pushAccepted=[],calendarCalls=[];let ti=0;
   const take=(o,k)=>{if(o[k]>0){o[k]--;return true}return false};
   const page=(items,q={})=>{const start=q.cursor?Number(q.cursor):0,n=Math.min(q.limit||pageSize,pageSize);return{docs:items.slice(start,start+n),next_cursor:start+n<items.length?String(start+n):undefined}};
   const colItems=col=>[...store.entries()].filter(([k])=>k.startsWith(col+'/')&&k.split('/').length===col.split('/').length+1).sort().map(([k,v])=>({id:k.split('/').pop(),data:clone(v.data),version:v.version}));
   const api={
-    hasPush:push!==null,
+    hasPush:push!==null,hasCalendar:calendar!==null,
+    async createEvent(ev){calendarCalls.push(clone(ev));if(calendar==='throw')throw err('calendar_failed');return calendar==='created'?{id:'ev'+calendarCalls.length,status:'confirmed'}:calendar==='not_created'?'not_created':undefined},
     now(){const t=times[Math.min(ti,times.length-1)];ti++;return Date.parse(t)},
     async call(a){
       const bad=contract(a);const path=a.collection+(a.doc_id?'/'+a.doc_id:'');
@@ -72,6 +74,6 @@ function fakeApi({docs={},times=[],failGet={},failList={},failSet=0,failSetAfter
     },
     async push(message){pushAttempts.push(message);if(push==='throw')throw err('push_failed');if(push==='sent'||push==='requested')pushAccepted.push(message);return push==='unknown'?undefined:push==='requested'?'Mobile push requested.':push},
   };
-  return{api,store,calls,contractErrors,pushAttempts,pushAccepted,doc:p=>store.get(p)?.data,URL,contract};
+  return{api,store,calls,contractErrors,pushAttempts,pushAccepted,calendarCalls,doc:p=>store.get(p)?.data,URL,contract};
 }
 module.exports={fakeApi,URL,contract};

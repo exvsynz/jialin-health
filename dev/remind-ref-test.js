@@ -315,6 +315,32 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
     const again=await run('morning',M('07:40'),st({},{heartbeat:r.heartbeat}),{push:'requested'});
     eq('Mobile push requested. 之後再跑：duplicate',again.entry.skipped,'duplicate')}
 
+  /* 日曆模式：有缺才在家琳的 Google 日曆建活動，開始時用 popup 提醒（2026-10-31 實測手機會響） */
+  {let r=await run('morning',M(),st({}),{calendar:'created',push:'sent'});
+    eq('日曆模式：建一個活動、不呼叫推播工具、delivery calendar、回覆已建日曆提醒',[r.fake.calendarCalls.length,r.fake.pushAttempts.length,r.delivery,r.reply,r.heartbeat.delivery],[1,0,'calendar','（已建日曆提醒）','calendar']);
+    eq('日曆活動的參數：primary、標題是那一行、5 分鐘後開始（秒數捨去）、開始時 popup、標成有空、不寄通知信、說明有網址',r.fake.calendarCalls[0],
+      {calendarId:'primary',summary:'家琳今天還沒記：早上體重、服藥',startTime:SAT+'T07:28:00',endTime:SAT+'T07:33:00',timeZone:'Asia/Taipei',overrideReminders:[{method:'popup',minutes:0}],availability:'AVAILABILITY_FREE',notificationLevel:'NONE',description:'打開 https://claude.ai/artifact/LJViyfLqXv2VdD5krdJahh 記錄'});
+    const again=await run('morning',M('07:40'),st({},{heartbeat:r.heartbeat}),{calendar:'created'});
+    eq('日曆建過之後再跑：duplicate，不再建',[again.entry.skipped,again.fake.calendarCalls.length,again.reply],['duplicate',0,'（無需提醒）']);
+    r=await run('morning',SAT+'T07:23:47+08:00',st({}),{calendar:'created'});
+    eq('開始時間用送出前再看的那次時間，秒數捨去',r.fake.calendarCalls[0].startTime,SAT+'T07:28:00');
+    r=await run('evening',SAT+'T23:57:10+08:00',st({[SAT]:day({am:full.am,med:full.med})}),{calendar:'created'});
+    eq('晚上 23:57：活動跨到隔天 00:02，邏輯日仍是今天',[r.entry.date,r.fake.calendarCalls[0].startTime],[SAT,SUN+'T00:02:00']);
+    r=await run('morning',M(),st({[SAT]:day(full)}),{calendar:'created'});
+    eq('全部記了：不建活動',[r.fake.calendarCalls.length,r.delivery,r.reply],[0,'none','（無需提醒）']);
+    r=await run('morning',M(),st({}),{calendar:'throw'});
+    eq('日曆工具出錯：calendar_error，算可能已建，下次不重建',[r.delivery,r.reply,(await run('morning',M('07:40'),st({},{heartbeat:r.heartbeat}),{calendar:'created'})).entry.skipped],['calendar_error','（日曆提醒結果未確認）','duplicate']);
+    r=await run('morning',M(),st({}),{calendar:'unknown'});
+    eq('日曆工具回傳看不出活動 id：calendar_error',r.delivery,'calendar_error');
+    r=await run('morning',M(),st({}),{calendar:'not_created'});
+    eq('日曆明確沒建立：calendar_not_sent，下次照常建',[r.delivery,r.reply,(await run('morning',M('07:40'),st({},{heartbeat:r.heartbeat}),{calendar:'created'})).fake.calendarCalls.length],['calendar_not_sent','（日曆提醒未建立）',1]);
+    r=await run('morning',M(),st({}),{mode:'calendar',push:'sent'});
+    eq('日曆模式＋沒有日曆工具：calendar_missing，不改用推播工具',[r.delivery,r.reply,r.fake.pushAttempts.length],['calendar_missing','（日曆提醒未建立）',0]);
+    r=await run('weekly',W(),st({},{profile:{lastExport:'2026/10/30'}}),{calendar:'created'});
+    eq('週報也建日曆活動，標題是週報那一行',[r.delivery,r.fake.calendarCalls[0].summary,r.fake.calendarCalls[0].startTime],['calendar',r.msg,SUN+'T20:19:00']);
+    r=await run('morning',M('11:59'),st({}),{calendar:'created',times:[M('11:59'),SAT+'T12:00:05+08:00']});
+    eq('送出前時間已出時段：不建活動',[r.fake.calendarCalls.length,r.entry.skipped],[0,'late'])}
+
   /* 檢查表和 src/index.html 一致：名稱、預設間隔、不追蹤的分類 */
   const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');
   const fromPage=[...html.matchAll(/\{id:'([a-z_]+)',cat:'[a-z]+',name:'([^']+)',def:(\d+)/g)].map(x=>[x[1],x[2],+x[3]]);
