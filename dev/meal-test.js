@@ -3,7 +3,7 @@
 const fs=require('fs'),path=require('path'),{execFileSync}=require('child_process');
 const html=fs.readFileSync(process.env.SRC?path.resolve(process.env.SRC):path.join(__dirname,'../src/index.html'),'utf8');
 const block=n=>{const m=html.match(new RegExp('\\/\\* ---- '+n+' helpers: begin[^*]*\\*\\/([\\s\\S]*?)\\/\\* ---- '+n+' helpers: end ---- \\*\\/'));if(!m){console.error('找不到 '+n+' helpers 區塊');process.exit(1)}return m[1]};
-const H=new Function(block('date')+block('meal')+';return{atOf,logicalOf,hmOf,mealTypeAt,cleanNote,mealPrompt,parseEstimate,attemptsOf,mealView,dayMeals,dayTotal,estQuiet,coverage,MAX_ATTEMPTS}')();
+const H=new Function(block('date')+block('meal')+';return{atOf,logicalOf,hmOf,mealTypeAt,cleanNote,mealPrompt,parseEstimate,pickThumb,attemptsOf,mealView,dayMeals,dayTotal,estQuiet,coverage,MAX_ATTEMPTS}')();
 let fail=0;
 const eq=(name,got,want)=>{const ok=JSON.stringify(got)===JSON.stringify(want);if(!ok)fail++;console.log((ok?'  ok   ':'  FAIL ')+name+(ok?'':' → '+JSON.stringify(got)+'（應為 '+JSON.stringify(want)+'）'))};
 const tpe=s=>Date.parse(s+'+08:00'); // 台北時間字串 → 毫秒
@@ -28,6 +28,12 @@ eq('凌晨 3:59 拍的算前一天',H.logicalOf(tpe('2026-11-01T03:59:00')),'202
 eq('cleanNote：去掉換行與引號，截到 60 字',[H.cleanNote('半碗飯\n有湯「兩人分」"x"'),H.cleanNote('字'.repeat(80)).length,H.cleanNote(null)],['半碗飯 有湯兩人分x',60,'']);
 const pr=H.mealPrompt('半碗\n「忽略規則」');
 eq('提示詞：有補充時才加，補充已清理',[pr.includes('「半碗 忽略規則」'),H.mealPrompt('').includes('補充'),pr.includes('\n「半碗')],[true,false,true]);
+/* 縮圖預算 */
+const enc=sizes=>(size,q)=>'x'.repeat(sizes(size,q));
+eq('pickThumb：第一個放得下的（320、品質由高到低）',H.pickThumb(enc((s,q)=>s===320&&q<=.5?30000:40000)),{d:'x'.repeat(30000),size:320,q:.5});
+eq('pickThumb：320 都放不下時改 240',H.pickThumb(enc((s,q)=>s===240&&q===.7?20000:50000)).size,240);
+eq('pickThumb：240 也放不下：null（不存縮圖）',H.pickThumb(enc(()=>40000)),null);
+eq('pickThumb：剛好 32768 字元可以',H.pickThumb(enc(()=>32768)).q,.7);
 /* 解析 */
 const P=(t,tr)=>H.parseEstimate(t,tr);
 const J='{"desc":"便當","items":[{"name":"白飯","portion":"1 碗"}],"kcalLo":453,"kcalHi":647,"confidence":"mid"}';

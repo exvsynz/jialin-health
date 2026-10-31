@@ -11,7 +11,7 @@
      noDownloads:bool（沒有下載能力）, downloadError:code（下載時丟出這個錯誤，例如 'declined'）,
      downloadsReject:code（取得下載能力時就丟錯）, downloadsDelay:ms（取得下載能力要等多久）,
      acquireError:{code,count}（acquire 前 count 次丟出這個錯誤）, acquireDelay:ms, noAcquire:bool（文件參照沒有 acquire）,
-     getDelay:{path:ms}（這個路徑下一次 get 要等多久，只作用一次）, quota:[路徑前綴]（set／update reject quota_exceeded）,
+     getDelay:{path:ms}（這個路徑下一次 get 要等多久，只作用一次）, quota:[路徑前綴]（set／update reject quota_exceeded）, failPath:{prefix,code,count}（這個前綴的寫入前 count 次失敗）,
      sample:{…}（見檔尾 sample 的說明） }
    writes 的每一筆 set 會記下當時的租約 lease:{holder,valid}，用來檢查「只在持有租約時建立文件」。
    acquire() 依 db.d.ts 的租約語意：沒有人持有或已過期才給；不會自己建立文件。 */
@@ -31,7 +31,7 @@
   const docSnap=(p,m=meta,b=store.get(p))=>({id:segs(p).pop(),exists:b!==undefined&&b!==null,data:()=>b==null?undefined:freeze(clone(b)),metadata:m});
   const colSnap=c=>{const docs=[...store.keys()].filter(k=>parentOf(k)===c).sort().map(k=>docSnap(k));return{docs,size:docs.length,empty:!docs.length,docChanges:()=>[],metadata:meta}};
   function notify(p){for(const l of listeners){if(l.dead)continue;if(l.kind==='doc'&&l.path===p)setTimeout(()=>!l.dead&&l.next(docSnap(p)),0);if(l.kind==='col'&&l.path===parentOf(p))setTimeout(()=>!l.dead&&l.next(colSnap(l.path)),0)}}
-  function gate(p){if(cfg.denyWrites)throw err('invalid_argument');if(p&&(cfg.quota||[]).some(q=>p.startsWith(q)))throw err('quota_exceeded');const f=cfg.failNext;if(f&&f.count>0){f.count--;throw err(f.code)}}
+  function gate(p){if(cfg.denyWrites)throw err('invalid_argument');if(p&&(cfg.quota||[]).some(q=>p.startsWith(q)))throw err('quota_exceeded');const fp=cfg.failPath;if(p&&fp&&fp.count>0&&p.startsWith(fp.prefix)){fp.count--;throw err(fp.code)}const f=cfg.failNext;if(f&&f.count>0){f.count--;throw err(f.code)}}
   /* apply → (latencyComp: notify now) → wait → (else: notify after) */
   async function write(op,p,apply,data){
     try{gate(p)}catch(e){await sleep(cfg.latency||0);throw e}
@@ -80,7 +80,7 @@
     staleSnapshot:(p,b)=>{for(const l of listeners)if(!l.dead&&l.kind==='doc'&&l.path===p)setTimeout(()=>!l.dead&&l.next(docSnap(p,meta,clone(b))),0)}};
   /* ---- sample（依 docs/contract/0.2.94/sample.d.ts）----
      cfg.sample = {
-       absent:bool（use("sample") 回 null）, limitsReject:bool,
+       absent:bool（use("sample") 回 null）, limitsReject:bool, limitsDelay:ms,
        images:{maxCount,maxInputBytes,mediaTypes} | null（null：沒宣告圖片）。不給時用 {maxCount:5,maxInputBytes:20000000,mediaTypes:[jpeg,png,webp,gif]},
        modelTiers:[…], tools:bool（limits 回報 tools；預設沒有）,
        consent:"grant"|"deny"|{wait:ms}（第一次呼叫等 wait 毫秒才答應）, queueWait:ms（每次呼叫排隊的時間）,
@@ -165,7 +165,7 @@
     emit(res.text);return{...res}}
   const sample=(input,o)=>sampleCall('sample',input,o);
   sample.json=(input,o)=>sampleCall('json',input,o);
-  sample.limits=async()=>{await sleep(5);if(sc.limitsReject)throw sErr('upstream_error','limits failed');const out={maxPromptBytes:262144};const l=imgLim();if(l)out.images=l;if(sc.tools)out.tools={maxCount:8};if(sc.modelTiers)out.modelTiers=sc.modelTiers.slice();return out};
+  sample.limits=async()=>{await sleep(sc.limitsDelay??5);if(sc.limitsReject)throw sErr('upstream_error','limits failed');const out={maxPromptBytes:262144};const l=imgLim();if(l)out.images=l;if(sc.tools)out.tools={maxCount:8};if(sc.modelTiers)out.modelTiers=sc.modelTiers.slice();return out};
   Object.freeze(sample);
   window.__mock.sampleCalls=sampleCalls;window.__mock.sampleCache=scache;
   window.claude={use:async name=>{await sleep(cfg.useDelay??20);if(name==='downloads'){if(cfg.downloadsReject)throw err(cfg.downloadsReject);await sleep(cfg.downloadsDelay||0)}if(cfg.noDb&&name==='db')return null;if(name==='sample')return sc.absent?null:sample;return name==='db'?db:name==='user'?user:name==='downloads'?(cfg.noDownloads?null:downloads):null}};

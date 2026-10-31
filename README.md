@@ -62,6 +62,7 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 - `dev/prompt-test.js`：檢查 `ops/scheduled/*.md` 寫到規格要求的每一項，檢查名稱表和頁面一致，範例推播句和參考實作的輸出一字不差（情境在 `dev/prompt-cases.js`）。
 - `dev/med-test.js`：從 `src/index.html` 抽出 `med helpers` 區塊，測試劑量、可計日、TSH 複查狀態、到期算法、回診摘要與三種輸出的跳脫。
 - `dev/meal-test.js`：從 `src/index.html` 抽出 `meal helpers` 區塊，測試餐別、邏輯日加時間（`atOf`）、估算回覆的解析、目前採用的值、當日合計、試用對照；也在非台北時區再跑一次。
+- `dev/meal-page-test.js`：飲食照片的頁面行為（能力檢查、拍一餐的寫入順序、縮圖預算、送出的估算、存檔失敗與「再存一次」）。照片都是測試裡用 canvas 畫的合成圖。
 - `dev/med-page-test.js`：服藥細節、用藥頁、TSH 複查與到期卡、抽血表單、回診摘要、匯出匯入、設定頁劑量、版面與截圖。
 - `dev/e2e.js`：跑主要流程，並在 380／1280 寬 × 淺色／深色下截圖到 `dev/screenshots/`（不進版控），同時檢查水平捲動、觸控目標與文字對比。
 - `dev/merge-test.js`：建立當天文件的租約：取得租約失敗時不會沒有租約就建立、沒有租約支援時照舊、租約快到期時不寫。

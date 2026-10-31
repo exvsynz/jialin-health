@@ -157,6 +157,14 @@ textarea{min-height:110px;resize:vertical}
 .stepper .v{min-width:70px;text-align:center;font-family:var(--f-num);font-size:1.1rem}
 /* period + exam */
 .perrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 16px;min-height:52px}
+.mealrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:6px 10px 6px 16px;min-height:52px}
+.mealgo{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:0;background:transparent;padding:4px 0;text-align:left;color:inherit;border-radius:8px}
+.snap{position:relative;display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:7px 16px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-weight:500;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.snap:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.snap[aria-disabled="true"]{opacity:.45;pointer-events:none}
+.vh{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;opacity:0;cursor:pointer;font-size:0} /* the file input covers its label: it is the touch target */
+.mealpend{flex-basis:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.85rem;color:var(--warn)}
+.mealpend button{color:var(--accent)}
 .switch{min-width:64px;min-height:44px;border-radius:999px}
 .switch[aria-pressed="true"]{background:var(--band);border-color:var(--c-breast);color:var(--c-breast)}
 .examcard{width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;text-align:left}
@@ -339,6 +347,11 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
         <ul class="exlist" id="exToday"></ul>
       </div>
       <div class="blk perrow"><div><div>月經</div><div class="sub" id="perSub"></div></div><button type="button" class="switch" id="perBtn" aria-pressed="false">否</button></div>
+      <div class="blk mealrow" id="mealRow" hidden>
+        <button type="button" class="mealgo" id="mealGo"><span>飲食</span><span class="sub" id="mealSub"></span></button>
+        <label class="snap" id="mealSnap"><input type="file" accept="image/*" capture="environment" id="mealFile" class="vh">拍一餐</label>
+        <div class="mealpend" id="mealPend" hidden><span id="mealPendT"></span><button type="button" class="ghost" id="mealRetry">再存一次</button></div>
+      </div>
       <div id="examSlot"></div>
     </div>
     <p class="hbwarn" id="hbToday" hidden></p>
@@ -736,7 +749,9 @@ const summaryHtml=sm=>`<!doctype html><html lang="zh-Hant"><head><meta charset="
 const MEAL_TYPES=[['breakfast','早餐'],['lunch','午餐'],['dinner','晚餐'],['snack','點心']];
 const MEAL_NAME=Object.fromEntries(MEAL_TYPES);
 const CONF_NAME={low:'低',mid:'中',high:'高'};
-const MAX_ATTEMPTS=5,QUIET_MS=6*60000,PROMPT_VER=1,NOTE_MAX=60;
+const MAX_ATTEMPTS=5,QUIET_MS=6*60000,PROMPT_VER=1,NOTE_MAX=60,THUMB_MAX=32768;
+/* the thumbnail budget: long edge 320, quality 0.7 down to 0.4, then 240; null when nothing fits. encode(size,q) returns a data URI */
+function pickThumb(encode,max=THUMB_MAX){for(const size of [320,240])for(const q of [.7,.6,.5,.4]){const d=encode(size,q);if(typeof d==='string'&&d.length<=max)return{d,size,q}}return null}
 /* Taipei wall-clock parts of a moment, whatever the browser's own time zone */
 function tpeOf(ms){const p=Object.fromEntries(TPE.formatToParts(new Date(ms)).map(x=>[x.type,x.value]));return{date:p.year+'-'+p.month+'-'+p.day,h:+p.hour%24,m:+p.minute}}
 function logicalOf(ms){const t=tpeOf(ms);return t.h<4?addDays(t.date,-1):t.date}
@@ -948,6 +963,7 @@ function renderToday(){
   // period
   const pb=$('#perBtn');pb.setAttribute('aria-pressed',String(!!d.period));pb.textContent=d.period?'是':'否';pb.disabled=!canWrite||!ready;
   $('#perSub').textContent=(days[addDays(viewDate,-1)]||{}).period?'昨天有':'';
+  renderMealRow();
   renderExamSlot();
 }
 function dailyFact(){
@@ -986,6 +1002,96 @@ function renderExamSlot(){
 }
 function setView(d){const today=logicalToday();if(d>today)d=today;viewDate=d;openEx=null;medOpen=false;renderToday()}
 $('#week').addEventListener('click',e=>{const b=e.target.closest('[data-day]');if(b)setView(b.dataset.day)});
+
+/* ================= MEALS ================= */
+/* sample is checked once: the photo button shows only where this view can send a JPEG to Claude */
+let sampleNs=null,sampleLim=null,sampleState='checking',sampleOff=false,thumbsOff=false;
+const canEstimate=()=>sampleState==='ok'&&!sampleOff;
+const HIDE_CODES=['not_granted','sampling_disabled','not_declared','capability_disabled','capability_removed','images_unavailable'];
+const BUG_CODES=['invalid_request','transform_error','prompt_too_large','queue_overflow','tools_unavailable'];
+const SAMPLE_CODES=[...HIDE_CODES,...BUG_CODES,'image_rejected','cancelled','session_expired','rate_limited','refused','empty_completion','invalid_json','upstream_error'];
+(async()=>{try{const s=await window.claude?.use?.('sample');
+  if(s){const l=await s.limits().catch(()=>null),im=l&&l.images;if(im&&Array.isArray(im.mediaTypes)&&im.mediaTypes.includes('image/jpeg')&&im.maxCount>=1){sampleNs=s;sampleLim=im}}}catch(_){}
+  sampleState=sampleNs?'ok':'off';renderCur()})();
+/* in this open page only: estimates running, the 1280 photos, thumbnails read, and meals not fully saved */
+const inflight=new Map(),bigPhotos=new Map(),thumbCache=new Map(),pendingMeals=new Map();
+const newId=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+function pendOf(id,date){let e=pendingMeals.get(id);if(!e){e={id,date,baseOk:true,thumbDone:true,fail:new Set(),results:{}};pendingMeals.set(id,e)}return e}
+const unsavedMeals=()=>[...pendingMeals.values()].filter(e=>e.fail.size||Object.keys(e.results).length);
+function decodeImage(file){
+  const viaImg=()=>new Promise((res,rej)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>res({src:im,w:im.naturalWidth,h:im.naturalHeight,close:()=>URL.revokeObjectURL(u)});im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('decode'))};im.src=u});
+  if(typeof createImageBitmap!=='function')return viaImg();
+  return createImageBitmap(file,{imageOrientation:'from-image'}).then(b=>({src:b,w:b.width,h:b.height,close:()=>b.close&&b.close()}),viaImg)}
+function drawTo(img,long){const k=Math.min(1,long/Math.max(img.w,img.h)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.w*k));c.height=Math.max(1,Math.round(img.h*k));
+  const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img.src,0,0,c.width,c.height);return c}
+const toBlob=(c,q)=>new Promise(r=>c.toBlob(r,'image/jpeg',q));
+async function prepPhoto(file){const img=await decodeImage(file);
+  try{if(!img.w||!img.h)throw new Error('decode');
+    const c=drawTo(img,1280);let big=null;for(const q of [.85,.7,.6]){const b=await toBlob(c,q);if(b&&b.size<=sampleLim.maxInputBytes){big=b;break}}
+    const cv={};const t=pickThumb((size,q)=>(cv[size]=cv[size]||drawTo(img,size)).toDataURL('image/jpeg',q));
+    return{big,thumb:t&&t.d,tw:t&&cv[t.size].width,th:t&&cv[t.size].height}}
+  finally{img.close()}}
+async function addMeal(file,src,at){
+  if(!canSave())return;if(!canEstimate()){toast('這個檢視無法估算');return}
+  let ph;try{ph=await prepPhoto(file)}catch(_){toast('這張照片打不開');return}
+  const id=newId('m'),aid=newId('a'),date=logicalOf(at),now=Date.now();
+  const e=pendOf(id,date);
+  Object.assign(e,{baseOk:null,thumbDone:false,thumb:ph.thumb,tw:ph.tw,th:ph.th,
+    base:{at,meal:mealTypeAt(at),src,thumb:false,thumbBytes:ph.thumb?ph.thumb.length:0,note:'',createdAt:now,attempts:{[aid]:{status:'pending',startedAt:now,imgSrc:'photo',note:'',promptVer:PROMPT_VER}}}});
+  if(ph.big)bigPhotos.set(id,ph.big);
+  toast('儲存中…');
+  e.basePromise=saveBase(e);
+  if(ph.big)estimate(id,date,aid,ph.big,'');else finishAttempt(id,date,aid,{status:'failed',at:Date.now(),err:'image_rejected'});
+  renderCur()}
+/* the meal itself first; only then the thumbnail, its flag and any estimate result, so nothing points at what was not saved */
+async function saveBase(e){
+  try{await writeDay(e.date,{meals:{[e.id]:e.base}});e.baseOk=true;e.fail.delete('base');toast(inflightFor(e.id)?'已存一餐，估算中':'已存一餐')}
+  catch(err){e.baseOk=false;e.fail.add('base');if(err?.message!=='nodb')toast(err?.code==='quota_exceeded'?'資料庫空間已滿，這餐沒有存到':'這餐沒有存到，可以按再存一次');renderCur();return false}
+  await saveThumb(e);await flushResults(e);settle(e);renderCur();return true}
+async function saveThumb(e){
+  if(e.thumbDone)return;
+  if(!e.thumb){e.thumbDone=true;toast('這張照片的縮圖太大，沒有存');return}
+  if(!e.thumbSet){if(thumbsOff){e.thumbDone=true;return} // storage was full earlier in this page: text only
+    try{await retry1(()=>db.doc('mealthumbs/'+e.id).set({date:e.date,at:e.base.at,thumb:e.thumb,w:e.tw,h:e.th,createdAt:Date.now()}));e.thumbSet=true;thumbCache.set(e.id,e.thumb);e.fail.delete('thumb')}
+    catch(err){if(err?.code==='quota_exceeded'){thumbsOff=true;e.thumbDone=true;e.fail.delete('thumb');toast('資料庫空間已滿，縮圖沒有存到，這餐只有文字。可以到設定頁清除舊縮圖')}else{e.fail.add('thumb');toast('縮圖沒有存到，這餐只有文字')}return}}
+  try{await writeDay(e.date,{meals:{[e.id]:{thumb:true}}});e.fail.delete('flag');e.thumbDone=true}catch(_){e.fail.add('flag')}}
+async function flushResults(e){for(const [aid,r] of Object.entries(e.results)){try{await writeDay(e.date,{meals:{[e.id]:{attempts:{[aid]:r}}}});delete e.results[aid]}catch(_){}}}
+function settle(e){if(e.baseOk&&e.thumbDone&&!e.fail.size&&!Object.keys(e.results).length)pendingMeals.delete(e.id)}
+const inflightFor=id=>[...inflight.values()].some(x=>x.id===id);
+/* one estimate attempt: it writes only its own key, so a late or failed one never replaces a newer one or a manual value */
+async function estimate(id,date,aid,blob,note,fresh=false){
+  const ctl=new AbortController();inflight.set(aid,{ctl,id});renderCur();let res;
+  try{const r=await sampleNs(mealPrompt(note),{images:[blob],modelTier:'default',signal:ctl.signal,...(fresh?{cache:false}:{})});
+    const p=parseEstimate(r.text,r.truncated);res=p.ok?{status:'done',at:Date.now(),...p.r,modelTierApplied:r.modelTierApplied||null}:{status:'failed',at:Date.now(),err:'invalid'}}
+  catch(err){let c=err&&err.code;if(!SAMPLE_CODES.includes(c))c='upstream_error';if(c==='invalid_json')c='invalid';
+    if(HIDE_CODES.includes(c))sampleOff=true;if(BUG_CODES.includes(c))console.warn('sample '+c+': '+(err&&err.message||''));
+    res={status:'failed',at:Date.now(),err:c}}
+  finally{inflight.delete(aid)}
+  await finishAttempt(id,date,aid,res)}
+async function finishAttempt(id,date,aid,res){
+  let e=pendingMeals.get(id);
+  if(e&&e.baseOk!==true){if(e.basePromise)await e.basePromise;if(e.baseOk!==true){e.results[aid]=res;renderCur();return}}
+  try{await writeDay(date,{meals:{[id]:{attempts:{[aid]:res}}}})}
+  catch(_){e=pendOf(id,date);e.results[aid]=res;toast('估算結果沒有存到，可以按再存一次')}
+  renderCur()}
+async function retryMeals(){if(!canSave())return;
+  for(const e of unsavedMeals()){
+    if(e.baseOk!==true){const atts={...e.base.attempts};for(const [aid,r] of Object.entries(e.results))atts[aid]={...atts[aid],...r};
+      e.base={...e.base,attempts:atts};e.results={};e.basePromise=saveBase(e);await e.basePromise;continue}
+    await saveThumb(e);await flushResults(e);settle(e)}
+  renderCur();if(!unsavedMeals().length)toast('都存好了')}
+function renderMealRow(){
+  const row=$('#mealRow'),isToday=viewDate===logicalToday(),ms=dayMeals(days[viewDate]),uns=unsavedMeals().length;
+  if(!loaded.days){row.hidden=true;return}
+  row.hidden=!(sampleState!=='off'||ms.length||uns);if(row.hidden)return;
+  const est=ms.filter(m=>{const v=mealView(m);return v.latest&&v.latest.status==='pending'&&!estQuiet(v.latest,Date.now(),inflight)}).length;
+  $('#mealSub').textContent=(ms.length?(isToday?'今天 ':'這天 ')+ms.length+' 餐':isToday?'今天還沒有':'這天沒有')+(est?'・'+est+' 餐估算中':'');
+  const snap=$('#mealSnap'),off=!isToday||sampleState==='off'||sampleOff;snap.hidden=off;
+  const dis=sampleState!=='ok'||!ready||!canWrite;snap.setAttribute('aria-disabled',String(dis));$('#mealFile').disabled=dis;
+  $('#mealPend').hidden=!uns;if(uns)$('#mealPendT').textContent=uns+' 餐沒有存到'}
+$('#mealFile').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(f)addMeal(f,'camera',Date.now())});
+$('#mealGo').addEventListener('click',()=>go('meals'));
+$('#mealRetry').addEventListener('click',retryMeals);
 
 /* ---- weight sheet with ruler ---- */
 const TICK=12;let ws={slot:'am',seg:'w',w:null,bf:null,src:'none',min:0,touched:false,bfTouched:false};
