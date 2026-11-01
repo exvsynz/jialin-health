@@ -113,5 +113,18 @@ const T0='2026-10-30T12:00:00+08:00';
     check('S15 同意等待只在第一次，排隊每次都有',ms.first>=950&&ms.second>=280&&ms.second<700,ms);
     await page.context().close()}
 
+  /* S16 截圖情境（D 階段）：只有截圖讀取的提示詞回固定回覆；其他提示詞照舊；張數超過 maxCount 是 image_rejected */
+  {const {page}=await open({time:T0,cfg:{sample:{shot:'single',images:{maxCount:2}}},init:MK});await wait(200);
+    const r=await page.evaluate(async()=>{const s=await claude.use('sample');const b=await __mkImg(64,48,'image/png');
+      const a=await s('你會看到 1 張截圖，多半來自台灣「全民健保行動快易通｜健康存摺」',{images:[b]});const m=await s('估熱量',{images:[b]});
+      const t=await s.json('健康存摺 json',{}).catch(e=>e.code);const tr=await s('健康存摺 3',{images:[b,b,b]}).catch(e=>e.code);
+      return{a:JSON.parse(a.text).items.length,fx:a.text===window.__shotFixtures.single,meal:m.text.includes('kcalLo'),t:typeof t==='object',tr}});
+    check('S16 shot：截圖提示詞回情境、其他提示詞照舊、json 也可、超過張數 image_rejected',r.a===2&&r.fx&&r.meal&&r.t&&r.tr==='image_rejected',r);
+    await page.context().close()}
+  {const {page}=await open({time:T0,cfg:{sample:{shot:'truncated'}}});await wait(200);
+    const r=await page.evaluate(async()=>{const s=await claude.use('sample');const a=await s('健康存摺',{cache:false});return a.truncated});
+    check('S16 shot：{text,truncated} 形式照樣回 truncated',r===true,r);
+    await page.context().close()}
+
   await close();process.exit(summary()?1:0);
 })().catch(e=>{console.error(e);process.exit(1)});

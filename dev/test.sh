@@ -7,6 +7,7 @@ node dev/date-test.js
 node dev/heartbeat-test.js
 node dev/med-test.js
 node dev/meal-test.js
+node dev/shot-test.js
 node dev/merge-test.js
 node dev/sample-mock-test.js
 node dev/data-test.js

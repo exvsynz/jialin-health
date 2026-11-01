@@ -86,7 +86,8 @@
        modelTiers:[…], tools:bool（limits 回報 tools；預設沒有）,
        consent:"grant"|"deny"|{wait:ms,answer?:"deny"}（同意視窗 wait 毫秒後才回答；中途取消的呼叫不影響視窗，之後的呼叫等同一個答案）, queueWait:ms（每次呼叫排隊的時間）,
        replies:[…]（依序取用；空了就用 reply）, reply:回覆（預設是一份合規的估算 JSON）, delay:ms（回覆前等待，可被 signal 中止）,
-       tierApplied:"default"|…（預設等於要求的 tier）, noCache:bool（關掉快取，模擬盡力而為沒有命中） }
+       tierApplied:"default"|…（預設等於要求的 tier）, noCache:bool（關掉快取，模擬盡力而為沒有命中）,
+       shot:"情境名"（截圖讀取的提示詞回 dev/shot-fixtures.js 的情境；其他提示詞照舊） }
      回覆的形式：字串（成功）、{text, truncated:true}、{error:code, text?}。
      另外可在頁面設定 window.__mock.sampleRespond=(input,opts)=>回覆，優先於 replies。
      失敗一律 reject 成 plain object {code,message,text?}，不是 Error（型別定義的 SampleError）。
@@ -122,7 +123,11 @@
     if(o.images!==undefined){const l=(o.images instanceof Blob)?[o.images]:Array.isArray(o.images)||(typeof FileList!=='undefined'&&o.images instanceof FileList)?[...o.images]:null;
       if(!l||l.some(b=>!(b instanceof Blob)))return'images must be Blobs'}
     return null}
+  /* shot:'情境名'：截圖讀取的提示詞（含「健康存摺」）回 dev/shot-fixtures.js 的固定回覆；陣列依序取用 */
+  function shotReply(input){if(!sc.shot||typeof input!=='string'||!input.includes('健康存摺'))return undefined;const F=(window.__shotFixtures||{})[sc.shot];
+    if(F===undefined)throw new Error('沒有這個截圖情境：'+sc.shot);return Array.isArray(F)?(F.length>1?F.shift():F[0]):F}
   function nextReply(input,o){if(typeof window.__mock?.sampleRespond==='function')return window.__mock.sampleRespond(input,o);
+    const sr=shotReply(input);if(sr!==undefined)return sr;
     if(Array.isArray(sc.replies)&&sc.replies.length)return sc.replies.shift();return sc.reply??DEFAULT_REPLY}
   /* one consent dialog per view: a call that stops waiting is cancelled, but the dialog stays up and its answer governs every later call */
   function consentGate(signal){
