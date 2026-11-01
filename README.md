@@ -13,7 +13,7 @@
 | 體重與體脂 | 早上 7 日平均、單日早晚點、月經色帶；30／90／365 天 |
 | 運動紀錄 | 近 12 週每週分鐘數、月曆、最近紀錄 |
 | 飲食 | 每餐縮圖、餐別、時間、熱量範圍與當日合計；單餐可補充份量重新估算、手動改熱量、填秤重參考值；從相簿加入 |
-| 定期檢查 | 乳房、甲狀腺、肺 LDCT、生殖軸激素、腸胃鏡；依報告分類自動算下次日期；甲狀腺抽血可記抽血情境與「變更後複查」 |
+| 定期檢查 | 乳房、甲狀腺、肺 LDCT、生殖軸激素、腸胃鏡；依報告分類自動算下次日期；甲狀腺抽血可記抽血情境與「變更後複查」；新增時可「從截圖填入」（健康存摺等截圖由 Claude 抄錄，拆成多筆逐筆確認後才存，截圖不存） |
 | 用藥 | 目前劑量、近 30／90 天已記錄服藥、TSH 複查（週數由使用者設定）、劑量與製劑變更和抽血的時間軸、依據 |
 | 回診摘要 | 選期間，複製文字或存成 .md／.html |
 | 設定與備份 | 提醒開關與上次檢查狀態、藥名劑量（有劑量紀錄後改在用藥頁變更）、運動預設時間、暫停模式、檢查固定間隔、JSON 匯出與匯入 |
@@ -25,7 +25,7 @@
 ```
 days/{YYYY-MM-DD}      { date, am:{w,bf,at}, pm:{w,bf,at}, med:{taken,at,dose,doseSrc,mode,interfere:{…}}, period, meals:{<mealId>:{…}}, updatedAt }
 exercise/{autoId}      { date, type:"yoga"|"pilates"|"other", label, min, note, at, createdAt, deleted }
-records/{autoId}       { exam, cat, date, preset, interval, nextDue, report, place, doctor, note, labs:{}, drawCtx:{medBeforeDraw,biotin7d,recheckOf}, createdAt, updatedAt }
+records/{autoId}       { exam, cat, date, preset, interval, nextDue, report, place, doctor, note, labs:{}, labMeta:{}, shot:{at,n,promptVer,tier}, drawCtx:{medBeforeDraw,biotin7d,recheckOf}, createdAt, updatedAt }
 meddose/{autoId}       { kind:"dose"|"product", date, dose, tablet, brand, reason, note, recheckDue, noRecheck, createdAt, updatedAt, deleted }
 mealthumbs/{mealId}    { date, at, thumb:"data:image/jpeg;base64,…", w, h, createdAt }
 settings/profile       { medName, medDose, medNote, yogaMin, pilatesMin, pauseFrom, pauseTo, pauseNote, lastExport, remind, tshRecheckWeeks, lastVisit }
@@ -34,6 +34,7 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 ```
 
 - 服藥成立的條件是 `med.taken === true`；只有細節、沒有 `taken` 的物件不算服藥。`interfere` 每項 `true`／`false`，不存在就是未填。`drawCtx` 的情境用 `"yes"`／`"no"`／`"unsure"`，不存在就是未填。格式與規則見 `docs/specs/phase-B.md`。
+- `labMeta`、`shot`（選填）：從截圖填入的紀錄才有。`labMeta[檢驗名]` 是截圖上的原文 `{ raw, unit, ref, flag }`，只保留儲存時沒改過的檢驗；`labs` 照舊存文字（旗標拆掉，單位和表單不同時值後面加單位、不換算）。格式與規則見 `docs/specs/phase-D.md`。
 - `meddose`：劑量或製劑變更，軟刪除。沒有任何有效紀錄時，劑量依 `settings/profile.medDose` 推定。
 - `meals`：每餐 `{ at, meal, src, thumb, thumbBytes, thumbCleared, note, attempts:{<attemptId>:{…}}, manual, ref, deleted, createdAt }`。每次估算只寫自己的 `attempts` key，手動熱量另存 `manual`，畫面取手動值，否則取最新開始的成功估算。格式與規則見 `docs/specs/phase-C.md`。
 - `mealthumbs`：縮圖（長邊 320、≤32 KiB），頁面只依 id 讀，不監聽也不查詢。設定頁可以清除舊縮圖。
@@ -69,6 +70,9 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 - `dev/meal-test.js`：從 `src/index.html` 抽出 `meal helpers` 區塊，測試餐別、邏輯日加時間（`atOf`）、估算回覆的解析、目前採用的值、當日合計、試用對照；也在非台北時區再跑一次。
 - `dev/meal-page-test.js`：飲食照片的頁面行為（能力檢查、拍一餐的寫入順序、縮圖預算、送出的估算、存檔失敗與「再存一次」）。照片都是測試裡用 canvas 畫的合成圖。
 - `dev/meal-page2-test.js`：飲食頁與單餐畫面（每一種估算錯誤的文字與按鈕、再估一次、快取、停止、很久沒有更新、跨裝置競爭、手動值、5 次上限、截斷、刪除與撤銷、跳脫、凌晨的時間、相簿、試用對照）、版面與截圖。
+- `dev/shot-test.js`：從 `src/index.html` 抽出 `shot helpers` 區塊，測試截圖讀取的規則（民國／西元日期、數值與旗標、單位寫法、檢驗名稱對應、報告分類對應、分組、去個資、解析、重複）；也在非台北時區再跑一次。
+- `dev/shot-page-test.js`：從截圖填入檢查紀錄的頁面行為（能力檢查、送出的圖片、張數上限、停止、讀取中關掉面板、每個截圖情境、分類確認、重複提示、略過與丟棄、存檔失敗、編輯時 `labMeta` 的保留、每一種錯誤碼）、版面與截圖。截圖是 canvas 畫的合成圖。
+- `dev/shot-fixtures.js`：mock 讀截圖時的假資料回覆（`cfg.sample.shot`）。
 - `dev/review-c-test.js`：C 階段程式審查 C1、C3–C8 的重現（縮圖旗標與備份、估算中的備份、補充說明、時間推移、mock 的同意視窗、訊息、出處）。
 - `dev/med-page-test.js`：服藥細節、用藥頁、TSH 複查與到期卡、抽血表單、回診摘要、匯出匯入、設定頁劑量、版面與截圖。
 - `dev/e2e.js`：跑主要流程，並在 380／1280 寬 × 淺色／深色下截圖到 `dev/screenshots/`（不進版控），同時檢查水平捲動、觸控目標與文字對比。
@@ -84,6 +88,7 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 1. ~~主架構、體重體脂、服藥、運動、月經、補登、暫停、匯出匯入~~（已完成）
 2. 用藥細節與回診摘要：頁面已完成（`docs/specs/phase-B.md`），待 GPT 審查與發布
 3. 飲食照片：頁面與晚上提示詞的飲食檢查已完成（`docs/specs/phase-C.md`），待 GPT 審查與發布。發布時 capabilities 要加 `sample: { images: true }`（規格第 11 節）
-4. 提醒：每天兩次排程檢查（07:2x、22:2x，台北時間），有缺才推播；每週日 20:1x 週報。頁面與提示詞已完成（`docs/specs/phase-A.md`、`ops/scheduled/`），排程任務待在 claude.ai 建立
+4. 從截圖填入檢查紀錄：頁面已完成（`docs/specs/phase-D.md`），待 GPT 審查與發布。capabilities 和 C 相同
+5. 提醒：每天兩次排程檢查（07:2x、22:2x，台北時間），有缺才推播；每週日 20:1x 週報。頁面與提示詞已完成（`docs/specs/phase-A.md`、`ops/scheduled/`），排程任務待在 claude.ai 建立
 
 設計與臨床依據見 `docs/`。

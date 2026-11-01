@@ -337,6 +337,18 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .labs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .preview{background:var(--accent-soft);border-radius:8px;padding:8px 12px;font-size:.9rem}
+/* filling a record from screenshots: what was read is tagged, anything to check is in the warning colour */
+.shotbox{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px dashed var(--line);border-radius:10px}
+.shotbox .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.shotbox p{margin:0}
+.shotbar{display:flex;align-items:center;gap:8px;background:var(--accent-soft);border-radius:8px;padding:4px 4px 4px 12px;font-size:.9rem;min-width:0}
+.shotbar .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shotbar button{white-space:nowrap;flex:none}
+.shottag{font-size:.72rem;padding:0 6px;border-radius:5px;border:1px solid var(--line);color:var(--muted);margin-left:6px;font-weight:400;white-space:nowrap}
+.shotnote{font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}
+.shotnote.warn{color:var(--warn)}
+.field.shotwarn input,.field.shotwarn select,.field.shotwarn textarea{border-color:var(--warn);background:var(--warn-soft)}
+.shotcls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--warn);font-size:.85rem}
 .set-row{display:grid;grid-template-columns:1fr 100px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
 .set-row:first-of-type{border-top:0}
 /* reminders: the whole row is the switch's touch target */
@@ -687,8 +699,10 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
     <div class="grab"></div>
     <div class="dlg-head"><h2 id="recTitle">新增檢查紀錄</h2><button type="button" class="ghost" data-close>關閉</button></div>
     <div class="dlg-body">
-      <div class="field"><label for="fExam">檢查項目</label><select id="fExam" required></select></div>
-      <div class="field"><label for="fDate">檢查日期</label><input type="date" id="fDate" required></div>
+      <div class="shotbox" id="shotBox" hidden></div>
+      <div class="shotbar" id="shotBar" hidden></div>
+      <div class="field"><label for="fExam">檢查項目</label><select id="fExam" required></select><span class="shotnote warn" id="shotExamNote" hidden></span></div>
+      <div class="field"><label for="fDate">檢查日期</label><input type="date" id="fDate" required><span class="shotnote warn" id="dupNote" hidden></span></div>
       <div class="field" id="presetField"><label for="fPreset">報告分類</label><select id="fPreset"></select><span class="hint" id="presetHint"></span></div>
       <div class="grid2">
         <div class="field"><label for="fInterval">下次追蹤間隔（月）</label><input type="number" id="fInterval" min="0" max="240" step="1" inputmode="numeric"><span class="hint">0 = 待安排（依報告處置），不排定期追蹤</span></div>
@@ -947,6 +961,7 @@ function coverage(days){const o={n:0,in:0,above:0,below:0,width:null,failed:0,th
   if(w.length){w.sort((a,b)=>a-b);const k=w.length>>1;o.width=w.length%2?w[k]:(w[k-1]+w[k])/2}
   return o}
 /* ---- meal helpers: end ---- */
+
 /* ---- shot helpers: begin (extracted and tested outside the page) ---- */
 /* reading exam results from screenshots: the model only copies text; every date, value, name and category rule is here. Rules in docs/specs/phase-D.md §3 */
 const SHOT_PROMPT_VER='d1',SHOT_MAX=6,SHOT_REPORT_MAX=4000;
@@ -1077,6 +1092,8 @@ function dupOf(exam,date,recs,skipId){return exam&&date?(recs||[]).find(r=>r.exa
 let toastT;
 function toast(text,acts=[],ms){
   const el=$('#toast');$('#toastText').textContent=text;
+  /* an open modal dialog makes the rest of the page inert: the toast goes inside it so its buttons can be pressed */
+  const host=[...document.querySelectorAll('dialog[open]')].pop()||document.body;if(el.parentElement!==host)host.appendChild(el);
   const a=$('#toastActs');a.innerHTML='';
   acts.forEach(([label,fn])=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',()=>{el.hidden=true;fn()});a.appendChild(b)});
   el.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>el.hidden=true,ms||(acts.length?6000:2400));
@@ -1293,7 +1310,7 @@ const BUG_CODES=['invalid_request','transform_error','prompt_too_large','queue_o
 const SAMPLE_CODES=[...HIDE_CODES,...BUG_CODES,'image_rejected','cancelled','session_expired','rate_limited','refused','empty_completion','invalid_json','upstream_error'];
 (async()=>{try{const s=await window.claude?.use?.('sample');
   if(s){const l=await s.limits().catch(()=>null),im=l&&l.images;if(im&&Array.isArray(im.mediaTypes)&&im.mediaTypes.includes('image/jpeg')&&im.maxCount>=1){sampleNs=s;sampleLim=im}}}catch(_){}
-  sampleState=sampleNs?'ok':'off';renderCur()})();
+  sampleState=sampleNs?'ok':'off';renderCur();if($('#dlgRec').open&&!editing)renderShotBox()})();
 /* in this open page only: estimates running, the 1280 photos, thumbnails read, and meals not fully saved */
 const inflight=new Map(),bigPhotos=new Map(),thumbCache=new Map(),pendingMeals=new Map();
 let idSeq=0; /* ids sort in creation order even within one millisecond, so equal startedAt ties break the same way everywhere */
@@ -1810,12 +1827,14 @@ function examCard(e,r){
   ${open&&hist.length?`<div class="hist">${e.labs?labTable(e,hist):''}<ol>${hist.map(histItem).join('')}</ol></div>`:''}</article>`
 }
 function labTable(e,hist){const cols=e.labs.filter(([n])=>hist.some(h=>h.labs&&h.labs[n]));if(!cols.length)return'';
-  return`<div class="labtable"><table><thead><tr><th>日期</th>${cols.map(([n,u])=>`<th>${esc(n)}<br><span style="font-size:.75rem">${esc(u)}</span></th>`).join('')}</tr></thead><tbody>${hist.map(h=>`<tr><td class="num">${fmt(h.date)}</td>${cols.map(([n])=>`<td class="num">${esc((h.labs&&h.labs[n])||'—')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
+  return`<div class="labtable"><table><thead><tr><th>日期</th>${cols.map(([n,u])=>`<th>${esc(n)}<br><span style="font-size:.75rem">${esc(u)}</span></th>`).join('')}</tr></thead><tbody>${hist.map(h=>`<tr><td class="num">${fmt(h.date)}</td>${cols.map(([n])=>`<td class="num">${esc((h.labs&&h.labs[n])||'—')}${h.labs&&h.labs[n]&&h.labMeta?.[n]?.flag?' '+esc(h.labMeta[n].flag):''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
 function histItem(r){const p=presetOf(r);
   return`<li><div class="row1"><strong class="num">${fmt(r.date)}</strong>${p?`<span class="chip">${esc(p.label)}</span>`:''}<span class="meta">下次 ${fmt(dueOf(r))}</span><span style="flex:1"></span><button type="button" class="ghost" data-edit="${esc(r.id)}" ${canWrite?'':'disabled'}>編輯</button></div>
   ${r.report?`<div class="report">${esc(r.report)}</div>`:''}${(r.place||r.doctor||r.note)?`<div class="meta">${[r.place,r.doctor&&('醫師 '+r.doctor),r.note].filter(Boolean).map(esc).join('・')}</div>`:''}</li>`}
 function renderRef(){const rows=[];for(const e of EXAMS){if(e.presets){for(const p of e.presets)rows.push([e.name,p.label,p.noFollow?'不排':p.m==null?'用預設':intervalText(p.m),p.src])}else rows.push([e.name,'—',intervalText(e.def),e.defSrc])}
   $('#refTable').innerHTML=`<div style="overflow-x:auto;margin-top:10px"><table><thead><tr><th>檢查</th><th>報告分類</th><th>預設</th><th>依據</th></tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
+/* screenshot drafts (docs/specs/phase-D.md): the queue, the one in the form, and the category waiting for confirmation */
+let shotQ=[],shotCur=null,shotCls=null,shotPos=0,shotSavedN=0,shotSaved=[],shotLast=null,shotSt={phase:'idle'},recDirty=false;
 const dlg=$('#dlgRec');
 /* thyroid draw context: four states each (yes, no, unsure, unset) and an explicit link to the change it rechecks */
 let formCtx={},rcTouched=false,rcTargetId=null;
@@ -1832,30 +1851,32 @@ function renderCtx(){const isThy=$('#fExam').value==='thy_lab';$('#ctxWrap').hid
 $('#ctxWrap').addEventListener('click',e=>{const b=e.target.closest('[data-ctx] button');if(!b)return;const k=b.closest('[data-ctx]').dataset.ctx;
   formCtx[k]=formCtx[k]===b.dataset.v?undefined:b.dataset.v;renderCtx()});
 $('#fRecheck').addEventListener('change',()=>{rcTouched=true});
-$('#fExam').innerHTML=CATS.map(c=>`<optgroup label="${c.name}">${EXAMS.filter(e=>e.cat===c.id).map(e=>`<option value="${e.id}">${e.name}</option>`).join('')}</optgroup>`).join('');
-function fillPresets(examId,keep){const e=EX[examId];$('#presetField').hidden=!e.presets;
+$('#fExam').innerHTML='<option value="" disabled hidden>請選擇檢查項目</option>'+CATS.map(c=>`<optgroup label="${c.name}">${EXAMS.filter(e=>e.cat===c.id).map(e=>`<option value="${e.id}">${e.name}</option>`).join('')}</optgroup>`).join('');
+function fillPresets(examId,keep){const e=EX[examId];if(!e){$('#presetField').hidden=true;$('#labWrap').hidden=true;$('#labs').innerHTML='';$('#fPreset').innerHTML='';$('#fInterval').value='';$('#presetHint').textContent='';return}
+  $('#presetField').hidden=!e.presets;
   if(e.presets)$('#fPreset').innerHTML='<option value="">（未分類）</option>'+e.presets.map(p=>`<option value="${p.k}">${p.label}</option>`).join('');
   $('#labWrap').hidden=!e.labs;
   $('#labs').innerHTML=e.labs?e.labs.map(([n,u],i)=>`<div class="field"><label for="lab${i}">${esc(n)} <span class="muted" style="font-weight:400">${esc(u)}</span></label><input id="lab${i}" data-lab="${esc(n)}" inputmode="decimal" autocomplete="off"></div>`).join(''):'';
   if(!keep){$('#fPreset').value='';$('#fInterval').value=defInterval(examId);$('#presetHint').textContent='選擇後會自動帶入建議間隔'}}
-function applyPreset(){const e=EX[$('#fExam').value];const p=e.presets&&e.presets.find(x=>x.k===$('#fPreset').value);
+function applyPreset(){const e=EX[$('#fExam').value];if(!e)return;const p=e.presets&&e.presets.find(x=>x.k===$('#fPreset').value);
   if(p){$('#fInterval').value=p.noFollow?'':p.m==null?defInterval(e.id):p.m;$('#presetHint').textContent=p.src}else{$('#fInterval').value=defInterval(e.id);$('#presetHint').textContent='未分類時使用固定間隔：'+intervalText(defInterval(e.id))}updatePreview()}
-const noFollowPicked=()=>!!EX[$('#fExam').value].presets?.find(x=>x.k===$('#fPreset').value)?.noFollow;
+const noFollowPicked=()=>!!EX[$('#fExam').value]?.presets?.find(x=>x.k===$('#fPreset').value)?.noFollow;
 function updatePreview(){const date=$('#fDate').value,due=$('#fDue').value,m=$('#fInterval').value;let t;
   if(!date)t='填入檢查日期後會顯示下次日期';else if(due)t='下次檢查：'+fmt(due)+'（醫師指定）';else if(m==='')t=noFollowPicked()?'不排例行追蹤；醫師有安排再填間隔或日期':'請填追蹤間隔';else if(Number(m)===0)t='待安排（依報告處置），不排定期追蹤';else t='下次檢查：'+fmt(addMonths(date,Number(m)))+'（'+intervalText(Number(m))+'後）';
-  $('#duePreview').textContent=t}
+  $('#duePreview').textContent=t+(shotCls?.pending&&date?'（分類待確認）':'')}
 $('#fExam').addEventListener('change',()=>{fillPresets($('#fExam').value);updatePreview();
   if($('#fExam').value!=='thy_lab'){formCtx={};rcTouched=false;rcTargetId=null;$('#fRecheck').checked=false} // the draw context does not survive a switch to another exam
-  renderCtx()});
-$('#fPreset').addEventListener('change',applyPreset);
+  if(shotCur){shotCls=null;shotFillLabs();renderShotCls()}renderCtx();renderDup()});
+$('#fPreset').addEventListener('change',()=>{if(shotCls)shotCls.pending=false;applyPreset();renderShotCls()}); // choosing any category oneself is a confirmation
 ['#fDate','#fDue','#fInterval'].forEach(s=>$(s).addEventListener('input',updatePreview));
-$('#fDate').addEventListener('input',renderCtx);
+$('#fDate').addEventListener('input',()=>{renderCtx();renderDup()});
 function openRecord(examId,rec){editing=rec||null;$('#recTitle').textContent=rec?'編輯檢查紀錄':'新增檢查紀錄';
   $('#fExam').value=rec?rec.exam:(examId||EXAMS[0].id);$('#fExam').disabled=!!rec;fillPresets($('#fExam').value,!!rec);$('#fDate').value=rec?rec.date:logicalToday();
   if(rec){$('#fPreset').value=rec.preset||'';const p=presetOf(rec);$('#presetHint').textContent=p?p.src:'';$('#fInterval').value=Number.isFinite(rec.interval)?rec.interval:'';$$('[data-lab]').forEach(i=>i.value=(rec.labs&&rec.labs[i.dataset.lab])||'')}
   $('#fDue').value=rec?.nextDue||'';$('#fReport').value=rec?.report||'';$('#fPlace').value=rec?.place||'';$('#fDoctor').value=rec?.doctor||'';$('#fNote').value=rec?.note||'';
   formCtx=rec&&rec.exam==='thy_lab'?{...(rec.drawCtx||{})}:{};rcTouched=false;$('#fRecheck').checked=!!formCtx.recheckOf;
-  $('#btnDel').hidden=!rec;updatePreview();renderCtx();dlg.showModal()}
+  $('#btnDel').hidden=!rec;shotCur=null;shotCls=null;recDirty=false;shotClear();if(rec)shotMetaNotes(rec.labMeta);
+  updatePreview();renderCtx();renderDup();renderShotBox();renderShotCls();if(!dlg.open)dlg.showModal()}
 /* the one document-level click router: sheet backdrops, day links, exam buttons, dialog close */
 document.addEventListener('click',ev=>{const t=ev.target;
   if(t.matches('dialog.sheet')){if(!t.hasAttribute('data-keep'))t.close();return} // a half-typed exam report must not vanish on a stray tap
@@ -1867,6 +1888,8 @@ document.addEventListener('click',ev=>{const t=ev.target;
   else if(b.hasAttribute('data-close'))b.closest('dialog').close()});
 $('#btnAdd').addEventListener('click',()=>openRecord());
 $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
+  if(!$('#fExam').value){$('#fExam').focus();toast('請選擇檢查項目');return}
+  if(shotCls?.pending){toast('先確認報告分類');return}
   if(!$('#fDate').value){$('#fDate').focus();toast('請填檢查日期');return}
   if(!$('#fDue').value&&$('#fInterval').value===''&&!noFollowPicked()){$('#fInterval').focus();toast('請填追蹤間隔或指定日期');return}
   if(!db){toast('資料庫未連線，無法儲存');return}
@@ -1876,14 +1899,124 @@ $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
   const {id:_omit,...kept}=editing?(records.find(x=>x.id===editing.id)||editing):{};const full={...kept,...body};
   /* nested objects too: only the keys this form manages change; a lab the user emptied is removed, others stay */
   const lab={...(kept.labs||{})};$$('[data-lab]').forEach(i=>{const k=i.dataset.lab,v=i.value.trim();if(v)lab[k]=v;else delete lab[k]});full.labs=lab;
+  /* the screenshot's original text stays only with a value the user did not change */
+  const meta={...(kept.labMeta||{})};$$('[data-lab]').forEach(i=>{const k=i.dataset.lab,v=i.value.trim(),was=shotCur?shotCur.labs[k]?.value:kept.labs?.[k];if(!v||v!==was)delete meta[k]});
+  if(shotCur){for(const [k,c] of Object.entries(shotCur.labs)){const i=$$('[data-lab]').find(x=>x.dataset.lab===k);if(i&&i.value.trim()&&i.value.trim()===c.value)meta[k]={raw:c.raw??null,unit:c.unit??null,ref:c.ref??null,flag:c.flag??null}}
+    const away=shotAway();if(away.length)full.report=[full.report,'截圖讀到的其他檢驗：',...away].filter(Boolean).join('\n');
+    full.shot={...shotCur.meta}}
+  if(Object.keys(meta).length)full.labMeta=meta;else delete full.labMeta;
   if(exam==='thy_lab'){const c={...(kept.drawCtx||{})};
     for(const k of ['medBeforeDraw','biotin7d']){if(formCtx[k])c[k]=formCtx[k];else delete c[k]}
     if(!$('#rcRow').hidden){if(rcTargetId&&$('#fRecheck').checked&&!$('#fRecheck').disabled)c.recheckOf=rcTargetId;else delete c.recheckOf}
     if(Object.keys(c).length)full.drawCtx=c;else delete full.drawCtx}
   $('#btnSave').disabled=true;
-  try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(full);dlg.close();toast(editing?'已更新':'已儲存');openHist.add(exam);if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{$('#btnSave').disabled=false}});
+  const fromShot=shotCur;
+  try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(full);openHist.add(exam);
+    if(fromShot&&shotCur===fromShot)shotNext('saved',full);else{dlg.close();toast(editing?'已更新':'已儲存')}if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{$('#btnSave').disabled=false;renderShotCls()}});
 $('#btnDel').addEventListener('click',async()=>{if(!editing||!canSave())return;const rec=records.find(x=>x.id===editing.id)||editing;const {id,...body}=rec;
   try{await retry1(()=>db.doc('records/'+id).delete());dlg.close();toast('已刪除 '+EX[rec.exam].name+' '+fmt(rec.date),[['撤銷',()=>retry1(()=>db.doc('records/'+id).set(body)).catch(writeErr)]])}catch(e){writeErr(e)}});
+
+/* ================= SCREENSHOTS → RECORDS (docs/specs/phase-D.md §4–5) ================= */
+/* screenshots stay in this page's memory; only what the user confirms in the form is saved, through the form's own save */
+const SHOT_UNITS=Object.fromEntries(EXAMS.flatMap(e=>e.labs||[])),SHOT_ORDER=EXAMS.map(e=>e.id);
+const SHOT_MSG={not_granted:['沒有允許使用 Claude，請手動填寫',null],hide:['這個檢視無法讀取截圖，請手動填寫',null],
+  rate_limited:['讀取次數太多，稍後再讀','retry'],session_expired:['請重新登入 claude.ai 後再讀','retry'],upstream_error:['讀取中斷','retry'],
+  cancelled:['已停止','retry'],invalid:['讀取結果看不懂','retry'],too_long:['截圖內容太多，請少選幾張分次讀取','pick'],
+  empty_completion:['沒有讀到內容，可以換截圖再試，或手動填寫','pick'],refused:['這組截圖沒有讀取結果，可以換截圖再試，或手動填寫','pick'],
+  image_rejected:['有截圖無法讀取（太大、格式不支援或張數太多），請換一張','pick'],bug:['讀取沒有完成，請手動填寫',null],none:['截圖裡沒有讀到檢查結果','pick']};
+const shotMsg=c=>c==='not_granted'?SHOT_MSG.not_granted:HIDE_CODES.includes(c)?SHOT_MSG.hide:BUG_CODES.includes(c)?SHOT_MSG.bug:SHOT_MSG[c]||SHOT_MSG.upstream_error;
+const shotMax=()=>Math.min(SHOT_MAX,sampleLim?.maxCount||0);
+/* a file the view accepts as it is goes as it is (a PNG keeps small text sharp); anything else becomes a JPEG of about 1.2 megapixels */
+async function prepShot(file){const asIs=sampleLim.mediaTypes.includes(file.type)&&file.size<=sampleLim.maxInputBytes;let img;
+  try{img=await decodeImage(file)}catch(_){if(asIs)return{blob:file,long:false};throw new Error('decode')}
+  try{if(!img.w||!img.h){if(asIs)return{blob:file,long:false};throw new Error('decode')}
+    const long=Math.max(img.w,img.h)/Math.min(img.w,img.h)>3;if(asIs)return{blob:file,long};
+    const k=Math.min(1,Math.sqrt(1.2e6/(img.w*img.h))),c=drawTo(img,Math.round(Math.max(img.w,img.h)*k));
+    for(const q of [.92,.85,.75]){const b=await toBlob(c,q);if(b&&b.size<=sampleLim.maxInputBytes)return{blob:b,long}}
+    throw new Error('big')}
+  finally{img&&img.close()}}
+async function shotPick(files){const list=[...(files||[])];if(!list.length||!canEstimate()||shotSt.phase==='reading')return;
+  if(list.length>shotMax()){shotSt={phase:'msg',text:`一次最多 ${shotMax()} 張，請分次讀取`,act:'pick'};renderShotBox();return}
+  const out=[];for(let i=0;i<list.length;i++){try{out.push(await prepShot(list[i]))}catch(_){shotSt={phase:'msg',text:list.length>1?`第 ${i+1} 張截圖打不開，請換一張`:'這張截圖打不開，請換一張',act:'pick'};renderShotBox();return}}
+  shotLast={blobs:out.map(x=>x.blob),long:out.some(x=>x.long)};shotRun(false)}
+/* one call per user action; "再讀一次" asks again without the cache */
+async function shotRun(fresh){if(!shotLast||!canEstimate()||shotSt.phase==='reading')return;const ctl=new AbortController(),n=shotLast.blobs.length;
+  shotSt={phase:'reading',n,ctl,long:shotLast.long};renderShotBox();let code=null,p=null,tier=null;
+  try{const r=await sampleNs(shotPrompt(n),{images:shotLast.blobs,modelTier:'default',signal:ctl.signal,...(fresh?{cache:false}:{})});
+    tier=r.modelTierApplied||null;p=parseShot(r.text,r.truncated);if(!p.ok)code=p.err}
+  catch(err){let c=err&&err.code;if(!SAMPLE_CODES.includes(c))c='upstream_error';if(c==='invalid_json')c='invalid';
+    if(HIDE_CODES.includes(c))sampleOff=true;if(BUG_CODES.includes(c))console.warn('sample '+c+': '+(err&&err.message||''));code=c}
+  if(code){const [text,act]=shotMsg(code);shotSt={phase:'msg',text,act};shotTell(text);if(sampleOff)renderCur();return}
+  const drafts=groupShot(p.items,{units:SHOT_UNITS,order:SHOT_ORDER});
+  if(!drafts.length){shotSt={phase:'msg',text:SHOT_MSG.none[0],act:'pick'};shotTell(SHOT_MSG.none[0]);return}
+  const meta={at:Date.now(),n,promptVer:SHOT_PROMPT_VER,tier};
+  drafts.forEach((d,i)=>{d.id=newId('s');d.meta=meta;d.skipped=i===0?p.skipped:0});
+  shotQ.push(...drafts);shotLast=null;shotSt={phase:'idle'};
+  if(dlg.open&&!editing&&!shotCur&&!recDirty){loadDraft(shotQ[0]);return}
+  if(dlg.open&&!editing){if(!shotCur)shotSt={phase:'ready'};renderShotBox();renderShotBar();return}
+  toast(`截圖讀好了，${shotQ.length} 筆待確認`,[['繼續',shotResume]])}
+function shotTell(text){renderShotBox();if(!dlg.open||editing)toast(text);else $('#recForm .dlg-body').scrollTop=0}
+function shotResume(){if(!shotQ.length)return;if(dlg.open&&editing)dlg.close();loadDraft(shotQ[0])}
+function renderShotBox(){const box=$('#shotBox'),can=canEstimate()&&canWrite,show=!editing&&!shotCur&&(can||shotSt.phase!=='idle'||shotQ.length>0);box.hidden=!show;if(!show){box.innerHTML='';return}
+  const pick=t=>`<div class="row"><label class="snap snap2"><input type="file" accept="image/*" multiple class="vh" data-shotfile>${t}</label></div><p class="hint">截圖會送給 Claude 讀取；有姓名或身分證號，可以先在相簿裁切。</p>`;
+  let h='';
+  if(shotSt.phase==='reading')h=`<div class="row"><span class="grow" role="status">讀取 ${shotSt.n} 張截圖中…</span><button type="button" data-shot="stop">停止</button></div>${shotSt.long?'<p class="shotnote warn">截圖很長，字可能讀不清楚，建議分段截圖</p>':''}`;
+  else{if(shotQ.length)h+=`<div class="row"><span class="grow">${shotSt.phase==='ready'?`讀出 ${shotQ.length} 筆`:`截圖讀出的紀錄還有 ${shotQ.length} 筆沒確認`}</span><button type="button" class="primary" data-shot="go">${shotSt.phase==='ready'?'開始確認':'繼續'}</button><button type="button" class="ghost" data-shot="drop">丟棄</button></div>`;
+    if(shotSt.phase==='msg'){h+=`<p class="shotnote warn" role="status">${esc(shotSt.text)}</p>`;if(shotSt.act==='retry'&&can)h+=`<div class="row"><button type="button" data-shot="retry">再讀一次</button></div>`}
+    if(can)h+=pick(shotSt.phase==='msg'&&shotSt.act==='pick'?'重新選截圖':'從截圖填入')}
+  box.innerHTML=h}
+function renderShotBar(){const bar=$('#shotBar'),d=shotCur;bar.hidden=!d;if(!d){bar.innerHTML='';return}
+  bar.innerHTML=`<span class="t">截圖 ${shotPos+1}/${shotPos+shotQ.length}・${esc(d.exam?EX[d.exam].name:'檢查項目待選')}${d.date?'・'+md(d.date):''}</span><button type="button" class="ghost" data-shot="skip">略過這筆</button>${d.skipped?`<span class="shotnote warn" style="flex-basis:100%">有 ${d.skipped} 項看不懂，已略過</span>`:''}`}
+/* tags and notes on what the screenshot filled; cleared whenever the form is opened again */
+function shotNote(el,text,warn){const f=el&&el.closest('.field');if(!f)return;const n=document.createElement('span');n.className='shotnote'+(warn?' warn':'');n.dataset.shotn='';n.textContent=text;f.appendChild(n);if(warn)f.classList.add('shotwarn')}
+function shotTag(el){const l=el&&el.closest('.field')?.querySelector('label');if(l&&!l.querySelector('.shottag'))l.insertAdjacentHTML('beforeend','<span class="shottag" data-shotn>截圖</span>')}
+function shotClear(){$$('#recForm [data-shotn]').forEach(n=>n.remove());$$('#recForm .shotwarn').forEach(f=>f.classList.remove('shotwarn'));$('#shotExamNote').hidden=true;renderShotBar()}
+function metaLine(m,value){return[m.ref?'參考 '+m.ref:'',m.flag||'',m.raw&&m.raw!==value&&value!==m.raw+' '+m.unit?'原文 '+m.raw:''].filter(Boolean).join('・')}
+function shotMetaNotes(meta){for(const i of $$('[data-lab]')){const m=meta&&meta[i.dataset.lab];if(m){const t=metaLine(m,i.value.trim());if(t)shotNote(i,t,false)}}}
+/* the lab fields of the exam now chosen; labs that belong elsewhere are announced and go into the report on save */
+function shotFillLabs(){const d=shotCur;if(!d)return;
+  for(const i of $$('[data-lab]')){const k=i.dataset.lab,c=d.labs[k];
+    if(c){i.value=c.value;shotTag(i);const t=metaLine(c,c.value);if(t)shotNote(i,t,false);
+      if(c.unclear)shotNote(i,c.value?'截圖看不清楚，請核對':'截圖看不清楚',true);
+      if(c.unitNote==='diff')shotNote(i,`單位和表單（${SHOT_UNITS[k]}）不同，未換算`,true);else if(c.unitNote==='none'&&c.value)shotNote(i,'截圖沒有單位',true)}
+    else if(d.conflicts[k])shotNote(i,'截圖裡有不同的值：'+d.conflicts[k].join('、'),true)}
+  const away=Object.keys(d.labs).filter(k=>d.labs[k].value&&!$$('[data-lab]').some(i=>i.dataset.lab===k));
+  $('#shotExamNote').hidden=!away.length;$('#shotExamNote').textContent=away.length?`換成這個項目後，${away.join('、')} 會放進報告內容`:''}
+function shotAway(){const d=shotCur;if(!d)return[];const here=new Set($$('[data-lab]').map(i=>i.dataset.lab));
+  return Object.entries(d.labs).filter(([k,c])=>!here.has(k)&&c.value).map(([k,c])=>`${k} ${c.raw||c.value}${c.unit?' '+c.unit:''}${c.ref?'（參考值 '+c.ref+'）':''}${c.flag&&!(c.raw||'').toUpperCase().includes(c.flag)?' '+c.flag:''}`)}
+function loadDraft(d){if(!d)return;openRecord(d.exam||EXAMS[0].id);shotCur=d;
+  if(!d.exam){$('#fExam').value='';fillPresets('')}else shotTag($('#fExam'));
+  $('#fDate').value=d.date||'';$('#fPlace').value=d.place||'';$('#fReport').value=d.report||'';
+  if(d.date){shotTag($('#fDate'));if(d.dateNote==='report')shotNote($('#fDate'),'截圖只有報告日期，請確認檢查日期',true);if(d.date>logicalToday())shotNote($('#fDate'),'晚於今天',true)}
+  else if(d.unclear.includes('date'))shotNote($('#fDate'),'截圖看不清楚',true);
+  if(d.place)shotTag($('#fPlace'));if(d.unclear.includes('place'))shotNote($('#fPlace'),'截圖看不清楚',true);
+  if(d.report)shotTag($('#fReport'));if(d.reportCut)shotNote($('#fReport'),'報告太長，已截斷',true);if(d.unclear.includes('report'))shotNote($('#fReport'),'截圖有看不清楚的地方，請核對',true);
+  shotFillLabs();
+  if(d.cls.preset&&EX[d.exam]?.presets?.some(p=>p.k===d.cls.preset)){$('#fPreset').value=d.cls.preset;applyPreset();shotCls={pending:true,text:d.cls.text}}
+  else shotCls=d.cls.hint?{pending:false,hint:d.cls.hint}:null;
+  updatePreview();renderCtx();renderDup();renderShotBox();renderShotBar();renderShotCls();$('#recForm .dlg-body').scrollTop=0}
+/* a category read from the screenshot is shown, never saved until the user confirms it or picks one */
+function renderShotCls(){const f=$('#presetField');$$('#presetField [data-shotc]').forEach(n=>n.remove());f.classList.remove('shotwarn');
+  if(shotCls?.pending){f.classList.add('shotwarn');f.insertAdjacentHTML('beforeend',`<div class="shotcls" data-shotc><span class="grow">由截圖判讀，請確認：截圖寫「${esc(shotCls.text)}」</span><button type="button" data-shot="clsok">確認分類</button></div>`)}
+  else if(shotCls?.hint)f.insertAdjacentHTML('beforeend',`<span class="shotnote warn" data-shotc>${esc(shotCls.hint)}</span>`);
+  const b=$('#btnSave');b.textContent=shotCls?.pending?'先確認報告分類':'儲存';b.disabled=!!shotCls?.pending}
+function renderDup(){const n=$('#dupNote'),exam=$('#fExam').value,date=$('#fDate').value,r=editing?null:dupOf(exam,date,[...shotSaved,...records]);n.hidden=!r;if(!r){n.textContent='';return}
+  const L=Object.entries(r.labs||{}).slice(0,2).map(([k,v])=>k+' '+v).join('・')||(r.report||'').slice(0,20);
+  n.textContent=`這天已有一筆${EX[exam].name}${L?'（'+L+'）':''}。可能重複，仍要新增就按儲存。`}
+function shotNext(how,saved){const d=shotCur;shotQ=shotQ.filter(x=>x!==d);shotPos++;if(how==='saved'){shotSavedN++;if(saved)shotSaved.push(saved)}shotCur=null;
+  const undo=how==='skip'?[['撤銷',()=>{shotQ.unshift(d);shotPos=Math.max(0,shotPos-1);loadDraft(d)}]]:[];
+  if(shotQ.length){loadDraft(shotQ[0]);toast(how==='saved'?`已儲存 ${shotPos}/${shotPos+shotQ.length}`:'已略過',undo);return}
+  const n=shotSavedN;shotPos=0;shotSavedN=0;shotSaved=[];dlg.close();toast(how==='saved'?(n>1?`已儲存 ${n} 筆`:'已儲存'):'已略過',undo)}
+$('#recForm').addEventListener('input',e=>{if(!e.target.closest('#shotBox'))recDirty=true});
+$('#recForm').addEventListener('change',e=>{if(e.target.matches('[data-shotfile]')){const f=e.target.files;shotPick(f).finally(()=>{e.target.value=''})}});
+$('#recForm').addEventListener('click',e=>{const b=e.target.closest('[data-shot]');if(!b)return;const a=b.dataset.shot;
+  if(a==='stop')shotSt.ctl?.abort();
+  else if(a==='retry')shotRun(true);
+  else if(a==='go'){shotSt={phase:'idle'};loadDraft(shotQ[0])}
+  else if(a==='drop'){const q=shotQ,p=shotPos;shotQ=[];shotPos=0;shotSavedN=0;shotSt={phase:'idle'};renderShotBox();toast(`已丟棄 ${q.length} 筆`,[['撤銷',()=>{shotQ=[...q,...shotQ];shotPos=p;renderShotBox()}]])}
+  else if(a==='skip')shotNext('skip');
+  else if(a==='clsok'){if(shotCls)shotCls.pending=false;renderShotCls();updatePreview()}});
+dlg.addEventListener('close',()=>{shotCur=null;shotCls=null;shotClear();renderShotCls();if(shotSt.phase==='msg'||shotSt.phase==='ready')shotSt={phase:'idle'}});
 
 /* ================= MEDS ================= */
 /* clinical text below is the verified wording in docs/specs/phase-B.md §5; change it only together with a fresh check of the source */
@@ -2082,7 +2215,7 @@ function importLoses(c){let n=0;
   /* days merge: only a field the backup also has, with another value, is replaced */
   for(const [id,b] of Object.entries(c.days||{})){const cur=days[id]?.med,bm=b&&b.med;if(!cur||!bm||typeof bm!=='object')continue;
     if(['mode','interfere','doseSrc'].some(k=>cur[k]!=null&&k in bm&&JSON.stringify(cur[k])!==JSON.stringify(bm[k])))n++}
-  for(const [id,b] of Object.entries(c.records||{})){const cur=records.find(x=>x.id===id);if(cur?.drawCtx&&!(b&&b.drawCtx))n++}
+  for(const [id,b] of Object.entries(c.records||{})){const cur=records.find(x=>x.id===id);if(['drawCtx','labMeta','shot'].some(k=>cur?.[k]&&!(b&&b[k])))n++}
   const bp=c.settings?.profile;if(bp&&['tshRecheckWeeks','lastVisit','remind'].some(k=>profile[k]!=null&&!(k in bp)))n++;
   return n}
 /* meals a backup brings back to an older state: same id, different hand-edited fields; and how many of them are deleted now */
