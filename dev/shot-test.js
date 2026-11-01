@@ -103,6 +103,7 @@ eq('一個看不清楚、一個清楚：用清楚的',H.groupShot([{type:'lab',n
 /* 3.9 重複 */
 const recs=[{id:'a',exam:'thy_lab',date:'2026-07-01'},{id:'b',exam:'breast_us',date:'2026-07-01'}];
 eq('同日同項才算重複；排除自己；沒有日期或項目不算',[H.dupOf('thy_lab','2026-07-01',recs)?.id,H.dupOf('gyn_horm','2026-07-01',recs),H.dupOf('thy_lab','2026-07-02',recs),H.dupOf('thy_lab','2026-07-01',recs,'a'),H.dupOf(null,'2026-07-01',recs),H.dupOf('thy_lab',null,recs)],['a',null,null,null,null,null]);
+eq('剛存、還沒有編號的草稿也算重複（沒有 skipId 時不排除）',H.dupOf('gyn_horm','2026-07-01',[{exam:'gyn_horm',date:'2026-07-01'}])?.exam,'gyn_horm');
 eq('上限常數',[H.SHOT_MAX,H.SHOT_PROMPT_VER],[6,'d1']);
 
 console.log(fail?`\n${fail} FAIL`:'\nall ok');
