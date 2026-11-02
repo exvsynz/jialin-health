@@ -1,6 +1,6 @@
 # D 階段程式審查修正複核
 
-> **最新複核（`fb0517d`）：仍有 1 項高嚴重度問題，R2-after「重讀完成後撤銷」會造成重複存檔。R1、R3–R7、C1／C2 的原重現均通過，R4-reskip 亦通過。詳見第 8 節。下列第 1–7 節保留為 `78c39b9` 的歷史審查，不是目前待修清單。**
+> **最新進度：Claude 已提出 R2-after 的三行候選修補，Codex 在暫存 HTML 驗證（第 9 節）。正式產品程式仍為 `fb0517d`，其 R2-after 仍待套用修補；第 8 節的缺陷結論仍有效。第 1–7 節為 `78c39b9` 歷史審查。**
 
 日期：2026-11-02（Asia/Taipei）。標的：`main` 的 **`78c39b9fb5c602926e0cb5d52cc6644b0cd0e766`**；修正差異：`9b24306..78c39b9`。原審查標的：`218577e2d0a0f299ea35ac1dbe98501896ea0ba9`。
 
@@ -287,3 +287,37 @@ FAIL R2-after: thyroid draft written once → 2
 ```
 
 下一步只需處理此過期撤銷缺口，再重跑 `R2-after` 與原 R2／controls；其餘已通過項目不需依歷史報告重新修改。本輪沒有新增臨床分類、檢驗名稱或追蹤間隔主張。
+
+## 9. Claude 候選修補與主審驗證（尚未套用產品程式）
+
+使用者要求從本機呼叫 Claude 後，透過 `cli-subagent` dispatcher 執行一次 Claude CLI prompt-only 工作。工具與 MCP 均停用，沒有讓子代理改檔、commit 或 push；只送本題相關程式片段、規格、專案說明及合成測試。dispatcher 回報 `completed`、exit 0。未指定或核實具體 Claude 模型版本，因此只記為 **Claude CLI**，不冒稱特定模型。
+
+**交付：** [三行候選修補](2026-11-02-phase-D-r2-after.patch)。這是對 `fb0517d` 的 `src/index.html` 提出的 patch，並未改動本分支的 `src/` 或 `dev/`。來源問題仍為 §7.2／§8.2 的既有 R2-after；Claude 是此次修補的提出者，Codex 是實際執行測試的驗證者。
+
+修補以 `b.drafts` 保存該次讀取產生的全部草稿，成功重讀時一併標記為 stale，再換成新的草稿集合。已略過、只被撤銷閉包持有的草稿也會作廢；既有略過撤銷、丟棄撤銷及 submit 的 stale 防護因而有效。失敗分支在作廢之前就返回，保留原草稿與使用者修正。沒有改分類規則、追蹤間隔、存檔鎖或圖片釋放期限。
+
+Codex 先在未修的 `fb0517d` 再跑 R2-after，確認 **0/2**：佇列 `thy_lab,thy_lab,gyn_horm`、甲狀腺實際寫入 2 筆。其後將 Claude 回傳的三行修改套到 repo 外的暫存 HTML，以原 harness 的 `SRC` 指向候選檔，沒有替換產品函式或放寬既有測試。候選完整 HTML 的 git blob SHA 為 **`ae0992ae0dad6613682901a45b828a04551d7af1`**。
+
+| 驗證 | 候選修補結果 |
+|---|---|
+| `git apply --check --ignore-whitespace` | 通過；只檢查 patch 可套用，未對 repo 套用 |
+| 抽出候選 HTML 的 script 後 `node --check` | 通過 |
+| 補充 R2-after、R4-reskip | **4/4**；重讀後舊撤銷不再插回舊草稿，甲狀腺只寫入 1 筆 |
+| 新增失敗重讀＋舊撤銷對照 | **8/8**；上游錯誤與解析失敗均保留原草稿物件、圖片、修改過的日期／數值／備註；撤銷後可以正確存一次 |
+| `dev/review-d2-test.js` 全套 | **42/42**；包含原 R2、controls、分類確認、慢存檔、面板 toast 等 |
+| `dev/review-d-test.js` | **45/45** |
+
+新增對照由 Codex 獨立編寫並親跑：[2026-11-02-phase-D-r2-failure-undo.test.js](2026-11-02-phase-D-r2-failure-undo.test.js)。它在未修版也是 8/8，目的是防止修補破壞原本正確的失敗還原行為，不是用它證明舊版沒有 R2-after。Claude 提供的示意測試有未定義的 `failNextSample`，未直接採用；實際測試使用既有 mock 的 `sampleRespond` 注入合成錯誤。
+
+獲准套用產品修補後，可在 repo 根目錄執行以下命令（Playwright 環境需求同 §1；先確定沒有衝突的本地變更）：
+
+```sh
+git apply --check --ignore-whitespace docs/reviews/2026-11-02-phase-D-r2-after.patch
+git apply --ignore-whitespace docs/reviews/2026-11-02-phase-D-r2-after.patch
+node docs/reviews/2026-11-02-phase-D-code-fix-recheck.supplement.test.js
+node docs/reviews/2026-11-02-phase-D-r2-failure-undo.test.js
+node dev/review-d2-test.js
+node dev/review-d-test.js
+```
+
+**判定範圍：** R2-after 在上述候選修補上已通過驗證；正式 `fb0517d` 尚未套用，所以不能把遠端產品標成已修。沒有執行完整 `dev/test.sh`、真機或真實 OCR；全部使用合成資料。Claude 額外提到的計數及丟棄提示疑慮，未在本輪獨立重現，不納入問題清單。本輪不改 main、不發布 Artifact，也未新增臨床主張。
