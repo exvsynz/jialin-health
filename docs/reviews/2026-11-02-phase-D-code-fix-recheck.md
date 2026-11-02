@@ -1,6 +1,6 @@
 # D 階段程式審查修正複核
 
-> **最新進度：Claude 已提出 R2-after 的三行候選修補，Codex 在暫存 HTML 驗證（第 9 節）。正式產品程式仍為 `fb0517d`，其 R2-after 仍待套用修補；第 8 節的缺陷結論仍有效。第 1–7 節為 `78c39b9` 歷史審查。**
+> **最新狀態：使用者已授權套用，R2-after 的三行修補已納入審查分支 `ccr-9364f60a-xq6vfj`（第 10 節）。套用後 HTML 與通過 99 項斷言的候選檔逐位元組一致，並再次通過 12 項相關時序斷言與 `dev/check.sh`。未合併或推送 main。第 1–9 節保留各標的／階段的歷史結果。**
 
 日期：2026-11-02（Asia/Taipei）。標的：`main` 的 **`78c39b9fb5c602926e0cb5d52cc6644b0cd0e766`**；修正差異：`9b24306..78c39b9`。原審查標的：`218577e2d0a0f299ea35ac1dbe98501896ea0ba9`。
 
@@ -288,7 +288,7 @@ FAIL R2-after: thyroid draft written once → 2
 
 下一步只需處理此過期撤銷缺口，再重跑 `R2-after` 與原 R2／controls；其餘已通過項目不需依歷史報告重新修改。本輪沒有新增臨床分類、檢驗名稱或追蹤間隔主張。
 
-## 9. Claude 候選修補與主審驗證（尚未套用產品程式）
+## 9. Claude 候選修補與主審驗證（a20a24d 當時尚未套用）
 
 使用者要求從本機呼叫 Claude 後，透過 `cli-subagent` dispatcher 執行一次 Claude CLI prompt-only 工作。工具與 MCP 均停用，沒有讓子代理改檔、commit 或 push；只送本題相關程式片段、規格、專案說明及合成測試。dispatcher 回報 `completed`、exit 0。未指定或核實具體 Claude 模型版本，因此只記為 **Claude CLI**，不冒稱特定模型。
 
@@ -309,7 +309,7 @@ Codex 先在未修的 `fb0517d` 再跑 R2-after，確認 **0/2**：佇列 `thy_l
 
 新增對照由 Codex 獨立編寫並親跑：[2026-11-02-phase-D-r2-failure-undo.test.js](2026-11-02-phase-D-r2-failure-undo.test.js)。它在未修版也是 8/8，目的是防止修補破壞原本正確的失敗還原行為，不是用它證明舊版沒有 R2-after。Claude 提供的示意測試有未定義的 `failNextSample`，未直接採用；實際測試使用既有 mock 的 `sampleRespond` 注入合成錯誤。
 
-獲准套用產品修補後，可在 repo 根目錄執行以下命令（Playwright 環境需求同 §1；先確定沒有衝突的本地變更）：
+以下為當時提供給未套用版本的操作命令（第 10 節已完成套用，現在請勿重複 apply），可在 repo 根目錄執行（Playwright 環境需求同 §1；先確定沒有衝突的本地變更）：
 
 ```sh
 git apply --check --ignore-whitespace docs/reviews/2026-11-02-phase-D-r2-after.patch
@@ -321,3 +321,18 @@ node dev/review-d-test.js
 ```
 
 **判定範圍：** R2-after 在上述候選修補上已通過驗證；正式 `fb0517d` 尚未套用，所以不能把遠端產品標成已修。沒有執行完整 `dev/test.sh`、真機或真實 OCR；全部使用合成資料。Claude 額外提到的計數及丟棄提示疑慮，未在本輪獨立重現，不納入問題清單。本輪不改 main、不發布 Artifact，也未新增臨床主張。
+
+## 10. 授權後正式套用至審查分支
+
+使用者明確回覆「授權修程式並推原分支」後，Codex 將 §9 的 Claude patch 套用到 `src/index.html`。本次產品差異只有三行替換：新增批次草稿集合、成功重讀時將集合中的舊草稿全部作廢、記住新的集合。`dev/` 未修改；未合併或推送 main，未發布 Artifact。
+
+套用後實際 `src/index.html` 與 §9 已測試的候選 HTML **逐位元組一致**，git blob SHA 仍為 `ae0992ae0dad6613682901a45b828a04551d7af1`。因此 §9 的 42/42、45/45、4/4、8/8（合計 99 項斷言）適用於同一份產品內容；沒有把暫存候選的結果冒稱為本輪重新跑完整套件。
+
+本輪另外取消 `SRC` 覆寫，直接對 repo 的 `src/index.html` 重跑：
+
+- `dev/check.sh`：語法、禁止呼叫／測試程式碼與外部資源來源檢查全數通過。
+- `2026-11-02-phase-D-code-fix-recheck.supplement.test.js`：**4/4**，R2-after 與 R4-reskip 通過。
+- `2026-11-02-phase-D-r2-failure-undo.test.js`：**8/8**，上游錯誤及解析失敗後的撤銷、修正值與正確存檔均保留。
+- `git diff --check`：通過。
+
+**裁決：R2-after 已修。** 原因是成功重讀現在也會作廢已略過的舊草稿，過期撤銷不再插入同一來源的第二筆；失敗重讀仍保留有效草稿。此裁決限於已重現問題和上述測試範圍；完整 `dev/test.sh`、真機及真實 OCR 尚未驗證。
