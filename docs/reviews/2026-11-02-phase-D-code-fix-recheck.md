@@ -167,3 +167,70 @@ Claude 說明的舊版「11/43、32 失敗」與本次差 1 項：本次按照�
 所有子代理只輸出測試程式，沒有產品檔案寫入、commit、push。主審把其 stdout 存在 repo 外；交付檔只保留可精簡重現的測試。兩個草稿工作對複查開關原本只做「無目標時直接設 checked」的 plumbing 測試，不足以證明可操作流程，故另以合成 `meddose` 建立可用目標、實際點擊驗證 controls。沒有把不完整的子代理設置當成臨床或功能證據。
 
 修正順序建議：先解 R1／R2 的批次與草稿身分，再封 R3 的同步保存缺口；接著用每批生命週期修 R4／R5，補 R6／R7 的反例。以上均可局部修補，無須重寫整份 HTML。
+
+## 7. 同日追加的獨立重跑紀錄
+
+**本節仍只審查 `78c39b9`，不代表已複核後續的 `fb0517d`。** 本輪取得 repo 時，main 是指定的 `78c39b9`；交付分支 `ccr-9364f60a-xq6vfj` 已有 `75c394b` 的上述報告，以及 `fb0517d` 的後續修正。因此保留前六節、既有測試及後續修正，在本報告追加本輪證據，沒有將分支退回 main，也沒有改動 `src/`、`dev/`。
+
+### 7.1 逐項裁決與本輪實跑
+
+重新閱讀指定規格、contract、原審查與修正差異後，在乾淨的 `78c39b9` checkout 重跑。結果維持 **9 項已修、6 項部分、0 項未修**：
+
+| 裁決 | 項目 |
+|---|---|
+| 已修 | D-01、D-05、D-07、D-08、D-09、D-10、D-11、D-12、D-14 |
+| 部分 | D-02、D-03、D-04、D-06、D-13、D-15 |
+| 未修 | 無 |
+
+各項理由、位置、嚴重度與建議仍見 §2–4；本輪沒有新增另一組獨立缺陷。R1–R7 均親自重現，C1／C2 也重新用舊版確認為既有問題。原報告記錄的首次發現模型不因本輪重跑而改寫。
+
+| 本輪執行 | 結果 |
+|---|---|
+| `dev/review-d-test.js` 對 `78c39b9` | **45/45** |
+| 同份測試以 `SRC` 指向 `218577e` HTML | **12/43**；31 個失敗，D-01–D-13 每項至少一個失敗；沿用新版 mock，所以壞圖片測試仍過 |
+| §1 的既有複核測試全套對 `78c39b9` | **27 過、15 失敗**；15 個失敗全部對應已列缺陷，沒有情境例外；其中 `controls` 16/16、`original-D09` 通過 |
+| `original-D09` 對 `218577e` | 失敗：實際只送 B（200px），預期 A（300px）；重現原本的準備時序遺失 |
+| C1／C2 對 `218577e` | 三種面板關閉後撤銷不可見；兩筆確實寫入但摘要只顯示「已儲存」 |
+| `bash dev/check.sh` | 通過 |
+| `node dev/shot-test.js` | 預設與 America/New_York 均 all ok |
+| `node dev/sample-mock-test.js` | **35/35** |
+| `node dev/shot-page-test.js --no-shots` | **126/126** |
+| `node dev/med-page-test.js --no-shots` | **120/120** |
+| `node dev/e2e.js --no-shots` | **34/34** |
+
+本輪環境同為 Node 24.14.0、Playwright 1.64.1、Chromium 156.0.8078.4；使用原 harness／mock、合成 PNG 及合成紀錄。沒有修改測試斷言來讓產品通過，沒有呼叫真實 OCR；未跑完整 `dev/test.sh` 或真機測試。上表的失敗是預期正確行為與實際缺陷的差異，不是把失敗當作驗收通過。
+
+### 7.2 兩個額外時序：沿用 R2／R4，不重複計數
+
+可直接執行的新附件：[2026-11-02-phase-D-code-fix-recheck.supplement.test.js](2026-11-02-phase-D-code-fix-recheck.supplement.test.js)。本輪在 `78c39b9` 跑出 **1/4 通過**：一個撤銷仍可見的前置對照通過，三個缺陷斷言失敗。
+
+```sh
+# 在 78c39b9 的 src/index.html 上執行；也可用 SRC 指向該版本的 HTML
+node docs/reviews/2026-11-02-phase-D-code-fix-recheck.supplement.test.js R2-after
+node docs/reviews/2026-11-02-phase-D-code-fix-recheck.supplement.test.js R4-reskip
+```
+
+- **R2-after｜高｜`shotNext` undo、`shotRun(job.batch)`**：略過甲狀腺草稿→在下一筆按重讀→**等重讀完成**→按仍可見的舊撤銷。實測 queue 為 `thy_lab, thy_lab, gyn_horm`；依序存前兩筆，真的寫出兩筆 thy_lab。這補充 §3 R2 的「重讀中撤銷」：只在 reading 時擋 undo 還不夠，舊撤銷在批次替換後也必須失效或重新對應。**候選來源：本輪要求 GLM 的存檔工作之部分輸出；實際模型未經 dispatcher 完成核實。確認者：Codex 主審。** 不把它算成新的模型首次發現，也不主張同日同項目一概不得人工新增；問題是同一來源草稿被過期撤銷重複加入。
+- **R4-reskip｜中｜`shotGC`、`shotNext`**：同一筆單筆草稿，t=0 略過，t=4 秒撤銷並再次略過，t=7.3 秒在第二次撤銷有效期間撤銷。實測文字草稿回來，但 batch 與重讀鈕都沒有了。**首次觀察此變體：Codex 主審。** 不需跨批次也會觸發 §3 R4；修補應涵蓋同一批次的續期，不僅限制 timer 的 batch id。
+
+### 7.3 本輪四個 CLI 工作的驗收與排除
+
+以下是**本節這一輪**的新執行紀錄，與 §6 的前輪紀錄分開。全部為 Vibe prompt-only、所有工具停用；只送指定程式片段、規格及 repo 合成測試。子代理沒有修改 repo。主審逐一執行回傳測試；只將能重現且符合規格的結果納入上文。
+
+| 窄範圍 | 要求／核實模型 | 主審執行與處置 |
+|---|---|---|
+| 存檔鎖與佇列 | 要求 `zai-glm-5-3`；dispatcher **partial／600 秒逾時**，沒有 resolved_model | 只取留下的 assistant 測試文字，親跑 **2/4**；兩個失敗為 R2-after 的佇列與實際重複寫入。不得宣稱完整成功或模型身分已核實 |
+| 存檔鎖與佇列 | 核實 `mistral-large-4` | **8/13**；同鍵重讀與計數摘要重現既有 R1／C2。另兩個失敗為程式強制對隱藏按鈕重複 `.click()`，見下方排除 |
+| 修正值保存／還原 | 核實 `zai-glm-5-3` | 原稿 **30/31**；唯一失敗是把 `days.med.dose` 的改變誤當成 `meddose` 紀錄，未產生複查目標。主審補正合成 seed 為合法 `meddose` 後 **33/33**，增加的兩項為可用複查開關斷言；不列產品缺陷 |
+| 修正值保存／還原 | 核實 `deepseek-v4-1-flash-1017` | **26/26**；沒有新增可重現缺陷。其複查目標前置不完整，不能拿這個結果代替 §7.1 已以合法 meddose 目標驗證的 controls |
+
+本輪排除兩類候選：
+
+1. **重讀 `{"items":[]}` 清空未存草稿**：已實測，但 §4.5 明寫「讀到 0 項不是錯誤」，§4.2 又定義重讀取代該批未存草稿。不能把它誤報為「重讀失敗卻沒保留」；不列缺陷。相對地，上游錯誤、原有草稿修正與再次繼續的保留已通過對照。
+2. **Mistral 的雙擊撤銷**：測試在同一段 JavaScript 內對按鈕呼叫兩次 `.click()`，第一下已把 toast 同步設為 hidden；第二下仍以程式強制觸發隱藏元素，尚未證明正常實體點擊可到達。雖能讓 queue 出現重複物件，也不列可重現使用者缺陷。
+
+### 7.4 原始來源再核對與界線
+
+本輪重新取得 [ATA Table 6 原表](https://pmc.ncbi.nlm.nih.gov/articles/PMC4739132/table/T6/)、[ACR 官方託管 v2022 PDF](https://edge.sitecorecloud.io/americancoldf5f-acrorgf92a-productioncb02-3650/media/ACR/Files/RADS/Lung-RADS/Lung-RADS-2022.pdf) 第 2 頁 notes 14／15，以及 [Mayo TPO 檢驗目錄](https://www.mayocliniclabs.com/test-catalog/overview/81765) 的 Aliases。分別支持 §3 R7 的 pattern 名稱與排除特徵文字、D-14 的 4X／S 勘誤、microsomal 別名勘誤。
+
+PMC 整篇入口本輪遇驗證頁；PubMed fulltext 工具只回 metadata／abstract、sections 為空，**不將其當成已讀全文**。Table 6 的獨立原表可以讀取；本輪沒有另外取得 Table 11 全文，也沒有據子代理文字新增臨床主張。這次的分類處理建議限於字串語意與既定規格，不推算診斷、處置或追蹤間隔。
