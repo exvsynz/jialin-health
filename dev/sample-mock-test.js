@@ -126,5 +126,12 @@ const T0='2026-10-30T12:00:00+08:00';
     check('S16 shot：{text,truncated} 形式照樣回 truncated',r===true,r);
     await page.context().close()}
 
+  /* S17 圖片照 contract 拒絕：解不開、單邊超過 10,000 px（D 階段審查 D-15） */
+  {const {page}=await open({time:T0,init:MK});await wait(200);
+    const r=await page.evaluate(async()=>{const s=await claude.use('sample');const bad=new Blob([new Uint8Array([1,2,3])],{type:'image/png'});const wide=await __mkImg(10001,2,'image/png');const ok=await __mkImg(64,48,'image/png');
+      const c=p=>p.then(()=>'ok',e=>e.code);return[await c(s('x',{images:[bad]})),await c(s('y',{images:[wide]})),await c(s('z',{images:[ok]}))]});
+    check('S17 解不開、超過 10,000 px 是 image_rejected；正常的圖照常',r.join()==='image_rejected,image_rejected,ok',r);
+    await page.context().close()}
+
   await close();process.exit(summary()?1:0);
 })().catch(e=>{console.error(e);process.exit(1)});

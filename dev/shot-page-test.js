@@ -118,7 +118,7 @@ const calls=page=>page.evaluate(()=>__mock.sampleCalls.map(c=>({input:c.input,n:
     await page.click('#btnSave');clicks++;await until(page,()=>!document.querySelector('#dlgRec').open);
     const r=(await newRecs(page))[0];
     check('single：頁面上 3 次點擊（新增、從截圖填入、儲存）就存好，面板關閉',clicks===3&&!(await form(page)).open&&!!r,clicks);
-    check('single：labs 存 5.2、labMeta 存原文 H 5.2 與旗標 H、shot 有張數與版本',r.labs.TSH==='5.2'&&r.labMeta.TSH.raw==='H 5.2'&&r.labMeta.TSH.flag==='H'&&r.labMeta.TSH.ref==='0.27-4.20'&&r.labMeta.TSH.unit==='μIU/mL'&&r.shot.n===1&&r.shot.promptVer==='d1'&&r.shot.tier==='default'&&r.interval===6,r);
+    check('single：labs 存 5.2、labMeta 存原文 H 5.2 與旗標 H、shot 有張數與版本',r.labs.TSH==='5.2'&&r.labMeta.TSH.raw==='H 5.2'&&r.labMeta.TSH.flag==='H'&&r.labMeta.TSH.ref==='0.27-4.20'&&r.labMeta.TSH.unit==='μIU/mL'&&r.shot.n===1&&r.shot.promptVer==='d2'&&r.shot.tier==='default'&&r.interval===6,r);
     await page.evaluate(()=>{openHist.add('thy_lab');renderExams()});await wait(100);
     const cell=await page.evaluate(()=>[...document.querySelectorAll('.labtable td')].map(t=>t.textContent));
     check('歷史表格：數值後面加旗標（5.2 H），手動輸入的照舊',cell.includes('5.2 H')&&cell.includes('2.1'),cell);
@@ -196,7 +196,7 @@ const calls=page=>page.evaluate(()=>__mock.sampleCalls.map(c=>({input:c.input,n:
     await page.click('[data-shot="clsok"]');await page.click('#btnSave');await until(page,()=>!document.querySelector('#dlgRec').open);
     const r=(await newRecs(page))[0];check('pii：存下的報告沒有身分證號（含遮罩寫法）',!/A123456789|A12\*\*\*\*789/.test(r.report)&&r.report.includes('〔已移除〕'),r.report);await page.context().close()}
   {const {page}=await start({sample:{shot:'conflict'}});await addRec(page);await pick(page,await shotFile(page));await drafted(page);
-    const f=await form(page);check('conflict：兩個不同的值不填、提示、寫進報告內容；Free T4 照填',f.labs.TSH===''&&(await labNotes(page,'TSH')).includes('截圖裡有不同的值：5.2、5.3')&&f.report.includes('截圖裡 TSH 有不同的值：5.2、5.3')&&f.labs['Free T4']==='1.0',f);
+    const f=await form(page);check('conflict：兩個不同的值不填、提示、寫進報告內容；Free T4 照填',f.labs.TSH===''&&(await labNotes(page,'TSH')).includes('截圖裡有不同的值：5.2 μIU/mL、5.3 μIU/mL')&&f.report.includes('截圖裡 TSH 有不同的值：\nTSH 5.2 μIU/mL\nTSH 5.3 μIU/mL')&&f.labs['Free T4']==='1.0',f);
     await page.context().close()}
   {const {page,errors}=await start({sample:{shot:'xss'}});await addRec(page);await pick(page,await shotFile(page));await drafted(page);await wait(200);
     const f=await form(page);check('跳脫：讀出的 HTML 只當文字，不執行',await page.evaluate(()=>window.__xss===undefined)&&f.report.includes('<script>')&&!errors.length,errors);await page.context().close()}
@@ -217,7 +217,7 @@ const calls=page=>page.evaluate(()=>__mock.sampleCalls.map(c=>({input:c.input,n:
   /* ---- 錯誤碼（19 種、頁面的 invalid／too_long、讀到 0 項、不認得的 code） ---- */
   const HIDE=['not_granted','sampling_disabled','not_declared','capability_disabled','capability_removed','images_unavailable'],BUG=['invalid_request','transform_error','prompt_too_large','queue_overflow','tools_unavailable'];
   const CASES=[...HIDE.map(c=>[c,{reply:{error:c}},c==='not_granted'?'沒有允許使用 Claude，請手動填寫':'這個檢視無法讀取截圖，請手動填寫','none']),
-    ...BUG.map(c=>[c,{reply:{error:c}},'讀取沒有完成，請手動填寫','pickOnly']),
+    ...BUG.map(c=>[c,{reply:{error:c}},'讀取沒有完成，請手動填寫','none']),
     ['rate_limited',{reply:{error:'rate_limited'}},'讀取次數太多，稍後再讀','retry'],['session_expired',{reply:{error:'session_expired'}},'請重新登入 claude.ai 後再讀','retry'],
     ['upstream_error',{reply:{error:'upstream_error'}},'讀取中斷','retry'],['cancelled（上游）',{reply:{error:'cancelled'}},'已停止','retry'],['不認得的 code',{reply:{error:'weird_code'}},'讀取中斷','retry'],
     ['invalid_json',{reply:{error:'invalid_json'}},'讀取結果看不懂','retry'],['頁面的 invalid（不是 JSON）',{shot:'bad'},'讀取結果看不懂','retry'],
@@ -227,8 +227,8 @@ const calls=page=>page.evaluate(()=>__mock.sampleCalls.map(c=>({input:c.input,n:
   for(const [name,sample,msg,act] of CASES){const {page,errors}=await start({sample});await addRec(page);await pick(page,await shotFile(page));
     await until(page,m=>document.querySelector('#shotBox').textContent.includes(m),3000,msg);await wait(300);
     const t=await boxText(page)||'',n=(await calls(page)).length,w=await page.evaluate(()=>__mock.writes.length);
-    const ok=t.includes(msg)&&n===1&&w===0&&(await form(page)).bar===null&&(act==='retry'?t.includes('再讀一次')&&t.includes('從截圖填入'):act==='pick'?t.includes('重新選截圖')&&!t.includes('再讀一次'):act==='pickOnly'?t.includes('從截圖填入')&&!t.includes('再讀一次'):!t.includes('從截圖填入')&&!t.includes('再讀一次'));
-    check(`錯誤 ${name}：「${msg}」、${({retry:'再讀一次',pick:'重新選截圖',pickOnly:'只能手動填（仍可選別的截圖）',none:'隱藏入口'})[act]}；不寫資料庫、不自動重試`,ok,{t,n,w,errors});
+    const ok=!errors.length&&t.includes(msg)&&n===1&&w===0&&(await form(page)).bar===null&&(act==='retry'?t.includes('再讀一次')&&t.includes('從截圖填入'):act==='pick'?t.includes('重新選截圖')&&!t.includes('再讀一次'):act==='pickOnly'?t.includes('從截圖填入')&&!t.includes('再讀一次'):!t.includes('從截圖填入')&&!t.includes('再讀一次'));
+    check(`錯誤 ${name}：「${msg}」、${({retry:'再讀一次',pick:'重新選截圖',none:'隱藏入口'})[act]}；不寫資料庫、不自動重試`,ok,{t,n,w,errors});
     await page.context().close()}
   {const {page}=await start({sample:{reply:{error:'rate_limited'}}});await addRec(page);await pick(page,await shotFile(page));await until(page,()=>document.querySelector('#shotBox').textContent.includes('稍後再讀'));
     await page.click('#dlgRec [data-close]');await addRec(page);await wait(100);
@@ -239,7 +239,7 @@ const calls=page=>page.evaluate(()=>__mock.sampleCalls.map(c=>({input:c.input,n:
   /* ---- 版面：380×820、380×667，淺色／深色 ---- */
   for(const [h,tag] of [[820,'380'],[667,'380x667']])for(const scheme of ['light','dark']){
     const states=[['entry',{shot:'single'},null],['reading',{shot:'single',delay:60000},'reading'],['draft',{shot:'unit'},'draft'],['class',{shot:'report'},'draft'],['error',{reply:{error:'image_rejected'}},'error']];
-    for(const [st,sample,mode] of states){if(h===667&&!['draft','class'].includes(st))continue;
+    for(const [st,sample,mode] of states){
       const {page}=await start({sample},{width:380,height:h,scheme});await addRec(page);await wait(100);
       if(mode){await pick(page,await shotFile(page));if(mode==='draft')await drafted(page);else await until(page,m=>m==='reading'?document.querySelector('#shotBox').textContent.includes('讀取 1 張'):document.querySelector('#shotBox').textContent.includes('請換一張'),3000,mode);await wait(150)}
       await wait(400);if(st==='class'&&h===820)await page.evaluate(()=>document.querySelector('#presetField').scrollIntoView({block:'center'}));

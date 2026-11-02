@@ -25,5 +25,6 @@ node dev/meal-page2-test.js "$@"
 node dev/meal-setup-test.js
 node dev/shot-page-test.js "$@"
 node dev/review-c-test.js
+node dev/review-d-test.js
 node dev/review-b-test.js
 node dev/e2e.js "$@"

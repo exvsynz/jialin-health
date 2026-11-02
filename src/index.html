@@ -964,7 +964,7 @@ function coverage(days){const o={n:0,in:0,above:0,below:0,width:null,failed:0,th
 
 /* ---- shot helpers: begin (extracted and tested outside the page) ---- */
 /* reading exam results from screenshots: the model only copies text; every date, value, name and category rule is here. Rules in docs/specs/phase-D.md §3 */
-const SHOT_PROMPT_VER='d1',SHOT_MAX=6,SHOT_REPORT_MAX=4000;
+const SHOT_PROMPT_VER='d2',SHOT_MAX=6,SHOT_REPORT_MAX=4000;
 const SHOT_REPORT_EXAMS=['breast_us','breast_mammo','breast_ct','thy_us','lung_ldct','gi_egd','gi_colo'];
 const half=s=>String(s??'').replace(/[！-～]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/　/g,' ');
 function shotPrompt(n){return`你會看到 ${n} 張截圖，多半來自台灣「全民健保行動快易通｜健康存摺」的檢驗檢查結果或影像／病理報告，也可能是醫院的報告。請把截圖上看得到的檢查結果抄錄成 JSON。
@@ -976,7 +976,6 @@ function shotPrompt(n){return`你會看到 ${n} 張截圖，多半來自台灣�
 - 不要自己判斷報告分類。只有截圖上寫出分類時（例如「BI-RADS 3」「Lung-RADS 2」「ATA low suspicion」），才把那段原文放進 class；沒有寫就填 null。
 - 不要抄錄姓名、身分證號、病歷號、生日、電話、地址。報告全文裡出現時也略過。
 - 每一個檢驗數值是一項 lab；每一份影像、內視鏡或病理報告是一項 report。
-- 同一個檢驗在兩張截圖重複出現時，只列一次。
 - date 是檢查或採檢日期，reportDate 是報告日期，照截圖上的寫法（民國或西元都照抄）。
 - 數值旁邊的 H、L、↑、↓、* 等記號：和數值寫在一起就留在 value 裡；在獨立的一欄就放進 flag。
 - report 的 exam 只能是下列代號之一，看不出是哪一種就填 null：
@@ -1029,21 +1028,24 @@ function classPreset(exam,cls,text){const s=half([cls,text].filter(Boolean).join
   else if(exam==='lung_ldct'){const re=/Lung-?RADS\s*(?:v(?:ersion)?\s*\d+(?:\.\d+)?|\d{4})?\s*(?:category|cat\.?|分類|類別)?\s*[:：]?\s*([0-4])([abx])?(s)?(?![0-9a-z])/gi;
     while((m=re.exec(s))){const n=m[1],x=(m[2]||'').toUpperCase(),c=n+x;const p=n==='0'&&!x?'l0':(n==='1'||n==='2')&&!x?'l12':n==='3'&&!x?'l3':c==='4A'?'l4a':c==='4B'||c==='4X'?'l4b':undefined;
       if(p!==undefined)hits.push({c,t:m[0].trim(),p})}}
-  else if(exam==='thy_us'){for(const seg of s.split(/[\n。；;]/))if(/ATA/i.test(seg)){
-    const VL=/very\s*low|極低/gi;let rest=seg;if(VL.test(seg)){hits.push({c:'very low',t:seg.trim().slice(0,60),p:null,size:true});rest=seg.replace(VL,' ')}
-    for(const [x,p,c] of [[/high|高度/i,'high','high'],[/intermediate|中度/i,'lowint','intermediate'],[/\blow\b|低度/i,'lowint','low'],[/benign|良性/i,null,'benign']])if(x.test(rest))hits.push({c,t:seg.trim().slice(0,60),p,size:p===null})}}
+  else if(exam==='thy_us'){for(const seg of s.split(/[\n。；;]/)){if(!/(?<![A-Za-z])ATA(?![A-Za-z])/.test(seg)||/recurren|復發|風險/i.test(seg))continue; // the cancer recurrence-risk system is not a nodule pattern
+    const neg=/\b(?:no|not|without|negative)\b|未見|無|沒有|非|不是/i.test(seg);
+    for(const [x,p,c] of [[/very\s*low\s*suspicion|極低(?:度)?懷疑/i,null,'very low'],[/\bhigh\s*suspicion|高度懷疑/i,'high','high'],[/\bintermediate\s*suspicion|中度懷疑/i,'lowint','intermediate'],[/(?<!very\s*)\blow\s*suspicion|(?<!極)低度懷疑/i,'lowint','low'],[/\bbenign\b|良性/i,null,'benign']])
+      if(x.test(seg))hits.push({c,t:seg.trim().slice(0,60),p:neg?null:p,size:!neg&&p===null,neg})}}
   if(!hits.length)return{preset:null,text:null,hint:null};
   const cats=[...new Set(hits.map(h=>h.c))],ps=[...new Set(hits.map(h=>h.p))];
-  if(ps.length>1)return{preset:null,text:hits[0].t,hint:'截圖裡有不只一個分類（'+cats.join('、')+'），請自己選'};
+  if(hits.some(h=>h.neg))return{preset:null,text:hits[0].t,hint:'截圖的分類句子有否定的寫法，請自己選'};
+  if(cats.length>1)return{preset:null,text:hits[0].t,hint:'截圖裡有不只一個分類（'+cats.join('、')+'），請自己選'};
   if(hits[0].six)return{preset:null,text:hits[0].t,hint:'BI-RADS 6 沒有對應的分類，請自己選'};
   if(hits[0].size)return{preset:null,text:hits[0].t,hint:'這個分類還要看結節大小或穿刺結果，請自己選'};
   return{preset:ps[0],text:hits[0].t,hint:null}}
 /* §3.8 Taiwan ID / resident certificate numbers, also masked ones */
-const redact=s=>s==null?s:String(s).replace(/(?<![A-Za-z0-9])[A-Z][1289*Xx＊][0-9*Xx＊]{8}(?![A-Za-z0-9])/g,'〔已移除〕');
+function redact(s){if(s==null)return s;s=String(s);const h=half(s),re=/(?<![A-Za-z0-9])[A-Z][1289*X][0-9*X]{8}(?![A-Za-z0-9])/gi;let out='',i=0,m; // matched on the half-width copy, cut from the original (same length)
+  while((m=re.exec(h))){out+=s.slice(i,m.index)+'〔已移除〕';i=m.index+m[0].length}return out+s.slice(i)}
 /* §4.4 the reply: tolerant JSON, then a check of every field the page uses */
 function parseShot(text,truncated){if(truncated)return{ok:false,err:'too_long'};const t=String(text||'');
   const tryj=x=>{try{return JSON.parse(x)}catch(_){return undefined}};let v=tryj(t.trim());
-  if(v===undefined){const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f)v=tryj(f[1])}
+  if(v===undefined){const fs=[...t.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)];if(fs.length>1)return{ok:false,err:'invalid'};if(fs.length===1)v=tryj(fs[0][1])} // two answers are not merged or picked from
   if(v===undefined){const i=t.indexOf('{'),j=t.lastIndexOf('}');if(i>=0&&j>i)v=tryj(t.slice(i,j+1))}
   if(!v||typeof v!=='object'||!Array.isArray(v.items)||v.items.length>200)return{ok:false,err:'invalid'};
   const str=x=>typeof x==='string'&&x.trim()?redact(x.trim()):null;let skipped=0;const items=[];
@@ -1059,29 +1061,34 @@ function labLine(it){return`${it.name||it.order} ${it.value??'（看不清楚）
 function groupShot(items,{units={},order=[]}={}){const groups=new Map(),extra=new Map(),drafts=[],seenRep=new Set();
   const rank=e=>{const i=order.indexOf(e);return i<0?999:i};
   for(const it of items){const dt=shotDate(it),place=it.place||'';
-    if(it.type==='report'){const k=[it.exam,dt.date,it.text,it.class].join('|');if(seenRep.has(k))continue;seenRep.add(k);
-      let rep=it.text||'';const cut=rep.length>SHOT_REPORT_MAX;if(cut)rep=rep.slice(0,SHOT_REPORT_MAX);
-      drafts.push({exam:it.exam,date:dt.date,dateNote:dt.note,place:it.place,title:it.title,labs:{},conflicts:{},report:rep,reportCut:cut,extraLines:[],cls:it.exam?classPreset(it.exam,it.class,it.text):{preset:null,text:null,hint:null},unclear:it.unclear.map(u=>u==='reportDate'?'date':u==='text'?'report':u)});continue}
+    if(it.type==='report'){const k=JSON.stringify([it.exam,dt.date,it.place,it.title,it.text,it.class]);if(seenRep.has(k))continue;seenRep.add(k); // only an identical copy is an overlap
+      let txt=it.text||'';const cut=txt.length>SHOT_REPORT_MAX;if(cut)txt=txt.slice(0,SHOT_REPORT_MAX);
+      /* the title and the written category stay in the editable text too, unless the text already has them */
+      const rep=[it.title&&!txt.includes(it.title)?it.title:'',txt,it.class&&!txt.includes(it.class)?'截圖上的分類：'+it.class:''].filter(Boolean).join('\n');
+      drafts.push({type:'report',exam:it.exam,date:dt.date,dateNote:dt.note,place:it.place,title:it.title,rawClass:it.class,rawText:it.text,noText:!it.text,labs:{},conflicts:{},report:rep,reportCut:cut,extraLines:[],cls:it.exam?classPreset(it.exam,it.class,it.text):{preset:null,text:null,hint:null},unclear:it.unclear.map(u=>u==='reportDate'?'date':u==='text'?'report':u)});continue}
     const f=labField(it.name,it.order),dp=dt.date+'|'+place;
     if(!f){if(!extra.has(dp))extra.set(dp,{date:dt.date,dateNote:dt.note,place:it.place,lines:[]});extra.get(dp).lines.push(labLine(it));continue}
     const exam=SHOT_LABS[f][0],k=exam+'|'+dp;
-    if(!groups.has(k))groups.set(k,{exam,date:dt.date,dateNote:dt.note,place:it.place,title:null,labs:{},conflicts:{},report:'',reportCut:false,extraLines:[],cls:{preset:null,text:null,hint:null},unclear:[]});
+    if(!groups.has(k))groups.set(k,{type:'lab',exam,date:dt.date,dateNote:dt.note,place:it.place,title:null,labs:{},conflicts:{},report:'',reportCut:false,extraLines:[],cls:{preset:null,text:null,hint:null},unclear:[]});
     const g=groups.get(k);if(dt.note==='unclear'&&!g.unclear.includes('date'))g.unclear.push('date');
     const unclearVal=!it.value||it.unclear.includes('value');
     const sv=it.value?splitLabValue(it.value,it.flag):{value:'',flag:null};if(it.unclear.includes('place')&&!g.unclear.includes('place'))g.unclear.push('place');
     const u=units[f],unitNote=!it.unit?'none':u&&!unitSame(it.unit,u)?'diff':null;
-    const cell={value:sv.value&&unitNote==='diff'?sv.value+' '+it.unit:sv.value,raw:it.value,unit:it.unit,ref:it.ref,flag:sv.flag,unitNote,unclear:unclearVal};
-    if(g.conflicts[f]){g.conflicts[f].push(it.value);continue}
+    const cell={value:sv.value&&unitNote==='diff'?sv.value+' '+it.unit:sv.value,raw:it.value,unit:it.unit,ref:it.ref,flag:sv.flag,unitNote,unclear:unclearVal,num:sv.value,item:it};
+    if(g.conflicts[f]){g.conflicts[f].push(it);continue}
     const prev=g.labs[f];
     if(!prev){g.labs[f]=cell;continue}
     if(prev.unclear&&!cell.unclear){g.labs[f]=cell;continue}
-    if(cell.unclear||(prev.value===cell.value&&prev.flag===cell.flag))continue;
-    g.conflicts[f]=[prev.raw,it.value];delete g.labs[f]}
-  for(const g of groups.values()){for(const [f,vs] of Object.entries(g.conflicts))g.extraLines.push(`截圖裡 ${f} 有不同的值：${vs.join('、')}`);drafts.push(g)}
+    if(cell.unclear)continue;
+    const sameUnit=!prev.unit||!cell.unit||unitSame(prev.unit,cell.unit);
+    if(prev.num===cell.num&&sameUnit&&(!prev.flag||!cell.flag||prev.flag===cell.flag)){ // the same row seen twice: keep what either copy adds
+      if(!prev.ref&&cell.ref)prev.ref=cell.ref;if(!prev.flag&&cell.flag)prev.flag=cell.flag;if(!prev.unit&&cell.unit)Object.assign(prev,{unit:cell.unit,unitNote:cell.unitNote,value:cell.value});continue}
+    g.conflicts[f]=[prev.item,it];delete g.labs[f]}
+  for(const g of groups.values()){for(const [f,its] of Object.entries(g.conflicts))g.extraLines.push(`截圖裡 ${f} 有不同的值：`,...its.map(labLine));drafts.push(g)}
   for(const [dp,x] of extra){const host=[...groups.values()].filter(g=>g.date+'|'+(g.place||'')===dp).sort((a,b)=>rank(a.exam)-rank(b.exam))[0];
     const lines=['其他檢驗（沒有對應的欄位）：',...x.lines];
     if(host)host.extraLines.push(...lines);
-    else drafts.push({exam:null,date:x.date,dateNote:x.dateNote,place:x.place,title:null,labs:{},conflicts:{},report:'',reportCut:false,extraLines:lines,cls:{preset:null,text:null,hint:null},unclear:x.dateNote==='unclear'?['date']:[],labOnly:true})}
+    else drafts.push({type:'lab',exam:null,date:x.date,dateNote:x.dateNote,place:x.place,title:null,labs:{},conflicts:{},report:'',reportCut:false,extraLines:lines,cls:{preset:null,text:null,hint:null},unclear:x.dateNote==='unclear'?['date']:[],labOnly:true})}
   for(const d of drafts)d.report=[d.report,...d.extraLines].filter(Boolean).join('\n');
   return drafts.sort((a,b)=>a.date===b.date?rank(a.exam)-rank(b.exam):a.date==null?1:b.date==null?-1:a.date<b.date?1:-1)}
 /* §3.9 a record of the same exam on the same day */
@@ -1834,7 +1841,7 @@ function histItem(r){const p=presetOf(r);
 function renderRef(){const rows=[];for(const e of EXAMS){if(e.presets){for(const p of e.presets)rows.push([e.name,p.label,p.noFollow?'不排':p.m==null?'用預設':intervalText(p.m),p.src])}else rows.push([e.name,'—',intervalText(e.def),e.defSrc])}
   $('#refTable').innerHTML=`<div style="overflow-x:auto;margin-top:10px"><table><thead><tr><th>檢查</th><th>報告分類</th><th>預設</th><th>依據</th></tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
 /* screenshot drafts (docs/specs/phase-D.md): the queue, the one in the form, and the category waiting for confirmation */
-let shotQ=[],shotCur=null,shotCls=null,shotPos=0,shotSavedN=0,shotSaved=[],shotLast=null,shotSt={phase:'idle'},recDirty=false;
+let recEpoch=0,shotQ=[],shotCur=null,shotCls=null,shotPos=0,shotSavedN=0,shotSaved=[],shotLast=null,shotSt={phase:'idle'},recDirty=false;
 const dlg=$('#dlgRec');
 /* thyroid draw context: four states each (yes, no, unsure, unset) and an explicit link to the change it rechecks */
 let formCtx={},rcTouched=false,rcTargetId=null;
@@ -1848,9 +1855,9 @@ function renderCtx(){const isThy=$('#fExam').value==='thy_lab';$('#ctxWrap').hid
   if(!ok)$('#fRecheck').checked=false;else if(!editing&&!rcTouched)$('#fRecheck').checked=true;
   $('#fRecheck').disabled=!ok||!canWrite;
   $('#rcHint').textContent=ok||!date?'':date<=target.date?'採檢日要在變更生效日之後，才能算複查。':'未來的日期不能算複查。'}
-$('#ctxWrap').addEventListener('click',e=>{const b=e.target.closest('[data-ctx] button');if(!b)return;const k=b.closest('[data-ctx]').dataset.ctx;
+$('#ctxWrap').addEventListener('click',e=>{const b=e.target.closest('[data-ctx] button');if(!b)return;const k=b.closest('[data-ctx]').dataset.ctx;recDirty=true;
   formCtx[k]=formCtx[k]===b.dataset.v?undefined:b.dataset.v;renderCtx()});
-$('#fRecheck').addEventListener('change',()=>{rcTouched=true});
+$('#fRecheck').addEventListener('change',()=>{rcTouched=true;recDirty=true});
 $('#fExam').innerHTML='<option value="" disabled hidden>請選擇檢查項目</option>'+CATS.map(c=>`<optgroup label="${c.name}">${EXAMS.filter(e=>e.cat===c.id).map(e=>`<option value="${e.id}">${e.name}</option>`).join('')}</optgroup>`).join('');
 function fillPresets(examId,keep){const e=EX[examId];if(!e){$('#presetField').hidden=true;$('#labWrap').hidden=true;$('#labs').innerHTML='';$('#fPreset').innerHTML='';$('#fInterval').value='';$('#presetHint').textContent='';return}
   $('#presetField').hidden=!e.presets;
@@ -1866,11 +1873,12 @@ function updatePreview(){const date=$('#fDate').value,due=$('#fDue').value,m=$('
   $('#duePreview').textContent=t+(shotCls?.pending&&date?'（分類待確認）':'')}
 $('#fExam').addEventListener('change',()=>{fillPresets($('#fExam').value);updatePreview();
   if($('#fExam').value!=='thy_lab'){formCtx={};rcTouched=false;rcTargetId=null;$('#fRecheck').checked=false} // the draw context does not survive a switch to another exam
-  if(shotCur){shotCls=null;shotFillLabs();renderShotCls()}renderCtx();renderDup()});
-$('#fPreset').addEventListener('change',()=>{if(shotCls)shotCls.pending=false;applyPreset();renderShotCls()}); // choosing any category oneself is a confirmation
+  if(shotCur){const d=shotCur,e=$('#fExam').value;if(d.type==='report'){d.cls=classPreset(e,d.rawClass,d.rawText);d.clsOk=false;if(d.cls.preset&&EX[e]?.presets?.some(p=>p.k===d.cls.preset)){$('#fPreset').value=d.cls.preset;applyPreset()}}
+    shotCls=shotClsOf(d);shotFillLabs();renderShotCls();updatePreview()}renderCtx();renderDup()});
+$('#fPreset').addEventListener('change',()=>{if(shotCur){shotCur.clsOk=true;shotCls=shotClsOf(shotCur)}applyPreset();renderShotCls()}); // choosing any category oneself is a confirmation
 ['#fDate','#fDue','#fInterval'].forEach(s=>$(s).addEventListener('input',updatePreview));
 $('#fDate').addEventListener('input',()=>{renderCtx();renderDup()});
-function openRecord(examId,rec){editing=rec||null;$('#recTitle').textContent=rec?'編輯檢查紀錄':'新增檢查紀錄';
+function openRecord(examId,rec){editing=rec||null;recEpoch++;$('#recTitle').textContent=rec?'編輯檢查紀錄':'新增檢查紀錄';
   $('#fExam').value=rec?rec.exam:(examId||EXAMS[0].id);$('#fExam').disabled=!!rec;fillPresets($('#fExam').value,!!rec);$('#fDate').value=rec?rec.date:logicalToday();
   if(rec){$('#fPreset').value=rec.preset||'';const p=presetOf(rec);$('#presetHint').textContent=p?p.src:'';$('#fInterval').value=Number.isFinite(rec.interval)?rec.interval:'';$$('[data-lab]').forEach(i=>i.value=(rec.labs&&rec.labs[i.dataset.lab])||'')}
   $('#fDue').value=rec?.nextDue||'';$('#fReport').value=rec?.report||'';$('#fPlace').value=rec?.place||'';$('#fDoctor').value=rec?.doctor||'';$('#fNote').value=rec?.note||'';
@@ -1889,7 +1897,8 @@ document.addEventListener('click',ev=>{const t=ev.target;
 $('#btnAdd').addEventListener('click',()=>openRecord());
 $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
   if(!$('#fExam').value){$('#fExam').focus();toast('請選擇檢查項目');return}
-  if(shotCls?.pending){toast('先確認報告分類');return}
+  if(recSaving)return; // one save at a time
+  if(shotCls?.pending||(shotCur&&shotCur.cls.preset&&!shotCur.clsOk)){toast('先確認報告分類');return}
   if(!$('#fDate').value){$('#fDate').focus();toast('請填檢查日期');return}
   if(!$('#fDue').value&&$('#fInterval').value===''&&!noFollowPicked()){$('#fInterval').focus();toast('請填追蹤間隔或指定日期');return}
   if(!db){toast('資料庫未連線，無法儲存');return}
@@ -1909,10 +1918,9 @@ $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
     for(const k of ['medBeforeDraw','biotin7d']){if(formCtx[k])c[k]=formCtx[k];else delete c[k]}
     if(!$('#rcRow').hidden){if(rcTargetId&&$('#fRecheck').checked&&!$('#fRecheck').disabled)c.recheckOf=rcTargetId;else delete c.recheckOf}
     if(Object.keys(c).length)full.drawCtx=c;else delete full.drawCtx}
-  $('#btnSave').disabled=true;
-  const fromShot=shotCur;
-  try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(full);openHist.add(exam);
-    if(fromShot&&shotCur===fromShot)shotNext('saved',full);else{dlg.close();toast(editing?'已更新':'已儲存')}if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{$('#btnSave').disabled=false;renderShotCls()}});
+  const fromShot=shotCur,wasEditing=!!editing,epoch=recEpoch;recSaving=true;renderShotCls();renderShotBar();
+  try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(full);openHist.add(exam);recSaving=false;
+    if(fromShot)shotSaved1(fromShot,full);else{if(dlg.open&&recEpoch===epoch)dlg.close();toast(wasEditing?'已更新':'已儲存')}/* a form opened since then stays open */if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{recSaving=false;renderShotCls();renderShotBar()}});
 $('#btnDel').addEventListener('click',async()=>{if(!editing||!canSave())return;const rec=records.find(x=>x.id===editing.id)||editing;const {id,...body}=rec;
   try{await retry1(()=>db.doc('records/'+id).delete());dlg.close();toast('已刪除 '+EX[rec.exam].name+' '+fmt(rec.date),[['撤銷',()=>retry1(()=>db.doc('records/'+id).set(body)).catch(writeErr)]])}catch(e){writeErr(e)}});
 
@@ -1923,9 +1931,13 @@ const SHOT_MSG={not_granted:['沒有允許使用 Claude，請手動填寫',null]
   rate_limited:['讀取次數太多，稍後再讀','retry'],session_expired:['請重新登入 claude.ai 後再讀','retry'],upstream_error:['讀取中斷','retry'],
   cancelled:['已停止','retry'],invalid:['讀取結果看不懂','retry'],too_long:['截圖內容太多，請少選幾張分次讀取','pick'],
   empty_completion:['沒有讀到內容，可以換截圖再試，或手動填寫','pick'],refused:['這組截圖沒有讀取結果，可以換截圖再試，或手動填寫','pick'],
-  image_rejected:['有截圖無法讀取（太大、格式不支援或張數太多），請換一張','pick'],bug:['讀取沒有完成，請手動填寫',null],none:['截圖裡沒有讀到檢查結果','pick']};
+  image_rejected:['有截圖無法讀取（太大、格式不支援或張數太多），請換一張','pick'],bug:['讀取沒有完成，請手動填寫','none'],none:['截圖裡沒有讀到檢查結果','pick']};
 const shotMsg=c=>c==='not_granted'?SHOT_MSG.not_granted:HIDE_CODES.includes(c)?SHOT_MSG.hide:BUG_CODES.includes(c)?SHOT_MSG.bug:SHOT_MSG[c]||SHOT_MSG.upstream_error;
 const shotMax=()=>Math.min(SHOT_MAX,sampleLim?.maxCount||0);
+/* the screenshots of each successful reading, kept while any of its drafts waits, so a wrong reading can be read again */
+const shotBatches=new Map();let recSaving=false;
+const shotKey=d=>[d.exam,d.date,d.place||''].join('|');
+function shotGC(later){const run=()=>{for(const id of [...shotBatches.keys()])if(!shotQ.some(d=>d.batch===id))shotBatches.delete(id)};later?setTimeout(run,7000):run()} // after an undoable step, only once its undo has expired
 /* a file the view accepts as it is goes as it is (a PNG keeps small text sharp); anything else becomes a JPEG of about 1.2 megapixels */
 async function prepShot(file){const asIs=sampleLim.mediaTypes.includes(file.type)&&file.size<=sampleLim.maxInputBytes;let img;
   try{img=await decodeImage(file)}catch(_){if(asIs)return{blob:file,long:false};throw new Error('decode')}
@@ -1935,89 +1947,118 @@ async function prepShot(file){const asIs=sampleLim.mediaTypes.includes(file.type
     for(const q of [.92,.85,.75]){const b=await toBlob(c,q);if(b&&b.size<=sampleLim.maxInputBytes)return{blob:b,long}}
     throw new Error('big')}
   finally{img&&img.close()}}
-async function shotPick(files){const list=[...(files||[])];if(!list.length||!canEstimate()||shotSt.phase==='reading')return;
+/* one selection at a time: from the pick until the reading ends nothing else can start, so no set of screenshots is dropped */
+const shotBusy=()=>shotSt.phase==='preparing'||shotSt.phase==='reading';
+async function shotPick(files){const list=[...(files||[])];if(!list.length||!canEstimate()||shotBusy())return;
   if(list.length>shotMax()){shotSt={phase:'msg',text:`一次最多 ${shotMax()} 張，請分次讀取`,act:'pick'};renderShotBox();return}
+  shotSt={phase:'preparing',n:list.length};renderShotBox();
   const out=[];for(let i=0;i<list.length;i++){try{out.push(await prepShot(list[i]))}catch(_){shotSt={phase:'msg',text:list.length>1?`第 ${i+1} 張截圖打不開，請換一張`:'這張截圖打不開，請換一張',act:'pick'};renderShotBox();return}}
-  shotLast={blobs:out.map(x=>x.blob),long:out.some(x=>x.long)};shotRun(false)}
-/* one call per user action; "再讀一次" asks again without the cache */
-async function shotRun(fresh){if(!shotLast||!canEstimate()||shotSt.phase==='reading')return;const ctl=new AbortController(),n=shotLast.blobs.length;
-  shotSt={phase:'reading',n,ctl,long:shotLast.long};renderShotBox();let code=null,p=null,tier=null;
-  try{const r=await sampleNs(shotPrompt(n),{images:shotLast.blobs,modelTier:'default',signal:ctl.signal,...(fresh?{cache:false}:{})});
+  shotRun({blobs:out.map(x=>x.blob),long:out.some(x=>x.long),batch:null},false)}
+/* one call per user action; "再讀一次" and "重讀" ask again without the cache */
+async function shotRun(job,fresh){if(!job||!canEstimate()||shotSt.phase==='reading')return;const ctl=new AbortController(),n=job.blobs.length;
+  shotLast=job;shotSt={phase:'reading',n,ctl,long:job.long};renderShotBox();let code=null,p=null,tier=null;
+  try{const r=await sampleNs(shotPrompt(n),{images:job.blobs,modelTier:'default',signal:ctl.signal,...(fresh?{cache:false}:{})});
     tier=r.modelTierApplied||null;p=parseShot(r.text,r.truncated);if(!p.ok)code=p.err}
   catch(err){let c=err&&err.code;if(!SAMPLE_CODES.includes(c))c='upstream_error';if(c==='invalid_json')c='invalid';
     if(HIDE_CODES.includes(c))sampleOff=true;if(BUG_CODES.includes(c))console.warn('sample '+c+': '+(err&&err.message||''));code=c}
-  if(code){const [text,act]=shotMsg(code);shotSt={phase:'msg',text,act};shotTell(text);if(sampleOff)renderCur();return}
-  const drafts=groupShot(p.items,{units:SHOT_UNITS,order:SHOT_ORDER});
-  if(!drafts.length){shotSt={phase:'msg',text:SHOT_MSG.none[0],act:'pick'};shotTell(SHOT_MSG.none[0]);return}
+  if(code){const [text,act]=shotMsg(code);shotSt={phase:'msg',text,act};shotTell(text);if(sampleOff)renderCur();return} // the drafts already waiting stay as they are
+  let drafts=groupShot(p.items,{units:SHOT_UNITS,order:SHOT_ORDER});
+  const b=job.batch||{id:newId('b'),blobs:job.blobs,long:job.long,saved:new Set()};
+  if(job.batch){drafts=drafts.filter(d=>!b.saved.has(shotKey(d)));shotQ=shotQ.filter(d=>d.batch!==b.id)} // a reading again replaces its own waiting drafts; what was saved is not offered twice
+  if(!drafts.length){shotSt={phase:'msg',text:SHOT_MSG.none[0],act:'pick'};shotLast=null;shotGC();shotTell(SHOT_MSG.none[0]);return}
+  shotBatches.set(b.id,b);
   const meta={at:Date.now(),n,promptVer:SHOT_PROMPT_VER,tier};
-  drafts.forEach((d,i)=>{d.id=newId('s');d.meta=meta;d.skipped=i===0?p.skipped:0});
+  drafts.forEach((d,i)=>{d.id=newId('s');d.meta=meta;d.batch=b.id;d.skipped=i===0?p.skipped:0});
   shotQ.push(...drafts);shotLast=null;shotSt={phase:'idle'};
-  if(dlg.open&&!editing&&!shotCur&&!recDirty){loadDraft(shotQ[0]);return}
+  if(dlg.open&&!editing&&!shotCur&&!recDirty){loadDraft(drafts[0]);return}
   if(dlg.open&&!editing){if(!shotCur)shotSt={phase:'ready'};renderShotBox();renderShotBar();return}
   toast(`截圖讀好了，${shotQ.length} 筆待確認`,[['繼續',shotResume]])}
 function shotTell(text){renderShotBox();if(!dlg.open||editing)toast(text);else $('#recForm .dlg-body').scrollTop=0}
-function shotResume(){if(!shotQ.length)return;if(dlg.open&&editing)dlg.close();loadDraft(shotQ[0])}
+/* from any open form: the dialog stays open and its content is replaced, so no late close event can clear the draft */
+function shotResume(){if(shotQ.length&&!recSaving)loadDraft(shotQ[0])}
 function renderShotBox(){const box=$('#shotBox'),can=canEstimate()&&canWrite,show=!editing&&!shotCur&&(can||shotSt.phase!=='idle'||shotQ.length>0);box.hidden=!show;if(!show){box.innerHTML='';return}
   const pick=t=>`<div class="row"><label class="snap snap2"><input type="file" accept="image/*" multiple class="vh" data-shotfile>${t}</label></div><p class="hint">截圖會送給 Claude 讀取；有姓名或身分證號，可以先在相簿裁切。</p>`;
   let h='';
-  if(shotSt.phase==='reading')h=`<div class="row"><span class="grow" role="status">讀取 ${shotSt.n} 張截圖中…</span><button type="button" data-shot="stop">停止</button></div>${shotSt.long?'<p class="shotnote warn">截圖很長，字可能讀不清楚，建議分段截圖</p>':''}`;
+  if(shotSt.phase==='preparing')h=`<div class="row"><span class="grow" role="status">準備 ${shotSt.n} 張截圖中…</span></div>`;
+  else if(shotSt.phase==='reading')h=`<div class="row"><span class="grow" role="status">讀取 ${shotSt.n} 張截圖中…</span><button type="button" data-shot="stop">停止</button></div>${shotSt.long?'<p class="shotnote warn">截圖很長，字可能讀不清楚，建議分段截圖</p>':''}`;
   else{if(shotQ.length)h+=`<div class="row"><span class="grow">${shotSt.phase==='ready'?`讀出 ${shotQ.length} 筆`:`截圖讀出的紀錄還有 ${shotQ.length} 筆沒確認`}</span><button type="button" class="primary" data-shot="go">${shotSt.phase==='ready'?'開始確認':'繼續'}</button><button type="button" class="ghost" data-shot="drop">丟棄</button></div>`;
-    if(shotSt.phase==='msg'){h+=`<p class="shotnote warn" role="status">${esc(shotSt.text)}</p>`;if(shotSt.act==='retry'&&can)h+=`<div class="row"><button type="button" data-shot="retry">再讀一次</button></div>`}
-    if(can)h+=pick(shotSt.phase==='msg'&&shotSt.act==='pick'?'重新選截圖':'從截圖填入')}
+    const msg=shotSt.phase==='msg';
+    if(msg){h+=`<p class="shotnote warn" role="status">${esc(shotSt.text)}</p>`;if(shotSt.act==='retry'&&can&&shotLast)h+=`<div class="row"><button type="button" data-shot="retry">再讀一次</button></div>`}
+    if(can&&!(msg&&shotSt.act==='none'))h+=pick(msg&&shotSt.act==='pick'?'重新選截圖':'從截圖填入')}
   box.innerHTML=h}
-function renderShotBar(){const bar=$('#shotBar'),d=shotCur;bar.hidden=!d;if(!d){bar.innerHTML='';return}
-  bar.innerHTML=`<span class="t">截圖 ${shotPos+1}/${shotPos+shotQ.length}・${esc(d.exam?EX[d.exam].name:'檢查項目待選')}${d.date?'・'+md(d.date):''}</span><button type="button" class="ghost" data-shot="skip">略過這筆</button>${d.skipped?`<span class="shotnote warn" style="flex-basis:100%">有 ${d.skipped} 項看不懂，已略過</span>`:''}`}
+function renderShotBar(){const bar=$('#shotBar'),d=shotCur;bar.hidden=!d;if(!d){bar.innerHTML='';return}const off=recSaving?' disabled':'';
+  bar.innerHTML=`<span class="t">截圖 ${shotPos+1}/${shotPos+shotQ.length}・${esc(d.exam?EX[d.exam].name:'檢查項目待選')}${d.date?'・'+md(d.date):''}</span>${shotBatches.has(d.batch)&&canEstimate()?`<button type="button" class="ghost" data-shot="reread"${off}>重讀</button>`:''}<button type="button" class="ghost" data-shot="skip"${off}>略過這筆</button>${d.skipped?`<span class="shotnote warn" style="flex-basis:100%">有 ${d.skipped} 項看不懂，已略過</span>`:''}`}
 /* tags and notes on what the screenshot filled; cleared whenever the form is opened again */
 function shotNote(el,text,warn){const f=el&&el.closest('.field');if(!f)return;const n=document.createElement('span');n.className='shotnote'+(warn?' warn':'');n.dataset.shotn='';n.textContent=text;f.appendChild(n);if(warn)f.classList.add('shotwarn')}
 function shotTag(el){const l=el&&el.closest('.field')?.querySelector('label');if(l&&!l.querySelector('.shottag'))l.insertAdjacentHTML('beforeend','<span class="shottag" data-shotn>截圖</span>')}
 function shotClear(){$$('#recForm [data-shotn]').forEach(n=>n.remove());$$('#recForm .shotwarn').forEach(f=>f.classList.remove('shotwarn'));$('#shotExamNote').hidden=true;renderShotBar()}
 function metaLine(m,value){return[m.ref?'參考 '+m.ref:'',m.flag||'',m.raw&&m.raw!==value&&value!==m.raw+' '+m.unit?'原文 '+m.raw:''].filter(Boolean).join('・')}
 function shotMetaNotes(meta){for(const i of $$('[data-lab]')){const m=meta&&meta[i.dataset.lab];if(m){const t=metaLine(m,i.value.trim());if(t)shotNote(i,t,false)}}}
+/* the user's corrections live on the draft: closing, skipping and undo, or switching the exam never brings back the raw reading */
+const labVal=(d,k)=>d.edits&&k in d.edits?d.edits[k]:d.labs[k]?.value;
+function shotStash(){const d=shotCur;if(!d)return;d.edits=d.edits||{};for(const i of $$('[data-lab]'))d.edits[i.dataset.lab]=i.value;
+  d.form={exam:$('#fExam').value,date:$('#fDate').value,place:$('#fPlace').value,report:$('#fReport').value,note:$('#fNote').value,doctor:$('#fDoctor').value,due:$('#fDue').value,interval:$('#fInterval').value,preset:$('#fPreset').value,ctx:{...formCtx},rc:$('#fRecheck').checked,rcTouched}}
 /* the lab fields of the exam now chosen; labs that belong elsewhere are announced and go into the report on save */
 function shotFillLabs(){const d=shotCur;if(!d)return;
-  for(const i of $$('[data-lab]')){const k=i.dataset.lab,c=d.labs[k];
-    if(c){i.value=c.value;shotTag(i);const t=metaLine(c,c.value);if(t)shotNote(i,t,false);
+  for(const i of $$('[data-lab]')){const k=i.dataset.lab,c=d.labs[k],v=labVal(d,k);if(v!=null)i.value=v;
+    if(c){shotTag(i);const t=metaLine(c,c.value);if(t)shotNote(i,t,false);
       if(c.unclear)shotNote(i,c.value?'截圖看不清楚，請核對':'截圖看不清楚',true);
       if(c.unitNote==='diff')shotNote(i,`單位和表單（${SHOT_UNITS[k]}）不同，未換算`,true);else if(c.unitNote==='none'&&c.value)shotNote(i,'截圖沒有單位',true)}
-    else if(d.conflicts[k])shotNote(i,'截圖裡有不同的值：'+d.conflicts[k].join('、'),true)}
-  const away=Object.keys(d.labs).filter(k=>d.labs[k].value&&!$$('[data-lab]').some(i=>i.dataset.lab===k));
-  $('#shotExamNote').hidden=!away.length;$('#shotExamNote').textContent=away.length?`換成這個項目後，${away.join('、')} 會放進報告內容`:''}
-function shotAway(){const d=shotCur;if(!d)return[];const here=new Set($$('[data-lab]').map(i=>i.dataset.lab));
-  return Object.entries(d.labs).filter(([k,c])=>!here.has(k)&&c.value).map(([k,c])=>`${k} ${c.raw||c.value}${c.unit?' '+c.unit:''}${c.ref?'（參考值 '+c.ref+'）':''}${c.flag&&!(c.raw||'').toUpperCase().includes(c.flag)?' '+c.flag:''}`)}
-function loadDraft(d){if(!d)return;openRecord(d.exam||EXAMS[0].id);shotCur=d;
-  if(!d.exam){$('#fExam').value='';fillPresets('')}else shotTag($('#fExam'));
-  $('#fDate').value=d.date||'';$('#fPlace').value=d.place||'';$('#fReport').value=d.report||'';
+    else if(d.conflicts[k])shotNote(i,'截圖裡有不同的值：'+d.conflicts[k].map(x=>x.value+(x.unit?' '+x.unit:'')).join('、'),true)}
+  const away=shotAwayKeys();$('#shotExamNote').hidden=!away.length;$('#shotExamNote').textContent=away.length?`換成這個項目後，${away.join('、')} 會放進報告內容`:''}
+function shotAwayKeys(){const d=shotCur;if(!d)return[];const here=new Set($$('[data-lab]').map(i=>i.dataset.lab));
+  return[...new Set([...Object.keys(d.labs),...Object.keys(d.edits||{})])].filter(k=>!here.has(k)&&String(labVal(d,k)??'').trim())}
+function shotAway(){const d=shotCur;return shotAwayKeys().map(k=>{const v=String(labVal(d,k)).trim(),c=d.labs[k];
+  return c&&v===c.value?`${k} ${c.raw||c.value}${c.unit?' '+c.unit:''}${c.ref?'（參考值 '+c.ref+'）':''}${c.flag&&!(c.raw||'').toUpperCase().includes(c.flag)?' '+c.flag:''}`:`${k} ${v}`})} // a corrected value goes in as corrected
+const shotClsOf=d=>d.cls.preset&&!d.clsOk?{pending:true,text:d.cls.text}:d.cls.hint?{pending:false,hint:d.cls.hint}:null;
+function loadDraft(d){if(!d)return;if(shotCur&&shotCur!==d)shotStash();const f=d.form;
+  openRecord((f?f.exam:d.exam)||EXAMS[0].id);shotCur=d;
+  if(f){if(!f.exam){$('#fExam').value='';fillPresets('')}
+    const pr=EX[f.exam]?.presets?.find(x=>x.k===f.preset);if(EX[f.exam]?.presets){$('#fPreset').value=f.preset;$('#presetHint').textContent=pr?pr.src:''}
+    $('#fInterval').value=f.interval;$('#fDate').value=f.date;$('#fPlace').value=f.place;$('#fReport').value=f.report;$('#fNote').value=f.note;$('#fDoctor').value=f.doctor;$('#fDue').value=f.due;
+    formCtx={...f.ctx};rcTouched=f.rcTouched;$('#fRecheck').checked=f.rc}
+  else{if(!d.exam){$('#fExam').value='';fillPresets('')}
+    $('#fDate').value=d.date||'';$('#fPlace').value=d.place||'';$('#fReport').value=d.report||'';
+    if(d.cls.preset&&!d.clsOk&&EX[d.exam]?.presets?.some(p=>p.k===d.cls.preset)){$('#fPreset').value=d.cls.preset;applyPreset()}}
+  if(d.exam)shotTag($('#fExam'));
   if(d.date){shotTag($('#fDate'));if(d.dateNote==='report')shotNote($('#fDate'),'截圖只有報告日期，請確認檢查日期',true);if(d.date>logicalToday())shotNote($('#fDate'),'晚於今天',true)}
   else if(d.unclear.includes('date'))shotNote($('#fDate'),'截圖看不清楚',true);
   if(d.place)shotTag($('#fPlace'));if(d.unclear.includes('place'))shotNote($('#fPlace'),'截圖看不清楚',true);
-  if(d.report)shotTag($('#fReport'));if(d.reportCut)shotNote($('#fReport'),'報告太長，已截斷',true);if(d.unclear.includes('report'))shotNote($('#fReport'),'截圖有看不清楚的地方，請核對',true);
-  shotFillLabs();
-  if(d.cls.preset&&EX[d.exam]?.presets?.some(p=>p.k===d.cls.preset)){$('#fPreset').value=d.cls.preset;applyPreset();shotCls={pending:true,text:d.cls.text}}
-  else shotCls=d.cls.hint?{pending:false,hint:d.cls.hint}:null;
+  if(d.report)shotTag($('#fReport'));if(d.noText)shotNote($('#fReport'),'截圖沒有讀到報告全文',true);if(d.reportCut)shotNote($('#fReport'),'報告太長，已截斷',true);if(d.unclear.includes('report'))shotNote($('#fReport'),'截圖有看不清楚的地方，請核對',true);
+  shotFillLabs();shotCls=shotClsOf(d);
   updatePreview();renderCtx();renderDup();renderShotBox();renderShotBar();renderShotCls();$('#recForm .dlg-body').scrollTop=0}
 /* a category read from the screenshot is shown, never saved until the user confirms it or picks one */
 function renderShotCls(){const f=$('#presetField');$$('#presetField [data-shotc]').forEach(n=>n.remove());f.classList.remove('shotwarn');
   if(shotCls?.pending){f.classList.add('shotwarn');f.insertAdjacentHTML('beforeend',`<div class="shotcls" data-shotc><span class="grow">由截圖判讀，請確認：截圖寫「${esc(shotCls.text)}」</span><button type="button" data-shot="clsok">確認分類</button></div>`)}
   else if(shotCls?.hint)f.insertAdjacentHTML('beforeend',`<span class="shotnote warn" data-shotc>${esc(shotCls.hint)}</span>`);
-  const b=$('#btnSave');b.textContent=shotCls?.pending?'先確認報告分類':'儲存';b.disabled=!!shotCls?.pending}
+  const b=$('#btnSave');b.textContent=shotCls?.pending?'先確認報告分類':'儲存';b.disabled=recSaving||!!shotCls?.pending}
 function renderDup(){const n=$('#dupNote'),exam=$('#fExam').value,date=$('#fDate').value,r=editing?null:dupOf(exam,date,[...shotSaved,...records]);n.hidden=!r;if(!r){n.textContent='';return}
   const L=Object.entries(r.labs||{}).slice(0,2).map(([k,v])=>k+' '+v).join('・')||(r.report||'').slice(0,20);
   n.textContent=`這天已有一筆${EX[exam].name}${L?'（'+L+'）':''}。可能重複，仍要新增就按儲存。`}
-function shotNext(how,saved){const d=shotCur;shotQ=shotQ.filter(x=>x!==d);shotPos++;if(how==='saved'){shotSavedN++;if(saved)shotSaved.push(saved)}shotCur=null;
-  const undo=how==='skip'?[['撤銷',()=>{shotQ.unshift(d);shotPos=Math.max(0,shotPos-1);loadDraft(d)}]]:[];
+function shotDoneOne(d,how,saved){shotQ=shotQ.filter(x=>x!==d);shotPos++;if(how==='saved'){shotSavedN++;if(saved)shotSaved.push(saved);shotBatches.get(d.batch)?.saved.add(shotKey(d))}}
+function shotEnd(){const n=shotSavedN;shotPos=0;shotSavedN=0;shotSaved=[];return n}
+function shotNext(how,saved){const d=shotCur;if(how==='skip')shotStash();shotDoneOne(d,how,saved);shotCur=null;
+  const undo=how==='skip'?[['撤銷',()=>{if(recSaving)return;shotQ.unshift(d);shotPos=Math.max(0,shotPos-1);loadDraft(d)}]]:[];shotGC(how==='skip');
   if(shotQ.length){loadDraft(shotQ[0]);toast(how==='saved'?`已儲存 ${shotPos}/${shotPos+shotQ.length}`:'已略過',undo);return}
-  const n=shotSavedN;shotPos=0;shotSavedN=0;shotSaved=[];dlg.close();toast(how==='saved'?(n>1?`已儲存 ${n} 筆`:'已儲存'):'已略過',undo)}
-$('#recForm').addEventListener('input',e=>{if(!e.target.closest('#shotBox'))recDirty=true});
+  const n=shotEnd();dlg.close();toast(how==='saved'?(n>1?`已儲存 ${n} 筆`:'已儲存'):'已略過',undo)}
+/* a save finishes for the draft it started from, whatever the form shows by then */
+function shotSaved1(d,full){if(shotCur===d&&dlg.open){shotNext('saved',full);return}
+  shotDoneOne(d,'saved',full);shotGC();if(!shotQ.length)shotEnd();toast('已儲存');renderShotBox();renderShotBar()}
+function shotReread(){const d=shotCur,b=d&&shotBatches.get(d.batch);if(!b||recSaving||shotBusy())return;shotStash();
+  openRecord();shotRun({blobs:b.blobs,long:b.long,batch:b},true)}
+$('#recForm').addEventListener('input',e=>{if(e.target.closest('#shotBox'))return;recDirty=true;if(shotCur&&e.target.matches('[data-lab]'))(shotCur.edits=shotCur.edits||{})[e.target.dataset.lab]=e.target.value});
 $('#recForm').addEventListener('change',e=>{if(e.target.matches('[data-shotfile]')){const f=e.target.files;shotPick(f).finally(()=>{e.target.value=''})}});
 $('#recForm').addEventListener('click',e=>{const b=e.target.closest('[data-shot]');if(!b)return;const a=b.dataset.shot;
-  if(a==='stop')shotSt.ctl?.abort();
-  else if(a==='retry')shotRun(true);
+  if(a==='stop'){shotSt.ctl?.abort();return}
+  if(recSaving)return; // nothing about the drafts changes while one is being saved
+  if(a==='retry')shotRun(shotLast,true);
   else if(a==='go'){shotSt={phase:'idle'};loadDraft(shotQ[0])}
-  else if(a==='drop'){const q=shotQ,p=shotPos;shotQ=[];shotPos=0;shotSavedN=0;shotSt={phase:'idle'};renderShotBox();toast(`已丟棄 ${q.length} 筆`,[['撤銷',()=>{shotQ=[...q,...shotQ];shotPos=p;renderShotBox()}]])}
+  else if(a==='drop'){const q=shotQ,p=shotPos;shotQ=[];shotPos=0;shotSavedN=0;shotSt={phase:'idle'};shotGC(true);renderShotBox();toast(`已丟棄 ${q.length} 筆`,[['撤銷',()=>{shotQ=[...q,...shotQ];shotPos=p;renderShotBox()}]])}
   else if(a==='skip')shotNext('skip');
-  else if(a==='clsok'){if(shotCls)shotCls.pending=false;renderShotCls();updatePreview()}});
-dlg.addEventListener('close',()=>{shotCur=null;shotCls=null;shotClear();renderShotCls();if(shotSt.phase==='msg'||shotSt.phase==='ready')shotSt={phase:'idle'}});
-
+  else if(a==='reread')shotReread();
+  else if(a==='clsok'){if(shotCur)shotCur.clsOk=true;shotCls=shotCur?shotClsOf(shotCur):null;renderShotCls();updatePreview()}});
+/* a close event can arrive after the dialog was opened again: then it belongs to the earlier form and changes nothing */
+dlg.addEventListener('close',()=>{if(dlg.open)return;shotStash();shotCur=null;shotCls=null;shotClear();renderShotCls();if(shotSt.phase==='msg'||shotSt.phase==='ready')shotSt={phase:'idle'}});
 /* ================= MEDS ================= */
 /* clinical text below is the verified wording in docs/specs/phase-B.md §5; change it only together with a fresh check of the source */
 const ATA='ATA 2014 指引（Jonklaas J, et al. Thyroid 2014;24:1670–1751，doi:10.1089/thy.2014.0028）';

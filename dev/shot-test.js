@@ -38,6 +38,9 @@ eq('真的不同',[H.unitSame('pmol/L','ng/dL'),H.unitSame('ng/mL','ng/dL'),H.un
 /* 3.4 名稱 */
 const al=Object.entries(H.SHOT_LABS).flatMap(([f,[,a]])=>a.map(x=>[x,f]));
 eq('對應表每一種寫法都對得到自己的欄位（'+al.length+' 種）',al.filter(([a,f])=>H.labField(a)!==f),[]);
+const FIXED={TSH:['TSH','hTSH','Thyroid stimulating hormone','甲狀腺刺激素'],'Free T4':['Free T4','FT4','Free thyroxine','游離甲狀腺素'],T3:['T3','Total T3'],'Anti-TPO':['Anti-TPO','TPO Ab'],'Anti-Tg':['Anti-Tg','TgAb'],Thyroglobulin:['Thyroglobulin','Tg'],
+  E2:['E2','Estradiol'],P4:['P4','Progesterone'],FSH:['FSH'],LH:['LH'],AMH:['AMH','Anti-Müllerian hormone'],PRL:['PRL','Prolactin'],Testosterone:['Testosterone','Total testosterone']};
+eq('固定的名稱對照表（不從程式產生預期值）',Object.entries(FIXED).flatMap(([f,a])=>a.filter(x=>H.labField(x)!==f).map(x=>x+'→'+H.labField(x))),[]);
 eq('正規化：大小寫、空白、-、括號、全形',[H.labField('free t4'),H.labField('F T 4'),H.labField('ＦＴ４'),H.labField('Anti TPO'),H.labField('(TSH)'),H.labField('anti-mullerian hormone')],['Free T4','Free T4','Free T4','Anti-TPO','TSH','AMH']);
 eq('故意不對應：FT3、Free T3、Free testosterone、Anti-microsomal、LDL',[H.labField('FT3'),H.labField('Free T3'),H.labField('Free testosterone'),H.labField('Anti-microsomal antibody'),H.labField('LDL-C')],[null,null,null,null,null]);
 eq('有檢驗名稱時只看名稱；沒有名稱才看醫令名稱',[H.labField('FT3','甲狀腺刺激素'),H.labField(null,'甲狀腺刺激素'),H.labField('','游離甲狀腺素'),H.labField(null,'甲狀腺功能檢查')],[null,'TSH','Free T4',null]);
@@ -48,7 +51,7 @@ eq('BI-RADS 1–5 與 0 對到既有分類',['1','2','3','0','4','4A','4b','4C',
 eq('BI-RADS 的寫法：category、冒號、BIRADS、乳房 X 光與電腦斷層',[cp('breast_mammo','BIRADS: 3'),cp('breast_ct',null,'Final assessment BI-RADS category 2, benign'),cp('breast_us','BI-RADS 5th edition')],['b3','b12',null]);
 eq('BI-RADS 6 不建議並提示',H.classPreset('breast_us','BI-RADS 6').hint,'BI-RADS 6 沒有對應的分類，請自己選');
 eq('兩個不同分類不建議並提示',[cp('breast_mammo','R: BI-RADS 2; L: BI-RADS 3'),H.classPreset('breast_mammo','R: BI-RADS 2; L: BI-RADS 3').hint],[null,'截圖裡有不只一個分類（2、3），請自己選']);
-eq('兩個分類對到同一個既有分類時照建議（1 與 2）',cp('breast_us','R: BI-RADS 1, L: BI-RADS 2'),'b12');
+eq('兩個原始分類即使對到同一個既有分類（1 與 2）也不建議（規格 3.6；審查 D-12）',cp('breast_us','R: BI-RADS 1, L: BI-RADS 2'),null);
 eq('Lung-RADS 0–4X',['0','1','2','3','4A','4B','4X','4'].map(n=>cp('lung_ldct','Lung-RADS '+n)),['l0','l12','l12','l3','l4a','l4b','l4b',null]);
 eq('Lung-RADS 的版本號不是分類；2S 照 2',[cp('lung_ldct','Lung-RADS v2022 category 2S'),cp('lung_ldct','Lung-RADS 2022: 3'),cp('lung_ldct','LungRADS v1.1 category 4A')],['l12','l3','l4a']);
 eq('甲狀腺：寫了 ATA 才建議',[cp('thy_us','ATA high suspicion'),cp('thy_us',null,'Pattern: ATA intermediate suspicion'),cp('thy_us','ATA low suspicion'),cp('thy_us','依 ATA 分類為高度懷疑'),cp('thy_us','高度懷疑'),cp('thy_us','ACR TI-RADS 4')],['high','lowint','lowint','high',null,null]);
@@ -89,7 +92,7 @@ eq('unclear：值看不清楚時空著並標記；日期看不清楚；只有報
   [true,'',null,['date'],'2026-10-25','report']);
 eq('unclear：沒有日期的排在最後',c1.map(d=>d.date),['2026-10-25',null]);
 const f1=G('conflict');
-eq('conflict：兩個不同的值不填，兩個都寫進報告內容；其他欄位照填',[f1[0].labs.TSH,f1[0].labs['Free T4'].value,f1[0].report],[undefined,'1.0','截圖裡 TSH 有不同的值：5.2、5.3']);
+eq('conflict：兩個不同的值不填，兩列完整（含單位）寫進報告內容；其他欄位照填',[f1[0].labs.TSH,f1[0].labs['Free T4'].value,f1[0].report],[undefined,'1.0','截圖裡 TSH 有不同的值：\nTSH 5.2 μIU/mL\nTSH 5.3 μIU/mL']);
 const r1=G('report');
 eq('report：每份一筆、依日期新到舊、分類只在寫出時建議',[r1.map(d=>d.exam),r1.map(d=>d.cls.preset)],[['breast_us','lung_ldct','thy_us','gi_colo'],['b3','l12',null,null]]);
 const rm=G('reportMulti');
@@ -104,7 +107,7 @@ eq('一個看不清楚、一個清楚：用清楚的',H.groupShot([{type:'lab',n
 const recs=[{id:'a',exam:'thy_lab',date:'2026-07-01'},{id:'b',exam:'breast_us',date:'2026-07-01'}];
 eq('同日同項才算重複；排除自己；沒有日期或項目不算',[H.dupOf('thy_lab','2026-07-01',recs)?.id,H.dupOf('gyn_horm','2026-07-01',recs),H.dupOf('thy_lab','2026-07-02',recs),H.dupOf('thy_lab','2026-07-01',recs,'a'),H.dupOf(null,'2026-07-01',recs),H.dupOf('thy_lab',null,recs)],['a',null,null,null,null,null]);
 eq('剛存、還沒有編號的草稿也算重複（沒有 skipId 時不排除）',H.dupOf('gyn_horm','2026-07-01',[{exam:'gyn_horm',date:'2026-07-01'}])?.exam,'gyn_horm');
-eq('上限常數',[H.SHOT_MAX,H.SHOT_PROMPT_VER],[6,'d1']);
+eq('上限常數；提示詞版本 d2（拿掉模型端去重）',[H.SHOT_MAX,H.SHOT_PROMPT_VER],[6,'d2']);
 
 console.log(fail?`\n${fail} FAIL`:'\nall ok');
 if(!process.env.TZ&&!fail){try{execFileSync(process.execPath,[__filename],{env:{...process.env,TZ:'America/New_York'},stdio:'inherit'})}catch(_){process.exit(1)}}

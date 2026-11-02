@@ -72,6 +72,7 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 - `dev/meal-page2-test.js`：飲食頁與單餐畫面（每一種估算錯誤的文字與按鈕、再估一次、快取、停止、很久沒有更新、跨裝置競爭、手動值、5 次上限、截斷、刪除與撤銷、跳脫、凌晨的時間、相簿、試用對照）、版面與截圖。
 - `dev/shot-test.js`：從 `src/index.html` 抽出 `shot helpers` 區塊，測試截圖讀取的規則（民國／西元日期、數值與旗標、單位寫法、檢驗名稱對應、報告分類對應、分組、去個資、解析、重複）；也在非台北時區再跑一次。
 - `dev/shot-page-test.js`：從截圖填入檢查紀錄的頁面行為（能力檢查、送出的圖片、張數上限、停止、讀取中關掉面板、每個截圖情境、分類確認、重複提示、略過與丟棄、存檔失敗、編輯時 `labMeta` 的保留、每一種錯誤碼）、版面與截圖。截圖是 canvas 畫的合成圖。
+- `dev/review-d-test.js`：D 階段程式審查 D-01–D-13 的重現（草稿的生命週期與存檔、修正保留、分類與去重規則、去個資、重讀），加上匯出匯入往返與點擊命中。
 - `dev/shot-fixtures.js`：mock 讀截圖時的假資料回覆（`cfg.sample.shot`）。
 - `dev/review-c-test.js`：C 階段程式審查 C1、C3–C8 的重現（縮圖旗標與備份、估算中的備份、補充說明、時間推移、mock 的同意視窗、訊息、出處）。
 - `dev/med-page-test.js`：服藥細節、用藥頁、TSH 複查與到期卡、抽血表單、回診摘要、匯出匯入、設定頁劑量、版面與截圖。

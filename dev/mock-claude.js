@@ -147,7 +147,9 @@
       const l=(o.images instanceof Blob)?[o.images]:[...o.images];
       if(l.length>lim.maxCount)throw sErr('image_rejected','too many images');
       for(const b of l){if(!IMG_TYPES.includes(b.type)||!lim.mediaTypes.includes(b.type))throw sErr('image_rejected','unsupported type '+b.type);if(b.size>lim.maxInputBytes)throw sErr('image_rejected','too large')}
-      imgs=await Promise.all(l.map(imgInfo))}
+      imgs=await Promise.all(l.map(imgInfo));
+      /* sample.d.ts：解不開、超過 20 MB、單邊超過 10,000 px 或超過 64 百萬像素都是 image_rejected */
+      for(const i of imgs){if(i.w==null)throw sErr('image_rejected','undecodable');if(i.size>20e6||i.w>10000||i.h>10000||i.w*i.h>64e6)throw sErr('image_rejected','too large')}}
     const tier=o.modelTier||'default';
     const key=JSON.stringify([verb,input,tier,o.model??null,o.effort??null,imgs.map(i=>i.hash)]);
     const rec={verb,input,opts:{modelTier:o.modelTier,cache:o.cache,model:o.model,effort:o.effort,signal:!!signal},images:imgs.map(({hash,...r})=>r),cached:false,upstream:false,at:Date.now()};
