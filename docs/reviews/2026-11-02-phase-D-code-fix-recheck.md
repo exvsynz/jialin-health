@@ -1,5 +1,7 @@
 # D 階段程式審查修正複核
 
+> **最新複核（`fb0517d`）：仍有 1 項高嚴重度問題，R2-after「重讀完成後撤銷」會造成重複存檔。R1、R3–R7、C1／C2 的原重現均通過，R4-reskip 亦通過。詳見第 8 節。下列第 1–7 節保留為 `78c39b9` 的歷史審查，不是目前待修清單。**
+
 日期：2026-11-02（Asia/Taipei）。標的：`main` 的 **`78c39b9fb5c602926e0cb5d52cc6644b0cd0e766`**；修正差異：`9b24306..78c39b9`。原審查標的：`218577e2d0a0f299ea35ac1dbe98501896ea0ba9`。
 
 **結論：D-01–D-15 為 9 項已修、6 項部分修正、0 項未修。原始重現大多已被修掉，但尚不能把整個 D 階段判為通過。** 本輪確認 7 組新增或殘留問題（R1–R7：3 高、4 中），其中重讀誤刪未存報告、重讀與撤銷交錯造成重複存檔、遲到 close 導致修正與已確認分類遺失，應優先處理。另列兩項在舊版也存在的附帶問題 C1／C2，不算 `78c39b9` 引入。
@@ -234,3 +236,54 @@ node docs/reviews/2026-11-02-phase-D-code-fix-recheck.supplement.test.js R4-resk
 本輪重新取得 [ATA Table 6 原表](https://pmc.ncbi.nlm.nih.gov/articles/PMC4739132/table/T6/)、[ACR 官方託管 v2022 PDF](https://edge.sitecorecloud.io/americancoldf5f-acrorgf92a-productioncb02-3650/media/ACR/Files/RADS/Lung-RADS/Lung-RADS-2022.pdf) 第 2 頁 notes 14／15，以及 [Mayo TPO 檢驗目錄](https://www.mayocliniclabs.com/test-catalog/overview/81765) 的 Aliases。分別支持 §3 R7 的 pattern 名稱與排除特徵文字、D-14 的 4X／S 勘誤、microsomal 別名勘誤。
 
 PMC 整篇入口本輪遇驗證頁；PubMed fulltext 工具只回 metadata／abstract、sections 為空，**不將其當成已讀全文**。Table 6 的獨立原表可以讀取；本輪沒有另外取得 Table 11 全文，也沒有據子代理文字新增臨床主張。這次的分類處理建議限於字串語意與既定規格，不推算診斷、處置或追蹤間隔。
+
+## 8. `fb0517d` 後續修正複核：目前僅列 R2 為待修
+
+日期：2026-11-02。審查標的固定為 **`fb0517def5b82db042a562c674113aee47b20ff0`**，不是第 1–7 節的舊版。已讀這次修正差異、Claude 處理說明後半與規格「複核後的修改」。本輪由 Codex 主審直接執行既有測試，不新增子代理或臨床判讀。
+
+開始時遠端 main 已是 `fb0517d`；交付分支為 `bd6c80c`（產品程式與 `fb0517d` 相同，只有審查檔案增加）。這是讀取到的既有遠端狀態，本輪沒有合併或更新 main，也沒有改動 `src/`、`dev/`。
+
+### 8.1 實跑結果
+
+使用 `git show fb0517d:src/index.html` 的原始內容，以 `SRC` 指向快照；blob SHA 驗證為 `1ba4a90f4446f4a352fa60a89539a049009e9de0`，與指定 commit 完全一致。harness、mock、fixtures 在兩版間無差異。`dev/review-d2-test.js` 取自 `fb0517d`，放在 repo 外執行時只改相對 require 路徑，不改斷言、產品函式或合成資料。Node／Playwright／Chromium 版本沿用 §7。
+
+| 驗證 | 本輪結果 |
+|---|---|
+| `dev/review-d2-test.js` 全套（R1–R7、C1／C2、controls、original-D09） | **42/42**；含分類、修正值、真正複查開關、慢存檔與三種面板 toast 對照 |
+| `dev/review-d-test.js` | **45/45** |
+| 補充 `R2-after` | **0/2**：佇列去重與實際寫入筆數均失敗 |
+| 補充 `R4-reskip` | **2/2**：第二次撤銷期限內圖片與重讀按鈕都保留 |
+| 指定 HTML 的 script 抽出後 `node --check` | 通過 |
+
+`dev/review-d2-test.js` 對原測試的 3000 ms 慢存檔延遲、C1 等待非同步 close 最多 1 秒，與處理說明一致；沒有放寬功能預期。其 R2 只測「重讀中按撤銷」，沒有測「重讀完成後才按舊撤銷」，因此 42/42 與下方殘留缺陷並不矛盾。
+
+裁決：**R2 部分修正；R1、R3、R4、R5、R6、R7、C1、C2 的原重現均已修。** 本輪限定這批修正與指定時序，沒有將通過擴張為完整程式或真實 OCR 已驗證；未重跑整個 `dev/test.sh`、未做真機測試。
+
+### 8.2 唯一仍可重現的問題：R2-after｜高｜已略過草稿漏掉作廢標記
+
+**位置（`fb0517d`）：** `src/index.html:1975`，`shotRun(job.batch)` 只遍歷 `shotQ` 標記 `d.stale`；`:2046`／`:2048`，略過先將草稿移出 `shotQ`；`:2049`，`shotNext` 的撤銷閉包只以該草稿的 `stale` 及當下 busy 狀態判斷。
+
+**重現：** mock `multi` 讀出 A=thy_lab、B=gyn_horm → 略過 A → 在 B 按重讀 → **等重讀成功完成** → 在原撤銷期限內按舊 toast 的「撤銷」→ 依序存前兩筆。
+
+**實測：** 撤銷後 queue 為 `['thy_lab','thy_lab','gyn_horm']`；完成前兩次存檔後，mock 的成功寫入紀錄有 **2 筆 thy_lab**。測試使用真正可見的 toast 按鈕與正常 click，沒有對隱藏元素強制觸發事件，也沒有替換產品函式。
+
+**原因：** A 在略過時已離開 `shotQ`，只被撤銷閉包持有；重讀完成的作廢迴圈看不到它，A 的 `stale` 仍為空。此時 `shotBusy()` 已是 false，撤銷重新插入 A；新讀出的 A 也在佇列，因此兩筆都能各自合法通過存檔鎖。這不是同一 submit 重入，也不是使用者主動新增另一份同日報告。
+
+**局部修改建議：** 讓作廢依據綁定批次讀取代次，而非只標記當時在佇列的物件。草稿和撤銷閉包記住建立時的 batch generation；重讀成功替換後遞增 generation，撤銷與 submit 都檢查是否過期。或集中管理同批所有草稿（包括已略過、可撤銷者）並一併作廢。失敗重讀不要作廢原草稿。無須重寫表單。
+
+**來源與驗收：** 這是 §7 的既有補充反例，不是本輪新增模型意見；候選來源與模型核實限制維持 §7.2。Codex 主審已在 `fb0517d` 親自執行並確認失敗。可直接執行：
+
+```sh
+# 使用 fb0517d 的 src/index.html；若目前 checkout 不同，先令 SRC 指向該版本快照
+node docs/reviews/2026-11-02-phase-D-code-fix-recheck.supplement.test.js R2-after
+```
+
+在本次標的輸出：
+
+```text
+FAIL R2-after: obsolete undo must not add another thyroid draft → ["thy_lab","thy_lab","gyn_horm"]
+FAIL R2-after: thyroid draft written once → 2
+0/2 passed
+```
+
+下一步只需處理此過期撤銷缺口，再重跑 `R2-after` 與原 R2／controls；其餘已通過項目不需依歷史報告重新修改。本輪沒有新增臨床分類、檢驗名稱或追蹤間隔主張。
