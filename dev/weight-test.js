@@ -1,4 +1,4 @@
-/* 體重面板：第一次使用、「和上次一樣」、晚上估計值、刻度尺連按。
+/* 體重面板：第一次使用、「和上次一樣」、晚上估計值、刻度尺連按、點大數字直接打字。
    執行：node dev/weight-test.js */
 const {open,close,sampleSeed,check,summary}=require('./harness');
 const T='2026-10-30';
@@ -63,6 +63,73 @@ const sheet=page=>page.evaluate(()=>({
     await page.evaluate(()=>document.querySelector('#ruler').dispatchEvent(new Event('scroll')));await wait(100);
     const v2=parseFloat((await sheet(page)).big);
     check('刻度尺位置與大字一致（重送 scroll 事件數值不變）',Math.abs(v2-v1b)<1e-9,{v1b,v2});
+    await page.context().close()}
+
+  /* 5. 點大數字直接打字：不離開輸入框就按儲存（用 element.click()，滑鼠點會先讓輸入框失焦觸發 change，蓋掉要測的情況） */
+  const saveNoBlur=page=>page.evaluate(()=>{const f=document.activeElement?.id||null;document.querySelector('#wsSave').click();return f});
+  const toastShown=page=>page.evaluate(()=>!document.querySelector('#toast').hidden&&document.querySelector('#toastText').textContent);
+  {const seed=sampleSeed(T);const {page,doc,errors}=await open({cfg:{latencyComp:true,seed}});await wait(500);
+    await page.click('[data-wslot="am"]');await wait(300);
+    await page.click('#wsBig');await wait(100);
+    let s=await sheet(page);
+    check('點體重大數字：打開鍵盤並聚焦體重欄',s.kbdShown&&s.kbdFocused,s);
+    check('點體重大數字：大數字是有名稱的按鈕',await page.evaluate(()=>{const b=document.querySelector('#wsBig');return b.tagName==='BUTTON'&&b.getAttribute('aria-label').includes('鍵盤輸入')}));
+    await page.keyboard.type('4');await wait(50);
+    s=await sheet(page);
+    check('打到一半（4）：不跳警告、不能儲存',!(await toastShown(page))&&s.saveDisabled,{s,toast:await toastShown(page)});
+    await page.keyboard.type('8.6');await wait(50);
+    s=await sheet(page);
+    check('打字取代舊值（舊值被全選）、大數字與儲存鍵即時更新',(await page.inputValue('#kbdIn'))==='48.6'&&s.big.startsWith('48.6')&&!s.saveDisabled&&s.save.includes('48.6'),{v:await page.inputValue('#kbdIn'),s});
+    const f=await saveNoBlur(page);await wait(400);
+    check('不離開體重欄直接按儲存：存到 48.6',f==='kbdIn'&&(await doc('days/'+T))?.am?.w===48.6,{f,am:(await doc('days/'+T))?.am});
+    /* 晚上估計值：打字就算確認，儲存鍵立刻可以按 */
+    await page.click('[data-wslot="pm"]');await wait(300);
+    s=await sheet(page);check('晚上估計值：打字前不能儲存',s.saveDisabled&&s.save.includes('撥尺確認'),s);
+    await page.click('#wsBig');await page.keyboard.type('49.2');
+    s=await sheet(page);
+    check('晚上估計值：打完不離開欄位，儲存鍵立刻可以按',s.kbdFocused&&!s.saveDisabled&&s.save.includes('49.2'),s);
+    await saveNoBlur(page);await wait(400);
+    check('晚上估計值：存到 49.2',(await doc('days/'+T))?.pm?.w===49.2,(await doc('days/'+T))?.pm);
+    /* 體脂 */
+    await page.click('[data-wslot="am"]');await wait(300);
+    await page.click('#bfBig');await wait(100);
+    check('點體脂大數字：打開鍵盤並聚焦體脂欄',await page.evaluate(()=>!document.querySelector('#kbdRow').hidden&&document.activeElement===document.querySelector('#kbdBf')));
+    /* 體脂清空 = 這次不記 */
+    await page.keyboard.type('26');await page.keyboard.press('Backspace');await page.keyboard.press('Backspace');
+    s=await sheet(page);
+    check('體脂打字後清空：這次不記',await page.evaluate(()=>document.querySelector('#bfState').textContent)==='未記'&&!s.saveDisabled&&s.save.includes('體脂未記'),s);
+    await page.keyboard.type('25.3');
+    s=await sheet(page);check('體脂打字：儲存鍵即時顯示 25.3%',!s.saveDisabled&&s.save.includes('25.3%'),s);
+    await saveNoBlur(page);await wait(400);
+    let am=(await doc('days/'+T))?.am;
+    check('不離開體脂欄直接按儲存：存到 bf 25.3、體重不變',am?.bf===25.3&&am?.w===48.6,am);
+    /* 打過合法值再刪回不合法：不能存成刪掉前的值 */
+    await page.click('[data-wslot="am"]');await wait(300);
+    await page.click('#wsBig');await page.keyboard.type('47.5');await page.keyboard.press('Backspace');await page.keyboard.press('Backspace');await page.keyboard.press('Backspace');
+    s=await sheet(page);
+    check('打 47.5 再刪成 4：儲存鍵不能按',(await page.inputValue('#kbdIn'))==='4'&&s.saveDisabled,{v:await page.inputValue('#kbdIn'),s});
+    await saveNoBlur(page);await wait(300);
+    check('打 47.5 再刪成 4：沒有存成 47.0 或 47.5',(await doc('days/'+T))?.am?.w===48.6,(await doc('days/'+T))?.am);
+    check('沒有 JS 錯誤',!errors.length,errors);
+    await page.context().close()}
+
+  /* 6. 第一次記錄：鍵盤自動打開，打完直接存；輸入 15 不存，失焦才跳範圍警告 */
+  {const {page,doc,errors}=await open({cfg:{latencyComp:true}});await wait(500);
+    await page.click('[data-wslot="am"]');await wait(300);
+    await page.keyboard.type('15');await wait(50);
+    let s=await sheet(page);
+    check('輸入 15：還在欄位內，不跳警告、不能儲存',s.kbdFocused&&!(await toastShown(page))&&s.saveDisabled,{s,toast:await toastShown(page)});
+    await saveNoBlur(page);await wait(300);
+    check('輸入 15：按儲存也不存',(await doc('days/'+T))==null,await doc('days/'+T));
+    await page.keyboard.press('Tab');await wait(100);
+    check('輸入 15：離開欄位時才跳範圍警告',await toastShown(page)==='體重請填 20–200',await toastShown(page));
+    check('輸入 15：離開欄位後仍不能儲存',(await sheet(page)).saveDisabled);
+    await page.click('#wsBig');await page.keyboard.type('48.6');
+    s=await sheet(page);
+    check('第一次記錄：改成 48.6 後儲存鍵即時可以按',!s.saveDisabled&&s.save.includes('48.6'),s);
+    await saveNoBlur(page);await wait(400);
+    check('第一次記錄：不離開欄位直接按儲存，存到 48.6',(await doc('days/'+T))?.am?.w===48.6,(await doc('days/'+T))?.am);
+    check('沒有 JS 錯誤',!errors.length,errors);
     await page.context().close()}
 
   await close();
