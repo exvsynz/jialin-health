@@ -225,6 +225,10 @@ dialog.sheet[open]{animation:up .24s ease-out}
 .bfbig{font-family:var(--f-num);font-weight:300;font-size:1.75rem;line-height:1;font-variant-numeric:tabular-nums}
 .bfbig small{font-size:.85rem;font-weight:400;margin-left:3px}
 .bfbig.untouched{color:var(--muted)}
+/* the two numbers open the keyboard; a faint dashed underline is the only hint */
+button.wbig,button.bfbig{border:0;background:none;padding:0 4px;border-radius:8px;text-decoration:underline dashed var(--faint);text-decoration-thickness:1px;text-underline-offset:.18em}
+button.wbig{align-self:center}
+button.bfbig{min-width:44px;margin:-4px 0} /* 44px to tap, the row keeps its 36px */
 .bfstate{font-size:.78rem;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
 .bfstate.on{color:var(--ink);border-color:var(--ink)}
 .bfrow{display:grid;grid-template-columns:56px minmax(0,1fr) 56px;gap:8px;align-items:center}
@@ -612,13 +616,13 @@ dialog .toast{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
   <div class="sheet-body wsbody">
     <h2 class="wstitle" id="wsTitle"></h2>
     <div class="wsec">
-      <div class="wbig untouched" id="wsBig" aria-live="polite"></div>
+      <button type="button" class="wbig untouched" id="wsBig" aria-live="polite" aria-label="體重，點一下用鍵盤輸入"></button>
       <div class="sub" style="text-align:center" id="wsHint"></div>
       <div class="rwrap" id="rulerWrap"><div class="ruler" id="ruler" tabindex="0" aria-label="體重刻度尺，左右滑動調整"><div class="track" id="track"></div></div><div class="needle"></div></div>
       <div class="steps" id="wsSteps"><button type="button" data-step="-1">−0.1</button><button type="button" data-step="1">＋0.1</button></div>
     </div>
     <div class="wsec bfsec">
-      <div class="bfhead"><span class="lbl">體脂</span><span class="bfbig untouched" id="bfBig" aria-live="polite"></span><span class="bfstate" id="bfState">未記</span><span class="grow"></span><button type="button" class="ghost" id="bfClear" hidden>不記</button></div>
+      <div class="bfhead"><span class="lbl">體脂</span><button type="button" class="bfbig untouched" id="bfBig" aria-live="polite" aria-label="體脂，點一下用鍵盤輸入"></button><span class="bfstate" id="bfState">未記</span><span class="grow"></span><button type="button" class="ghost" id="bfClear" hidden>不記</button></div>
       <div class="bfrow" id="bfRow"><button type="button" data-bfstep="-1" aria-label="體脂 −0.1">−0.1</button><div class="rwrap short" id="bfRulerWrap"><div class="ruler short" id="bfRuler" tabindex="0" aria-label="體脂刻度尺，左右滑動調整"><div class="track" id="bfTrack"></div></div><div class="needle short"></div></div><button type="button" data-bfstep="1" aria-label="體脂 ＋0.1">＋0.1</button></div>
       <div class="sub" id="bfHint" hidden>第一次記錄體脂，請用鍵盤輸入</div>
     </div>
@@ -1630,30 +1634,37 @@ function rebuild(k,v){const R=RL[k];R.sup=true;clearTimeout(R.supT);buildRuler(k
 /* always jump, never animate: a smooth scroll reports in-between positions that would overwrite the value */
 function rulerTo(k,v){const R=RL[k];if(v!=null)$(R.el).scrollTo({left:Math.round((v-R.min)*10)*TICK,behavior:'auto'})}
 const valOf=k=>k==='w'?ws.w:ws.bf;
-function setVal(k,v){if(ws.saving)return;v=r1(v);if(k==='w'){ws.w=v;ws.touched=true}else{ws.bf=v;ws.bfTouched=true}paintSheet()}
+function setVal(k,v){if(ws.saving)return;v=r1(v);if(k==='w'){ws.w=v;ws.touched=true;ws.badW=false}else{ws.bf=v;ws.bfTouched=true;ws.badBf=false}paintSheet()}
 /* body fat is stored only when 已記: touched here, or already stored in this slot */
 const bfStored=()=>ws.bfTouched&&ws.bf!=null;
 function paintSheet(){
   const w=ws.w,big=$('#wsBig');
   big.innerHTML=`${w==null?'—':w.toFixed(1)}<small>kg</small>`;big.classList.toggle('untouched',!ws.touched);
+  big.setAttribute('aria-label',`體重${w==null?'':' '+w.toFixed(1)+' kg'}，點一下用鍵盤輸入`);
   $('#rulerWrap').hidden=w==null;$('#wsSteps').hidden=w==null;
   const prev=(days[ws.date]||{})[ws.slot];
   $('#wsHint').textContent=w==null?'第一次記錄，請輸入體重':prev?'已記錄 '+prev.w.toFixed(1)+' kg，可修改':ws.src==='est'?'預設為今早加平常的早晚差':'預設為上次量的';
   const bf=ws.bf,on=bfStored();
   $('#bfBig').innerHTML=`${bf==null?'—':bf.toFixed(1)}<small>%</small>`;$('#bfBig').classList.toggle('untouched',!on);
+  $('#bfBig').setAttribute('aria-label',`體脂${on?' '+bf.toFixed(1)+'%':' 未記'}，點一下用鍵盤輸入`);
   const st=$('#bfState');st.textContent=on?'已記':'未記';st.classList.toggle('on',on);
   $('#bfRow').hidden=bf==null;$('#bfHint').hidden=bf!=null;
   $('#bfClear').hidden=!(ws.bfTouched&&!(ws.bfSaved&&ws.bf===ws.bf0)); // undo only a change made in this sheet
-  /* an estimate (evening = morning + usual gap) must be confirmed on the ruler; a last measurement may be kept as is */
+  /* a field not being typed in is rewritten from ws below, so it no longer holds 儲存 back */
+  const kbd=!$('#kbdRow').hidden,ae=document.activeElement;if(!kbd||ae!==$('#kbdIn'))ws.badW=false;if(!kbd||ae!==$('#kbdBf'))ws.badBf=false;
+  /* an estimate (evening = morning + usual gap) must be confirmed on the ruler or by typing; a last measurement may be kept as is */
   const btn=$('#wsSave');$('#wSheet').classList.toggle('saving',!!ws.saving);
   if(ws.saving){btn.textContent='儲存中…';btn.disabled=true}
   else if(w==null){btn.textContent='先輸入體重';btn.disabled=true}
+  else if(ws.badW||ws.badBf){btn.disabled=true} // a typed number not (yet) usable: never save the value it replaced
   else if(!ws.touched&&ws.src==='est'){btn.textContent='撥尺確認晚上體重';btn.disabled=true}
   else{btn.textContent=(ws.touched?'記下 ':'和上次一樣 ')+w.toFixed(1)+' kg'+(on?'・'+bf.toFixed(1)+'%':'（體脂未記）');btn.disabled=false}
   if(!$('#kbdRow').hidden){if(document.activeElement!==$('#kbdIn'))$('#kbdIn').value=w==null?'':w.toFixed(1);
     if(document.activeElement!==$('#kbdBf')){$('#kbdBf').value=on?bf.toFixed(1):'';$('#kbdBf').placeholder=bf==null?'':bf.toFixed(1)}}
 }
-function showKbd(on){$('#kbdRow').hidden=!on;$('#kbdBtn').textContent=on?'收起鍵盤':'用鍵盤輸入';if(on){paintSheet();$('#kbdIn').focus()}}
+/* focus() stays inside the tap's own handler, or iOS opens no keyboard; select() lets typing replace the old value */
+function showKbd(on,k='w'){$('#kbdRow').hidden=!on;$('#kbdBtn').textContent=on?'收起鍵盤':'用鍵盤輸入';
+  paintSheet();if(on){const el=$(k==='bf'?'#kbdBf':'#kbdIn');el.focus();el.select()}}
 /* with no earlier value there is nothing to centre a ruler on: type the first one */
 function showInput(){if(ws.w==null)showKbd(true);else rebuild('w',ws.w);if(ws.bf!=null)rebuild('bf',ws.bf)}
 /* body fat starts from the last measurement (same slot first, then the other one), shown as 未記 until moved */
@@ -1674,6 +1685,15 @@ $$('[data-step]').forEach(b=>b.addEventListener('click',()=>{if(ws.w==null)retur
 $$('[data-bfstep]').forEach(b=>b.addEventListener('click',()=>{if(ws.bf==null)return;setVal('bf',ws.bf+Number(b.dataset.bfstep)/10);rulerTo('bf',ws.bf)}));
 $('#bfClear').addEventListener('click',()=>{if(ws.saving)return;ws.bf=ws.bf0;ws.bfTouched=ws.bfSaved;paintSheet();if(ws.bf!=null)rulerTo('bf',ws.bf)});
 $('#kbdBtn').addEventListener('click',()=>showKbd($('#kbdRow').hidden));
+$('#wsBig').addEventListener('click',()=>showKbd(true,'w'));
+$('#bfBig').addEventListener('click',()=>showKbd(true,'bf'));
+/* while typing: a usable number updates the sheet at once, so 儲存 is ready without leaving the field; anything else only holds 儲存 back.
+   The range warning and the ruler rebuild wait for change. */
+$('#kbdIn').addEventListener('input',()=>{if(ws.saving)return;const v=num($('#kbdIn').value);
+  if(v!=null&&v>=20&&v<=200)setVal('w',v);else{ws.badW=true;paintSheet()}});
+$('#kbdBf').addEventListener('input',()=>{if(ws.saving)return;const raw=$('#kbdBf').value.trim(),v=num(raw);
+  if(raw===''){ws.bf=ws.bf0;ws.bfTouched=ws.bfSaved;ws.badBf=false;paintSheet()} // emptied: body fat not recorded this time
+  else if(v!=null&&v>=3&&v<=70)setVal('bf',v);else{ws.badBf=true;paintSheet()}});
 $('#kbdIn').addEventListener('change',()=>{if(ws.saving)return;const v=num($('#kbdIn').value);if(v==null||v<20||v>200){toast('體重請填 20–200');return}setVal('w',v);rebuild('w',v)});
 $('#kbdBf').addEventListener('change',()=>{if(ws.saving)return;const raw=$('#kbdBf').value.trim();
   if(raw===''){ws.bf=ws.bf0;ws.bfTouched=ws.bfSaved;paintSheet();if(ws.bf!=null)rebuild('bf',ws.bf);return} // left empty: body fat not recorded this time
