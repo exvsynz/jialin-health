@@ -110,6 +110,25 @@ const sheet=page=>page.evaluate(()=>({
     check('打 47.5 再刪成 4：儲存鍵不能按',(await page.inputValue('#kbdIn'))==='4'&&s.saveDisabled,{v:await page.inputValue('#kbdIn'),s});
     await saveNoBlur(page);await wait(300);
     check('打 47.5 再刪成 4：沒有存成 47.0 或 47.5',(await doc('days/'+T))?.am?.w===48.6,(await doc('days/'+T))?.am);
+    /* 刻度尺還沒重新置中：打字中送來的 scroll 事件不能蓋掉打的值；碰到刻度尺就結束打字 */
+    await page.keyboard.press('Backspace');await page.keyboard.type('50.2');
+    await page.evaluate(()=>{const r=document.querySelector('#ruler');r.scrollLeft-=36;r.dispatchEvent(new Event('scroll'))});await wait(50);
+    s=await sheet(page);
+    check('打字中刻度尺送來 scroll：不蓋掉打的 50.2',s.kbdFocused&&s.big.startsWith('50.2')&&s.save.includes('50.2'),s);
+    await page.dispatchEvent('#ruler','pointerdown');await wait(300);
+    await page.evaluate(()=>document.querySelector('#ruler').dispatchEvent(new Event('scroll')));await wait(50);
+    s=await sheet(page);
+    check('碰刻度尺：結束打字，刻度尺移到 50.2（重送 scroll 數值不變）',!s.kbdFocused&&s.big.startsWith('50.2'),s);
+    /* 體脂打成 2e：number 欄位的 value 是 ''，不能當成清空 */
+    await page.click('#bfBig');await page.keyboard.type('2e');
+    s=await sheet(page);
+    check('體脂打成 2e：不當成清空，儲存鍵不能按',s.saveDisabled,{v:await page.inputValue('#kbdBf'),s});
+    await page.keyboard.press('Tab');await wait(100);
+    check('體脂打成 2e：離開欄位時跳範圍警告',await toastShown(page)==='體脂請填 3–70',await toastShown(page));
+    /* 真的點儲存（先失焦觸發 change 再 click） */
+    await page.click('#bfBig');await page.keyboard.type('24.9');await page.click('#wsSave');await wait(400);
+    am=(await doc('days/'+T))?.am;
+    check('打完直接點儲存（會先失焦）：存到 50.2 kg、24.9%',am?.w===50.2&&am?.bf===24.9,am);
     check('沒有 JS 錯誤',!errors.length,errors);
     await page.context().close()}
 

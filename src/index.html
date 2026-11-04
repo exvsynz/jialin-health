@@ -1576,14 +1576,14 @@ function paintSheet(){
   $('#wsHint').textContent=w==null?'第一次記錄，請輸入體重':prev?'已記錄 '+prev.w.toFixed(1)+' kg，可修改':ws.src==='est'?'預設為今早加平常的早晚差':'預設為上次量的';
   const bf=ws.bf,on=bfStored();
   $('#bfBig').innerHTML=`${bf==null?'—':bf.toFixed(1)}<small>%</small>`;$('#bfBig').classList.toggle('untouched',!on);
-  $('#bfBig').setAttribute('aria-label',`體脂${on?' '+bf.toFixed(1)+'%':' 未記'}，點一下用鍵盤輸入`);
+  $('#bfBig').setAttribute('aria-label',`體脂${bf==null?' 未記':' '+bf.toFixed(1)+'%'+(on?'':'（未記）')}，點一下用鍵盤輸入`);
   const st=$('#bfState');st.textContent=on?'已記':'未記';st.classList.toggle('on',on);
   $('#bfRow').hidden=bf==null;$('#bfHint').hidden=bf!=null;
   $('#bfClear').hidden=!(ws.bfTouched&&!(ws.bfSaved&&ws.bf===ws.bf0)); // undo only a change made in this sheet
   /* a field not being typed in is rewritten from ws below, so it no longer holds 儲存 back */
   const kbd=!$('#kbdRow').hidden,ae=document.activeElement;if(!kbd||ae!==$('#kbdIn'))ws.badW=false;if(!kbd||ae!==$('#kbdBf'))ws.badBf=false;
   /* an estimate (evening = morning + usual gap) must be confirmed on the ruler or by typing; a last measurement may be kept as is */
-  const btn=$('#wsSave');$('#wSheet').classList.toggle('saving',!!ws.saving);
+  const btn=$('#wsSave');$('#wSheet').classList.toggle('saving',!!ws.saving);$('#kbdIn').readOnly=$('#kbdBf').readOnly=!!ws.saving; // typing during a save would be lost
   if(ws.saving){btn.textContent='儲存中…';btn.disabled=true}
   else if(w==null){btn.textContent='先輸入體重';btn.disabled=true}
   else if(ws.badW||ws.badBf){btn.disabled=true} // a typed number not (yet) usable: never save the value it replaced
@@ -1609,7 +1609,9 @@ function openSheet(slot){
 }
 $$('[data-wslot]').forEach(b=>b.addEventListener('click',()=>openSheet(b.dataset.wslot)));
 for(const k of ['w','bf']){const R=RL[k];
-  $(R.el).addEventListener('scroll',()=>{if(R.sup||ws.saving)return;const v=r1(R.min+Math.round($(R.el).scrollLeft/TICK)/10);if(v!==valOf(k))setVal(k,v)},{passive:true});
+  /* while its field is being typed in, the ruler (not yet re-centred) must not overwrite the typed value; touching the ruler ends the typing */
+  $(R.el).addEventListener('pointerdown',()=>{const a=document.activeElement;if(a===$('#kbdIn')||a===$('#kbdBf'))a.blur()});
+  $(R.el).addEventListener('scroll',()=>{if(R.sup||ws.saving||document.activeElement===$(k==='w'?'#kbdIn':'#kbdBf'))return;const v=r1(R.min+Math.round($(R.el).scrollLeft/TICK)/10);if(v!==valOf(k))setVal(k,v)},{passive:true});
   $(R.el).addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();if(valOf(k)==null)return;setVal(k,valOf(k)+(e.key==='ArrowRight'?0.1:-0.1));rulerTo(k,valOf(k))}})}
 $$('[data-step]').forEach(b=>b.addEventListener('click',()=>{if(ws.w==null)return;setVal('w',ws.w+Number(b.dataset.step)/10);rulerTo('w',ws.w)}));
 $$('[data-bfstep]').forEach(b=>b.addEventListener('click',()=>{if(ws.bf==null)return;setVal('bf',ws.bf+Number(b.dataset.bfstep)/10);rulerTo('bf',ws.bf)}));
@@ -1622,11 +1624,11 @@ $('#bfBig').addEventListener('click',()=>showKbd(true,'bf'));
 $('#kbdIn').addEventListener('input',()=>{if(ws.saving)return;const v=num($('#kbdIn').value);
   if(v!=null&&v>=20&&v<=200)setVal('w',v);else{ws.badW=true;paintSheet()}});
 $('#kbdBf').addEventListener('input',()=>{if(ws.saving)return;const raw=$('#kbdBf').value.trim(),v=num(raw);
-  if(raw===''){ws.bf=ws.bf0;ws.bfTouched=ws.bfSaved;ws.badBf=false;paintSheet()} // emptied: body fat not recorded this time
+  if(raw===''&&!$('#kbdBf').validity.badInput){ws.bf=ws.bf0;ws.bfTouched=ws.bfSaved;ws.badBf=false;paintSheet()} // emptied: body fat not recorded this time ("2e" also reads as '', but is badInput)
   else if(v!=null&&v>=3&&v<=70)setVal('bf',v);else{ws.badBf=true;paintSheet()}});
 $('#kbdIn').addEventListener('change',()=>{if(ws.saving)return;const v=num($('#kbdIn').value);if(v==null||v<20||v>200){toast('體重請填 20–200');return}setVal('w',v);rebuild('w',v)});
 $('#kbdBf').addEventListener('change',()=>{if(ws.saving)return;const raw=$('#kbdBf').value.trim();
-  if(raw===''){ws.bf=ws.bf0;ws.bfTouched=ws.bfSaved;paintSheet();if(ws.bf!=null)rebuild('bf',ws.bf);return} // left empty: body fat not recorded this time
+  if(raw===''&&!$('#kbdBf').validity.badInput){ws.bf=ws.bf0;ws.bfTouched=ws.bfSaved;paintSheet();if(ws.bf!=null)rebuild('bf',ws.bf);return} // left empty: body fat not recorded this time
   const v=num(raw);if(v==null||v<3||v>70){toast('體脂請填 3–70');return}setVal('bf',v);rebuild('bf',v)});
 $('#wsClose').addEventListener('click',()=>$('#wSheet').close());
 $('#wsSave').addEventListener('click',async()=>{
