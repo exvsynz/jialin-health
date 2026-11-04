@@ -27,5 +27,7 @@ node dev/shot-page-test.js "$@"
 node dev/review-c-test.js
 node dev/review-d-test.js
 node dev/review-d2-test.js
+node dev/review-d-r2after-test.js
+node dev/review-d-r2fail-test.js
 node dev/review-b-test.js
 node dev/e2e.js "$@"

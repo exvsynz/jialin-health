@@ -2022,12 +2022,12 @@ async function shotRun(job,fresh){if(!job||!canEstimate()||shotSt.phase==='readi
     if(HIDE_CODES.includes(c))sampleOff=true;if(BUG_CODES.includes(c))console.warn('sample '+c+': '+(err&&err.message||''));code=c}
   if(code){const [text,act]=shotMsg(code);shotSt={phase:'msg',text,act};shotTell(text);if(sampleOff)renderCur();return} // the drafts already waiting stay as they are
   let drafts=groupShot(p.items,{units:SHOT_UNITS,order:SHOT_ORDER});
-  const b=job.batch||{id:newId('b'),blobs:job.blobs,long:job.long,saved:new Set()};
-  if(job.batch){drafts=drafts.filter(d=>!b.saved.has(shotKey(d)));shotQ=shotQ.filter(d=>{if(d.batch!==b.id)return true;d.stale=true;return false})} // replaced drafts can no longer be restored or saved // a reading again replaces its own waiting drafts; what was saved is not offered twice
+  const b=job.batch||{id:newId('b'),blobs:job.blobs,long:job.long,saved:new Set(),drafts:[]};
+  if(job.batch){drafts=drafts.filter(d=>!b.saved.has(shotKey(d)));b.drafts.forEach(d=>{d.stale=true});b.drafts=[];shotQ=shotQ.filter(d=>d.batch!==b.id)} // every draft of the batch, also skipped or discarded ones waiting on an undo, can no longer be restored or saved // a reading again replaces its own waiting drafts; what was saved is not offered twice
   if(!drafts.length){shotSt={phase:'msg',text:SHOT_MSG.none[0],act:'pick'};shotLast=null;shotGC();shotTell(SHOT_MSG.none[0]);return}
   shotBatches.set(b.id,b);
   const meta={at:Date.now(),n,promptVer:SHOT_PROMPT_VER,tier};
-  drafts.forEach((d,i)=>{d.id=newId('s');d.meta=meta;d.batch=b.id;d.skipped=i===0?p.skipped:0});
+  drafts.forEach((d,i)=>{d.id=newId('s');d.meta=meta;d.batch=b.id;d.skipped=i===0?p.skipped:0});b.drafts=drafts;
   shotQ.push(...drafts);shotLast=null;shotSt={phase:'idle'};
   if(dlg.open&&!editing&&!shotCur&&!recDirty){loadDraft(drafts[0]);return}
   if(dlg.open&&!editing){if(!shotCur)shotSt={phase:'ready'};renderShotBox();renderShotBar();return}
