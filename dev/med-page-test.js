@@ -138,8 +138,8 @@ const txt=(page,s)=>page.evaluate(s=>{const e=document.querySelector(s);return e
   /* B3：用藥頁 */
   const toMeds=async page=>{await page.evaluate(()=>location.hash='meds');await wait(300)};
   {const {page,errors}=await open({time:NOW,cfg:{latencyComp:true,seed:seed()}});await wait(500);
-    await page.click('#moreBtn');await wait(200);await page.click('[data-nav="meds"]');await wait(300);
-    check('更多 → 用藥：頁面與標題',await page.isVisible('#p-meds')&&(await page.textContent('#subTitle'))==='用藥');
+    await page.click('#tabbar [data-tab="meds"]');await wait(300);
+    check('分頁列 → 用藥：頁面與標題',await page.isVisible('#p-meds')&&(await page.textContent('#subTitle'))==='用藥');
     check('沒有劑量紀錄：目前劑量標「依設定推定」',(await txt(page,'#medNow')).includes('50 mcg')&&(await txt(page,'#medNow')).includes('依設定推定'),await txt(page,'#medNow'));
     const adh=await txt(page,'#medAdh');
     check('服藥紀錄：近 30 天、近 90 天，寫成 a/b 天',/近 30 天已記錄服藥 \d+\/\d+ 天/.test(adh)&&adh.includes('近 90 天'),adh);
@@ -257,7 +257,7 @@ const txt=(page,s)=>page.evaluate(s=>{const e=document.querySelector(s);return e
   const clipOK="Object.defineProperty(navigator,'clipboard',{value:{writeText:async t=>{window.__clip=t}},configurable:true})";
   const clipNO="Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw new Error('NotAllowedError')}},configurable:true})";
   {const {page,errors}=await open({time:NOW,init:clipOK,cfg:{latencyComp:true,seed:seed()}});await wait(500);
-    await page.click('#moreBtn');await wait(200);await page.click('[data-nav="summary"]');await wait(400);
+    await page.click('#tabbar [data-tab="more"]');await wait(200);await page.click('[data-nav="summary"]');await wait(400);
     check('更多 → 回診摘要：頁面與標題',await page.isVisible('#p-summary')&&(await page.textContent('#subTitle'))==='回診摘要');
     check('沒有上次回診日：預設今天往前 89 天到今天',(await page.inputValue('#smFrom'))==='2026-08-02'&&(await page.inputValue('#smTo'))===T,[await page.inputValue('#smFrom'),await page.inputValue('#smTo')]);
     const pv=await txt(page,'#smPreview');

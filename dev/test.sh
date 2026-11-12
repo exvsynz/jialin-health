@@ -29,4 +29,5 @@ node dev/review-d-test.js
 node dev/review-d2-test.js
 node dev/review-b-test.js
 node dev/bone-test.js "$@"
+node dev/tabbar-test.js "$@"
 node dev/e2e.js "$@"

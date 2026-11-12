@@ -1,6 +1,6 @@
 /* 主要流程與版面測試（合成資料）。
    截圖：380／1280 寬 × 淺色／深色，每一頁用 hash 直接載入；存到 dev/screenshots/（不進 repo）。
-   流程：記體重、服藥與撤銷、運動新增／調分鐘／刪除與復原、切換日期補登、「更多」進出各頁。
+   流程：記體重、服藥與撤銷、運動新增／調分鐘／刪除與復原、切換日期補登、分頁列與「更多」進出各頁。
    執行：node dev/e2e.js        只跑流程：node dev/e2e.js --no-shots */
 const fs=require('fs'),path=require('path');
 const {open,close,sampleSeed,check,summary}=require('./harness');
@@ -34,7 +34,7 @@ async function shots(){
     if(p==='today'){
       await page.click('[data-wslot="pm"]');await wait(350);await layout(page,label+' 體重面板');
       await page.screenshot({path:path.join(SHOTS,`${tag}-${scheme}-weight-sheet.png`)});
-      await page.click('#wsClose');await page.click('#moreBtn');await wait(350);await layout(page,label+' 更多');
+      await page.click('#wsClose');await page.click('#tabbar [data-tab="more"]');await wait(350);await layout(page,label+' 更多');
       await page.screenshot({path:path.join(SHOTS,`${tag}-${scheme}-more.png`)});
       await page.mouse.click(10,10);await wait(200);
       // 記完後（小折線）、展開一筆運動、補登某天
@@ -128,14 +128,15 @@ async function flows(){
   await page.click('#goToday');await wait(150);
   check('補登：回到今天',!(await page.textContent('#tDate')).includes('補登'));
   // 從「更多」選日期補登
-  await page.click('#moreBtn');await wait(200);await page.fill('#dPick','2026-10-20');await page.dispatchEvent('#dPick','change');await wait(200);
+  await page.click('#tabbar [data-tab="more"]');await wait(200);await page.fill('#dPick','2026-10-20');await page.dispatchEvent('#dPick','change');await wait(200);
   check('更多 → 選擇日期：切到 10/20',(await page.textContent('#tDate')).includes('10月20日'));
   await page.click('#goToday');await wait(150);
 
-  // 「更多」進出各頁
-  for(const [nav,title] of [['weight','體重與體脂'],['exercise','運動紀錄'],['exams','定期檢查'],['setup','設定與備份']]){
-    await page.click('#moreBtn');await wait(200);await page.click(`[data-nav="${nav}"]`);await wait(250);
-    check(`更多 → ${title}：頁面與標題正確`,(await page.isVisible('#p-'+nav))&&(await page.textContent('#subTitle'))===title);
+  // 分頁列與「更多」進出各頁
+  for(const [how,nav,title] of [['分頁列','weight','體重與體脂'],['更多','exercise','運動紀錄'],['分頁列','exams','定期檢查'],['分頁列','meds','用藥'],['更多','setup','設定與備份']]){
+    if(how==='分頁列')await page.click(`#tabbar [data-tab="${nav}"]`);else{await page.click('#tabbar [data-tab="more"]');await wait(200);await page.click(`[data-nav="${nav}"]`)}
+    await wait(250);
+    check(`${how} → ${title}：頁面與標題正確`,(await page.isVisible('#p-'+nav))&&(await page.textContent('#subTitle'))===title);
     await page.click('#backBtn');await wait(200);
     check(`${title} → ‹ 今天：回到今天`,await page.isVisible('#p-today')&&!(await page.isVisible('#subbar')));
   }

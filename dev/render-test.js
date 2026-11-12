@@ -31,7 +31,7 @@ const bumpProfile=page=>page.evaluate(()=>{const p=window.__mock.store.get('sett
 
   /* 1b. 點 sheet 外的背景會關閉 */
   {const {page}=await open({cfg:{latencyComp:true,seed:sampleSeed(T)}});await wait(500);
-    await page.click('#moreBtn');await wait(300);await page.mouse.click(190,40);await wait(200);
+    await page.click('#tabbar [data-tab="more"]');await wait(300);await page.mouse.click(190,40);await wait(200);
     check('點背景關閉「更多」',!(await page.evaluate(()=>document.querySelector('#moreSheet').open)));
     await page.click('[data-wslot="am"]');await wait(300);await page.mouse.click(190,40);await wait(200);
     check('點背景關閉體重面板',!(await page.evaluate(()=>document.querySelector('#wSheet').open)));
