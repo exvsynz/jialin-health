@@ -47,3 +47,36 @@
 
 原文抽查自 Cancer Care Ontario 2023 的 ATA 指引採用文件，以及 GuidelineCentral 快速參考（PMC 原站在工作環境被網路政策擋住）；細節見 `docs/reviews/2026-10-30-code-review.md` 第九節。
 以前用「無結節」存下、間隔已經自動帶成 12 的舊紀錄，仍維持 12 個月。若要改，在紀錄裡清空間隔即可。
+
+## 骨密度 DXA（2026-11-12 查證）
+
+| 檢查 | 分類 | 預設 | 依據 |
+|---|---|---|---|
+| 骨密度 DXA | 骨量較低（T −1.0 ～ −2.5） | 12 個月 | ESHRE 2024 POI：骨密度低或骨質疏鬆，依風險每 1–3 年，取下限 |
+| 骨密度 DXA | 骨質疏鬆（T ≤ −2.5） | 12 個月 | 同上 |
+| 骨密度 DXA | 正常，且規律使用荷爾蒙治療 | 60 個月 | ESHRE 2024 POI：骨密度正常且規律荷爾蒙治療，5 年內重測價值低 |
+| 骨密度 DXA | 正常（未使用荷爾蒙治療） | 不給預設值 | ISCD 2023：無固定間隔，依年齡、基準值與風險個別決定，請依醫囑填寫 |
+| 骨密度 DXA | 未分類 | 12 個月 | 固定間隔。ESHRE 2024 POI：骨密度低每 1–3 年，取下限；其他情況依醫囑 |
+
+「正常（未使用荷爾蒙治療）」不是「不排」：選了以後間隔欄會清空，要自己填間隔或指定日期才能儲存。
+
+出處：
+
+- ESHRE 2024 POI guideline：Panay N, Anderson RA, Bennie A, et al. Evidence-based guideline: premature ovarian insufficiency. Hum Reprod Open 2024;2024(4):hoae065. doi:10.1093/hropen/hoae065（PMID 39660328，PMC11631070）。這是早發性卵巢功能不全（POI）的指引，不是一般族群的建議。
+- ISCD 2023 Adult Official Positions（International Society for Clinical Densitometry，`2023-ISCD-Adult-Positions.pdf`）。
+
+判讀與比較：
+
+- 停經前女性以 Z 值判讀，不用 T 值。ISCD 2023 在「Females Prior to Menopause」一節寫「Z-scores, not T-scores, are preferred」；Z 值 ≤ −2.0 是「below the expected range for age」。
+- WHO 分類只適用停經後與更年期過渡期。ISCD 2023 把 WHO 分類放在停經後女性（與 50 歲以上男性）的報告方式裡，另寫 WHO 診斷標準「may be applied to women in the menopausal transition」。
+- 追蹤比較時，看同一台機器的 BMD (g/cm²) 變化。ISCD 2023：受檢者應回到上次檢查的同一台 DXA；追蹤報告以 g/cm² 與百分比寫出有意義的變化；沒有交叉校正的兩台機器不能比較。
+
+原文對照（2026-11-12）：
+
+- ESHRE 2024 建議 68（STRONG）：骨密度正常、開始並持續足量的全身性荷爾蒙治療時，「the value of a repeated DXA scan within 5 years is low」。原文沒有說滿 5 年要重測；60 個月是這個工具把「5 年內不必重測」換成提醒日期的做法。
+- ESHRE 2024 建議 69（STRONG）：有骨質疏鬆或骨密度低的 POI 女性，DXA「should be reassessed every 1–3 years, based on individual risk factors」。
+- ISCD 2023「Follow-up BMD Measurements」：重測間隔「must be individualized」，考量年齡、基準 BMD、藥物治療的種類，以及和骨流失有關的臨床因素。原文沒有給固定間隔。
+
+查證方式：ESHRE 的建議讀自 PMC 全文（PMC11631070，經 PubMed 取得）與 eshre.eu 的完整指引 PDF；ISCD 讀自 iscd.org 的 2023 PDF。後兩份 PDF 是透過搜尋服務的頁面擷取讀到的，工作環境不能直接連 iscd.org。
+
+待使用者確認：ESHRE 2024 完整指引把「low bone mass」定義為 Z 值 ≤ −2（引用 ISCD），把骨質疏鬆定義為 T 值 ≤ −2.5（WHO）。頁面上「骨量較低」的標籤照使用者指定寫成 T −1.0 ～ −2.5（WHO 的 osteopenia 範圍），和指引用的定義不同。兩個分類的間隔都是 12 個月，不影響到期日；影響的是停經前該選哪一個分類。

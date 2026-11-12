@@ -1,6 +1,6 @@
 # 家琳健康追蹤
 
-家琳的每日紀錄（體重、體脂、服藥、運動、月經）與五大類定期檢查追蹤。以 claude.ai Artifact 執行，資料存在 Artifact 自己的資料庫，不在這個 repo 裡。
+家琳的每日紀錄（體重、體脂、服藥、運動、月經）與六大類定期檢查追蹤。以 claude.ai Artifact 執行，資料存在 Artifact 自己的資料庫，不在這個 repo 裡。
 
 - 線上版本：https://claude.ai/artifact/LJViyfLqXv2VdD5krdJahh（私人，只有擁有者與編輯者可讀寫）
 - 原始碼：`src/index.html`（單一 HTML 檔，沒有建置步驟）
@@ -13,7 +13,7 @@
 | 體重與體脂 | 早上 7 日平均、單日早晚點、月經色帶；30／90／365 天 |
 | 運動紀錄 | 近 12 週每週分鐘數、月曆、最近紀錄 |
 | 飲食 | 每餐縮圖、餐別、時間、熱量範圍與當日合計；單餐可補充份量重新估算、手動改熱量、填秤重參考值；從相簿加入 |
-| 定期檢查 | 乳房、甲狀腺、肺 LDCT、生殖軸激素、腸胃鏡；依報告分類自動算下次日期；甲狀腺抽血可記抽血情境與「變更後複查」；新增時可「從截圖填入」（健康存摺等截圖由 Claude 抄錄，拆成多筆逐筆確認後才存，截圖不存） |
+| 定期檢查 | 乳房、甲狀腺、肺 LDCT、生殖軸激素、腸胃鏡、骨密度 DXA；依報告分類自動算下次日期（骨密度「正常（未使用荷爾蒙治療）」沒有預設值，要自己填間隔或日期）；甲狀腺抽血可記抽血情境與「變更後複查」；新增時可「從截圖填入」（健康存摺等截圖由 Claude 抄錄，拆成多筆逐筆確認後才存，截圖不存） |
 | 用藥 | 目前劑量、近 30／90 天已記錄服藥、TSH 複查（週數由使用者設定）、劑量與製劑變更和抽血的時間軸、依據 |
 | 回診摘要 | 選期間，複製文字或存成 .md／.html |
 | 設定與備份 | 提醒開關與上次檢查狀態、藥名劑量（有劑量紀錄後改在用藥頁變更）、運動預設時間、暫停模式、檢查固定間隔、JSON 匯出與匯入 |
@@ -35,6 +35,7 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 
 - 服藥成立的條件是 `med.taken === true`；只有細節、沒有 `taken` 的物件不算服藥。`interfere` 每項 `true`／`false`，不存在就是未填。`drawCtx` 的情境用 `"yes"`／`"no"`／`"unsure"`，不存在就是未填。格式與規則見 `docs/specs/phase-B.md`。
 - `labMeta`、`shot`（選填）：從截圖填入的紀錄才有。`labMeta[檢驗名]` 是截圖上的原文 `{ raw, unit, ref, flag }`，只保留儲存時沒改過的檢驗；`labs` 照舊存文字（旗標拆掉，單位和表單不同時值後面加單位、不換算）。格式與規則見 `docs/specs/phase-D.md`。
+- `records` 的 `exam` 是檢查代號（`src/index.html` 的 `EXAMS`）。新增代號不需要遷移資料；頁面不認得的代號會略過。`bone_dxa`（骨密度 DXA，`cat: "bone"`）的 `labs` 和抽血一樣存文字，key 是 `L1–L4 BMD`、`L1–L4 T`、`L1–L4 Z`，以及 `左股骨頸`、`右股骨頸`、`左全髖`、`右全髖` 各自的 `BMD` 與 `T`（例如 `左股骨頸 BMD`）。
 - `meddose`：劑量或製劑變更，軟刪除。沒有任何有效紀錄時，劑量依 `settings/profile.medDose` 推定。
 - `meals`：每餐 `{ at, meal, src, thumb, thumbBytes, thumbCleared, note, attempts:{<attemptId>:{…}}, manual, ref, deleted, createdAt }`。每次估算只寫自己的 `attempts` key，手動熱量另存 `manual`，畫面取手動值，否則取最新開始的成功估算。格式與規則見 `docs/specs/phase-C.md`。
 - `mealthumbs`：縮圖（長邊 320、≤32 KiB），頁面只依 id 讀，不監聽也不查詢。設定頁可以清除舊縮圖。
@@ -74,6 +75,7 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 - `dev/shot-page-test.js`：從截圖填入檢查紀錄的頁面行為（能力檢查、送出的圖片、張數上限、停止、讀取中關掉面板、每個截圖情境、分類確認、重複提示、略過與丟棄、存檔失敗、編輯時 `labMeta` 的保留、每一種錯誤碼）、版面與截圖。截圖是 canvas 畫的合成圖。
 - `dev/review-d-test.js`：D 階段程式審查 D-01–D-13 的重現（草稿的生命週期與存檔、修正保留、分類與去重規則、去個資、重讀），加上匯出匯入往返與點擊命中。
 - `dev/review-d2-test.js`：D 階段複核 R1–R7、C1、C2 的回歸測試（複製自 GPT 的 `docs/reviews/2026-11-02-phase-D-code-fix-recheck.test.js`，檔頭註明改了哪三處）。
+- `dev/bone-test.js`：骨密度 DXA（新增、選分類、下次日期、「正常（未使用荷爾蒙治療）」要求填間隔、歷次表格在自己的容器內水平捲動、今天頁到期卡、「接下來」清單、回診摘要、匯出匯入、從截圖填入時選得到）、`--c-bone` 在兩種主題的定義、380 寬深淺色的版面與截圖。
 - `dev/shot-fixtures.js`：mock 讀截圖時的假資料回覆（`cfg.sample.shot`）。
 - `dev/review-c-test.js`：C 階段程式審查 C1、C3–C8 的重現（縮圖旗標與備份、估算中的備份、補充說明、時間推移、mock 的同意視窗、訊息、出處）。
 - `dev/med-page-test.js`：服藥細節、用藥頁、TSH 複查與到期卡、抽血表單、回診摘要、匯出匯入、設定頁劑量、版面與截圖。

@@ -8,7 +8,7 @@
   --bg:#f4f6f6; --surface:#ffffff; --sunk:#eef1f2; --ink:#16222a; --on-ink:#f4f6f6; --muted:#5d6b73; --faint:#9aa6ad; --line:#d9e0e3; --grid:#e4e9eb;
   --accent:#23507e; --accent-ink:#ffffff; --accent-soft:#e3ecf5;
   --done:#1b7a53; --done-soft:#e3f2ea; --warn:#946000; --warn-soft:#fbf0d9;
-  --c-breast:#b8476a; --c-thyroid:#b07a12; --c-lung:#2f7fa8; --c-gyn:#7a52a8; --c-gi:#5c7a2e;
+  --c-breast:#b8476a; --c-thyroid:#b07a12; --c-lung:#2f7fa8; --c-gyn:#7a52a8; --c-gi:#5c7a2e; --c-bone:#866552;
   --ex-yoga:#277a70; --ex-pilates:#7a52a8; --ex-other:#946610;
   --w-am:#23507e; --w-pm:#8a9aa3; --band:#f4e1e8;
   --st-late:#b4302a; --st-late-bg:#fbe9e7; --st-soon:#9a6400; --st-soon-bg:#fdf1d8; --st-ok:#2c7a4b; --st-ok-bg:#e4f3ea; --st-none:#5b6870; --st-none-bg:#edf1f2;
@@ -19,7 +19,7 @@
   --bg:#0f1517; --surface:#172126; --sunk:#131c20; --ink:#e6ecef; --on-ink:#0f1517; --muted:#9aabb3; --faint:#5f6f77; --line:#26343b; --grid:#1f2c32;
   --accent:#7fb0e6; --accent-ink:#0d1a26; --accent-soft:#1d3044;
   --done:#6fd0a0; --done-soft:#17312a; --warn:#f0c062; --warn-soft:#3a2f17;
-  --c-breast:#e78aa6; --c-thyroid:#e3b04f; --c-lung:#6dbbe3; --c-gyn:#b69be0; --c-gi:#a3c36c;
+  --c-breast:#e78aa6; --c-thyroid:#e3b04f; --c-lung:#6dbbe3; --c-gyn:#b69be0; --c-gi:#a3c36c; --c-bone:#d3b8a4;
   --ex-yoga:#5cc4b6; --ex-pilates:#b69be0; --ex-other:#e3b04f;
   --w-am:#7fb0e6; --w-pm:#6d7e87; --band:#3a2530;
   --st-late:#ff8f86; --st-late-bg:#3a1f1d; --st-soon:#f0c062; --st-soon-bg:#3a2f17; --st-ok:#7fd3a0; --st-ok-bg:#183326; --st-none:#9aabb3; --st-none-bg:#1f2b31;
@@ -28,7 +28,7 @@
   --bg:#0f1517; --surface:#172126; --sunk:#131c20; --ink:#e6ecef; --on-ink:#0f1517; --muted:#9aabb3; --faint:#5f6f77; --line:#26343b; --grid:#1f2c32;
   --accent:#7fb0e6; --accent-ink:#0d1a26; --accent-soft:#1d3044;
   --done:#6fd0a0; --done-soft:#17312a; --warn:#f0c062; --warn-soft:#3a2f17;
-  --c-breast:#e78aa6; --c-thyroid:#e3b04f; --c-lung:#6dbbe3; --c-gyn:#b69be0; --c-gi:#a3c36c;
+  --c-breast:#e78aa6; --c-thyroid:#e3b04f; --c-lung:#6dbbe3; --c-gyn:#b69be0; --c-gi:#a3c36c; --c-bone:#d3b8a4;
   --ex-yoga:#5cc4b6; --ex-pilates:#b69be0; --ex-other:#e3b04f;
   --w-am:#7fb0e6; --w-pm:#6d7e87; --band:#3a2530;
   --st-late:#ff8f86; --st-late-bg:#3a1f1d; --st-soon:#f0c062; --st-soon-bg:#3a2f17; --st-ok:#7fd3a0; --st-ok-bg:#183326; --st-none:#9aabb3; --st-none-bg:#1f2b31;
@@ -475,6 +475,13 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
       <summary>追蹤間隔的依據</summary>
       <div class="ref" id="refTable"></div>
       <p class="muted" style="font-size:.82rem;margin:10px 0 0">指引區間取下限作為預設值，以免延遲。這些是一般族群的建議；家琳若有個人病史、家族史或醫師另有安排，請以主治醫師的建議為準，並在紀錄中直接改寫間隔或指定日期。</p>
+      <div class="ref refs" id="boneRef" style="margin-top:14px">
+        <p><b>骨密度 DXA</b></p>
+        <p>出處：ESHRE 2024 POI guideline（Panay N, et al. Hum Reprod Open 2024;2024(4):hoae065，doi:10.1093/hropen/hoae065）與 ISCD 2023 Adult Official Positions。骨密度的間隔來自早發性卵巢功能不全（POI）的指引，不是一般族群的建議。</p>
+        <p>間隔：骨密度正常、規律使用荷爾蒙治療時，5 年內重測的價值低；骨質疏鬆或骨密度低，依個人風險每 1–3 年重測，這裡取下限 12 個月（ESHRE 2024）。重測間隔要依年齡、基準值、用藥與骨流失風險個別決定，沒有固定間隔（ISCD 2023），所以「正常（未使用荷爾蒙治療）」不給預設值。</p>
+        <p>判讀：停經前女性以 Z 值判讀，不用 T 值；WHO 分類只適用停經後與更年期過渡期（ISCD 2023）。</p>
+        <p>追蹤比較：看同一台機器的 BMD（g/cm²）變化（ISCD 2023）。</p>
+      </div>
     </details>
   </section>
 
@@ -1762,7 +1769,8 @@ const CATS=[
   {id:'thyroid',name:'甲狀腺',en:'Thyroid',color:'var(--c-thyroid)'},
   {id:'lung',name:'肺部',en:'Lung',color:'var(--c-lung)'},
   {id:'gyn',name:'婦產科內分泌',en:'Reproductive hormones',color:'var(--c-gyn)'},
-  {id:'gi',name:'腸胃鏡',en:'Endoscopy',color:'var(--c-gi)'}
+  {id:'gi',name:'腸胃鏡',en:'Endoscopy',color:'var(--c-gi)'},
+  {id:'bone',name:'骨骼',en:'Bone',color:'var(--c-bone)'}
 ];
 const BIRADS=(normal,normalSrc)=>[
   {k:'b12',label:'BI-RADS 1–2　陰性／良性',m:normal,src:normalSrc},
@@ -1803,7 +1811,18 @@ const EXAMS=[
     {k:'sspAdv',label:'鋸齒狀息肉 ≥10 mm 或分化不良、TSA',m:36,src:'USMSTF 2020：3 年'},
     {k:'gt10',label:'>10 顆腺瘤',m:12,src:'USMSTF 2020：1 年，並考慮遺傳諮詢'},
     {k:'pm',label:'分片切除 ≥20 mm',m:6,src:'USMSTF 2020：6 個月'}
-  ]}
+  ]},
+  /* ask: no default interval for this class; the form is left empty and the user fills the interval or a date (not a no-follow class).
+     lab options: row starts a new row in the form, so each site's BMD and scores stay side by side;
+     signed opens the full keyboard, because a T or Z score is usually negative and the iOS decimal pad has no minus key */
+  {id:'bone_dxa',cat:'bone',name:'骨密度 DXA',def:12,defSrc:'ESHRE 2024 POI：骨密度低每 1–3 年，取下限；其他情況依醫囑',presets:[
+    {k:'low',label:'骨量較低（T −1.0 ～ −2.5）',m:12,src:'ESHRE 2024 POI：骨密度低或骨質疏鬆，依風險每 1–3 年，取下限'},
+    {k:'op',label:'骨質疏鬆（T ≤ −2.5）',m:12,src:'ESHRE 2024 POI：骨密度低或骨質疏鬆，依風險每 1–3 年，取下限'},
+    {k:'normHT',label:'正常，且規律使用荷爾蒙治療',m:60,src:'ESHRE 2024 POI：骨密度正常且規律荷爾蒙治療，5 年內重測價值低'},
+    {k:'norm',label:'正常（未使用荷爾蒙治療）',m:null,ask:true,src:'ISCD 2023：無固定間隔，依年齡、基準值與風險個別決定，請依醫囑填寫'}
+  ],labs:[['L1–L4 BMD','g/cm²',{row:1}],['L1–L4 T','',{signed:1}],['L1–L4 Z','',{signed:1}],
+    ['左股骨頸 BMD','g/cm²',{row:1}],['左股骨頸 T','',{signed:1}],['右股骨頸 BMD','g/cm²',{row:1}],['右股骨頸 T','',{signed:1}],
+    ['左全髖 BMD','g/cm²',{row:1}],['左全髖 T','',{signed:1}],['右全髖 BMD','g/cm²',{row:1}],['右全髖 T','',{signed:1}]]}
 ];
 const EX=Object.fromEntries(EXAMS.map(e=>[e.id,e]));
 const CAT=Object.fromEntries(CATS.map(c=>[c.id,c]));
@@ -1841,7 +1860,7 @@ function labTable(e,hist){const cols=e.labs.filter(([n])=>hist.some(h=>h.labs&&h
 function histItem(r){const p=presetOf(r);
   return`<li><div class="row1"><strong class="num">${fmt(r.date)}</strong>${p?`<span class="chip">${esc(p.label)}</span>`:''}<span class="meta">下次 ${fmt(dueOf(r))}</span><span style="flex:1"></span><button type="button" class="ghost" data-edit="${esc(r.id)}" ${canWrite?'':'disabled'}>編輯</button></div>
   ${r.report?`<div class="report">${esc(r.report)}</div>`:''}${(r.place||r.doctor||r.note)?`<div class="meta">${[r.place,r.doctor&&('醫師 '+r.doctor),r.note].filter(Boolean).map(esc).join('・')}</div>`:''}</li>`}
-function renderRef(){const rows=[];for(const e of EXAMS){if(e.presets){for(const p of e.presets)rows.push([e.name,p.label,p.noFollow?'不排':p.m==null?'用預設':intervalText(p.m),p.src])}else rows.push([e.name,'—',intervalText(e.def),e.defSrc])}
+function renderRef(){const rows=[];for(const e of EXAMS){if(e.presets){for(const p of e.presets)rows.push([e.name,p.label,p.noFollow?'不排':p.ask?'自行填寫':p.m==null?'用預設':intervalText(p.m),p.src])}else rows.push([e.name,'—',intervalText(e.def),e.defSrc])}
   $('#refTable').innerHTML=`<div style="overflow-x:auto;margin-top:10px"><table><thead><tr><th>檢查</th><th>報告分類</th><th>預設</th><th>依據</th></tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
 /* screenshot drafts (docs/specs/phase-D.md): the queue, the one in the form, and the category waiting for confirmation */
 let recEpoch=0,shotQ=[],shotCur=null,shotCls=null,shotPos=0,shotSavedN=0,shotSaved=[],shotLast=null,shotSt={phase:'idle'},recDirty=false;
@@ -1866,13 +1885,14 @@ function fillPresets(examId,keep){const e=EX[examId];if(!e){$('#presetField').hi
   $('#presetField').hidden=!e.presets;
   if(e.presets)$('#fPreset').innerHTML='<option value="">（未分類）</option>'+e.presets.map(p=>`<option value="${p.k}">${p.label}</option>`).join('');
   $('#labWrap').hidden=!e.labs;
-  $('#labs').innerHTML=e.labs?e.labs.map(([n,u],i)=>`<div class="field"><label for="lab${i}">${esc(n)} <span class="muted" style="font-weight:400">${esc(u)}</span></label><input id="lab${i}" data-lab="${esc(n)}" inputmode="decimal" autocomplete="off"></div>`).join(''):'';
+  $('#labs').innerHTML=e.labs?e.labs.map(([n,u,o],i)=>`<div class="field"${o?.row?' style="grid-column-start:1"':''}><label for="lab${i}">${esc(n)} <span class="muted" style="font-weight:400">${esc(u)}</span></label><input id="lab${i}" data-lab="${esc(n)}" ${o?.signed?'autocapitalize="off" autocorrect="off" spellcheck="false"':'inputmode="decimal"'} autocomplete="off"></div>`).join(''):'';
   if(!keep){$('#fPreset').value='';$('#fInterval').value=defInterval(examId);$('#presetHint').textContent='選擇後會自動帶入建議間隔'}}
 function applyPreset(){const e=EX[$('#fExam').value];if(!e)return;const p=e.presets&&e.presets.find(x=>x.k===$('#fPreset').value);
-  if(p){$('#fInterval').value=p.noFollow?'':p.m==null?defInterval(e.id):p.m;$('#presetHint').textContent=p.src}else{$('#fInterval').value=defInterval(e.id);$('#presetHint').textContent='未分類時使用固定間隔：'+intervalText(defInterval(e.id))}updatePreview()}
-const noFollowPicked=()=>!!EX[$('#fExam').value]?.presets?.find(x=>x.k===$('#fPreset').value)?.noFollow;
+  if(p){$('#fInterval').value=p.noFollow||p.ask?'':p.m==null?defInterval(e.id):p.m;$('#presetHint').textContent=p.src}else{$('#fInterval').value=defInterval(e.id);$('#presetHint').textContent='未分類時使用固定間隔：'+intervalText(defInterval(e.id))}updatePreview()}
+const pickedPreset=()=>EX[$('#fExam').value]?.presets?.find(x=>x.k===$('#fPreset').value);
+const noFollowPicked=()=>!!pickedPreset()?.noFollow;
 function updatePreview(){const date=$('#fDate').value,due=$('#fDue').value,m=$('#fInterval').value;let t;
-  if(!date)t='填入檢查日期後會顯示下次日期';else if(due)t='下次檢查：'+fmt(due)+'（醫師指定）';else if(m==='')t=noFollowPicked()?'不排例行追蹤；醫師有安排再填間隔或日期':'請填追蹤間隔';else if(Number(m)===0)t='待安排（依報告處置），不排定期追蹤';else t='下次檢查：'+fmt(addMonths(date,Number(m)))+'（'+intervalText(Number(m))+'後）';
+  if(!date)t='填入檢查日期後會顯示下次日期';else if(due)t='下次檢查：'+fmt(due)+'（醫師指定）';else if(m==='')t=noFollowPicked()?'不排例行追蹤；醫師有安排再填間隔或日期':pickedPreset()?.ask?'這個分類沒有預設間隔，請依醫囑填間隔或指定日期':'請填追蹤間隔';else if(Number(m)===0)t='待安排（依報告處置），不排定期追蹤';else t='下次檢查：'+fmt(addMonths(date,Number(m)))+'（'+intervalText(Number(m))+'後）';
   $('#duePreview').textContent=t+(shotCls?.pending&&date?'（分類待確認）':'')}
 $('#fExam').addEventListener('change',()=>{fillPresets($('#fExam').value);updatePreview();
   if($('#fExam').value!=='thy_lab'){formCtx={};rcTouched=false;rcTargetId=null;$('#fRecheck').checked=false} // the draw context does not survive a switch to another exam

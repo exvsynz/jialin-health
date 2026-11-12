@@ -84,6 +84,8 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   eq('interval null、沒有設定：用預設間隔（甲狀腺抽血 6 個月）',await ev({records:[rec('thy_lab','2026-05-03',{interval:null})]}),'家琳今天還沒記：晚上體重；甲狀腺抽血 11/3 到期');
   eq('interval 是字串（匯入資料）：當作沒有，用預設',await ev({records:[rec('thy_lab','2026-05-03',{interval:'6'})]}),'家琳今天還沒記：晚上體重；甲狀腺抽血 11/3 到期');
   eq('nextDue 優先',await ev({records:[rec('gi_colo','2016-01-01',{interval:120,nextDue:'2026-11-02'})]}),'家琳今天還沒記：晚上體重；大腸鏡 11/2 到期');
+  eq('骨密度：分類帶入的 12 個月照算',await ev({records:[rec('bone_dxa','2025-11-05',{preset:'low',interval:12})]}),'家琳今天還沒記：晚上體重；骨密度 DXA 11/5 到期');
+  eq('骨密度「正常（未使用荷爾蒙治療）」不是不追蹤：interval null 時用預設 12 個月',await ev({records:[rec('bone_dxa','2025-11-03',{preset:'norm',interval:null})]}),'家琳今天還沒記：晚上體重；骨密度 DXA 11/3 到期');
   eq('只看最新一筆：舊的逾期紀錄不列入',await ev({records:[rec('thy_lab','2025-04-01',{interval:6}),rec('thy_lab','2026-10-01',{interval:6})]}),'家琳今天還沒記：晚上體重');
   eq('同一天取 createdAt 最大',await ev({records:[rec('thy_lab','2026-05-01',{interval:6,createdAt:1}),rec('thy_lab','2026-05-01',{interval:12,createdAt:2})]}),'家琳今天還沒記：晚上體重');
   eq('沒有缺、只有檢查到期：不推播（8.2）',(await run('evening',E(),st({[SAT]:day(full)},{records:[rec('thy_lab','2026-05-07',{interval:6})]}))).push,null);

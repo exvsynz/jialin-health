@@ -13,7 +13,7 @@ const D=new Function('Date',m[1]+';return{tpeNow,logicalToday,addDays,addMonths,
 const clock=ms=>{fake=ms;return{date:D.logicalToday(),h:D.tpeNow().h}};
 
 /* 代號、名稱、預設間隔（月）；和 src/index.html 的 EXAMS 一致（測試會比對） */
-const EXAMS=[['breast_us','乳房超音波',12],['breast_mammo','乳房X光攝影',24],['breast_ct','乳房電腦斷層',12],['thy_us','甲狀腺超音波',12],['thy_lab','甲狀腺抽血',6],['lung_ldct','低劑量電腦斷層 LDCT',12],['gyn_horm','生殖軸激素',6],['gi_egd','上消化道內視鏡（胃鏡）',24],['gi_colo','大腸鏡',120]];
+const EXAMS=[['breast_us','乳房超音波',12],['breast_mammo','乳房X光攝影',24],['breast_ct','乳房電腦斷層',12],['thy_us','甲狀腺超音波',12],['thy_lab','甲狀腺抽血',6],['lung_ldct','低劑量電腦斷層 LDCT',12],['gyn_horm','生殖軸激素',6],['gi_egd','上消化道內視鏡（胃鏡）',24],['gi_colo','大腸鏡',120],['bone_dxa','骨密度 DXA',12]];
 const EXAM_NAMES=Object.fromEntries(EXAMS.map(([id,n])=>[id,n])),EXAM_DEF=Object.fromEntries(EXAMS.map(([id,,d])=>[id,d]));
 const NO_FOLLOW=[['thy_us','none'],['thy_us','vlowSmall']]; // 「不追蹤」的分類
 const ITEMS=[['am','早上體重'],['med','服藥'],['pm','晚上體重']];
