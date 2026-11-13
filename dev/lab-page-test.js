@@ -315,12 +315,44 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
   /* 報告上的標記留在改過的數值旁邊時，欄位上要說出來 */
   {const {page,errors}=await shotStart('single');
     await page.fill('[data-ref="TSH"]','0.27-4.20 uIU/mL');let b=await box(page,'TSH');check('single：參考值改成解析不了的寫法，報告上的 ↑ H 還在；數值沒改，不用提醒',b.flag==='↑ H'&&b.src==='report'&&(await fieldNote(page,'TSH'))===null,b);
-    await page.fill('[data-lab="TSH"]','3.0');b=await box(page,'TSH');check('再把數值改成 3.0：算不出來，報告上的 ↑ H 保留，欄位下方提醒「標記是報告上原本數值的，請確認」',b.flag==='↑ H'&&b.src==='report'&&(await fieldNote(page,'TSH'))==='標記是報告上原本數值的，請確認',{b,n:await fieldNote(page,'TSH')});
+    await page.fill('[data-lab="TSH"]','3.0');b=await box(page,'TSH');check('再把數值改成 3.0：算不出來，報告上的 ↑ H 保留，欄位下方提醒「標記是報告上原本數值的，點一下標記確認」',b.flag==='↑ H'&&b.src==='report'&&(await fieldNote(page,'TSH'))==='標記是報告上原本數值的，點一下標記確認',{b,n:await fieldNote(page,'TSH')});
+    const w0=await writes(page);await page.click('#btnSave');await wait(300);
+    check('沒有確認就按儲存：不存，toast「先確認標記」，焦點在那個標記上（GPT 審查：沒確認的舊標記不能就這樣存成新數值的標記）',(await writes(page))===w0&&(await toastText(page)).includes('先確認標記')&&(await sform(page)).open&&await page.evaluate(()=>document.activeElement===document.querySelector('[data-labbox]:has([data-lab="TSH"]) .flagbtn')));
     await page.click('#dlgRec [data-close]');await wait(150);await page.click('#btnAdd');await wait(150);await page.click('[data-shot="go"]');await wait(150);
-    check('關掉面板再繼續：標記與提醒都還在',(await box(page,'TSH')).flag==='↑ H'&&(await fieldNote(page,'TSH'))==='標記是報告上原本數值的，請確認');
-    await tapFlag(page,'TSH');b=await box(page,'TSH');check('手動點過標記之後提醒消失（現在是使用者自己設的）',b.src==='manual'&&(await fieldNote(page,'TSH'))===null,b);
-    await page.fill('[data-ref="TSH"]','0.27-4.20');for(let i=0;i<3;i++)await tapFlag(page,'TSH');
+    check('關掉面板再繼續：標記與提醒都還在',(await box(page,'TSH')).flag==='↑ H'&&(await fieldNote(page,'TSH'))==='標記是報告上原本數值的，點一下標記確認');
+    await tapFlag(page,'TSH');b=await box(page,'TSH');check('點一下標記就是確認：仍是 ↑ H，變成使用者自己設的，提醒消失',b.flag==='↑ H'&&b.src==='manual'&&(await fieldNote(page,'TSH'))===null,b);
+    await tapFlag(page,'TSH');check('確認之後再點才是切換（↓ L）',(await box(page,'TSH')).flag==='↓ L');await tapFlag(page,'TSH');await tapFlag(page,'TSH');await tapFlag(page,'TSH');
+    await page.click('#btnSave');await until(page,()=>!document.querySelector('#dlgRec').open);const r=(await newRecs(page))[0],N=null;
+    check('確認後可以存：TSH 存成手動的 H，不留原文',r&&same(r.labMeta.TSH,{raw:N,unit:N,ref:'0.27-4.20 uIU/mL',flag:'H',flagSrc:'manual'})&&r.labs.TSH==='3.0',r&&r.labMeta);
+    /* 編輯已存的紀錄也一樣：報告的標記、改了數值、算不出來 → 要確認 */
+    await page.evaluate(()=>db.doc('records/old1').set({exam:'thy_lab',cat:'thyroid',date:'2026-09-09',preset:null,interval:6,nextDue:null,report:'',place:'',doctor:'',note:'',labs:{TSH:'6.1'},labMeta:{TSH:{raw:'H 6.1',unit:'μIU/mL',ref:null,flag:'H'}},createdAt:9,updatedAt:9}));
+    await wait(300);await openHistOf(page,'thy_lab');await page.click('[data-edit="old1"]');await wait(150);await page.fill('[data-lab="TSH"]','4.0');const w1=await writes(page);await save(page);
+    check('編輯沒有 flagSrc 的舊紀錄、改了數值又沒有參考值：同樣提醒並擋下儲存',(await fieldNote(page,'TSH'))==='標記是報告上原本數值的，點一下標記確認'&&(await writes(page))===w1&&(await page.evaluate(()=>document.querySelector('#dlgRec').open)));
+    await page.fill('[data-ref="TSH"]','0.27-4.20');b=await box(page,'TSH');check('補上能解析的參考值：改由參考值算（4.0 在範圍內，沒有標記），提醒消失',b.flag==='—'&&b.src===''&&(await fieldNote(page,'TSH'))===null,b);
+    await save(page);await saved(page);check('這時可以存：標記清掉，原文不留',same((await stored(page,'old1')).labMeta.TSH,{raw:N,unit:N,ref:'0.27-4.20',flag:N,flagSrc:N}),(await stored(page,'old1')).labMeta);
     check('提醒：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 在列上改過單位不同的檢驗，換回固定欄位時單位不能不見；列上自己填的參考值也算使用者填的（GPT 第二輪） */
+  {const {page,errors}=await shotStart('unit');await page.selectOption('#fExam','lab_other');await wait(80);let rs=await rows(page);
+    check('unit 選其他抽血：四項各一列，數值與單位分開（Free T4 15.4、pmol/L）',same(brief(rs).map(x=>[x[0],x[1],x[2],x[3]]),[['TSH','2.0','mIU/L',''],['Free T4','15.4','pmol/L','12-22']]),brief(rs));
+    await fillRow(page,1,{v:'21'});await page.selectOption('#fExam','thy_lab');await wait(80);let b=await box(page,'Free T4');
+    check('在列上把 15.4 改成 21（單位仍是 pmol/L）再換回甲狀腺抽血：欄位是「21 pmol/L」，單位跟著，不會變成 ng/dL 的 21',b.v==='21 pmol/L'&&b.flag==='—',b);
+    await page.selectOption('#fExam','lab_other');await wait(80);rs=await rows(page);check('再換到其他抽血：列是 21 與 pmol/L，單位不重複',same([rs[1].n,rs[1].v,rs[1].u],['Free T4','21','pmol/L']),rs[1]);
+    await fillRow(page,1,{v:'1.5',u:'ng/dL',r:'0.9-1.7'});await page.selectOption('#fExam','thy_lab');await wait(80);b=await box(page,'Free T4');
+    check('在列上改成 1.5 ng/dL、自己填參考值 0.9-1.7，換回甲狀腺抽血：欄位是 1.5，參考值在',b.v==='1.5'&&b.ref==='0.9-1.7'&&b.flag==='—',b);
+    await page.fill('[data-lab="Free T4"]','1.8');b=await box(page,'Free T4');check('再把數值改成 1.8：列上自己填的參考值不會被清掉，算出 ↑ H',b.ref==='0.9-1.7'&&b.flag==='↑ H'&&b.src==='ref',b);
+    await page.click('#btnSave');await wait(400);const r=(await newRecs(page))[0],N=null;
+    check('存檔：Free T4 是 1.8（表單的單位），參考值 0.9-1.7，由參考值算出 H',r&&r.labs['Free T4']==='1.8'&&same(r.labMeta['Free T4'],{raw:N,unit:N,ref:'0.9-1.7',flag:'H',flagSrc:'ref'}),r&&{l:r.labs,m:r.labMeta});
+    check('列上的單位：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  {const {page,errors}=await shotStart('unit');await page.selectOption('#fExam','lab_other');await wait(80);await fillRow(page,1,{v:'21'});await page.selectOption('#fExam','thy_lab');await wait(80);
+    await page.click('#btnSave');await wait(400);const r=(await newRecs(page))[0];
+    check('直接存：labs 存「21 pmol/L」（值後面帶單位，和讀到不同單位時的存法一樣），不會存成沒有單位的 21',r&&r.labs['Free T4']==='21 pmol/L'&&r.labs.TSH==='2.0',r&&r.labs);
+    check('列上的單位（直接存）：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 換了項目之後寫進報告內容的那幾行，要照表單現在的樣子，不是截圖原本的（GPT 第二輪） */
+  {const {page,errors}=await shotStart('single');await page.fill('[data-ref="TSH"]','1-10');const auto=(await box(page,'TSH')).flag;for(let i=0;i<4;i++)await tapFlag(page,'TSH');let b=await box(page,'TSH');
+    check('single：TSH 的參考值改成 1-10（5.2 在範圍內，報告的 H 改由參考值重算成沒有標記），再點四下回到手動的沒有標記',auto==='—'&&b.ref==='1-10'&&b.flag==='—'&&b.src==='manual',{auto,b});
+    await page.selectOption('#fExam','gyn_horm');await wait(80);await page.click('#btnSave');await until(page,()=>!document.querySelector('#dlgRec').open);const r=(await newRecs(page))[0];
+    check('換成生殖軸再存：報告內容裡 TSH 那行是改過的參考值、沒有 H；沒動過的 Free T4 照原樣',r&&r.report==='截圖讀到的其他檢驗：\nTSH 5.2 μIU/mL（參考值 1-10）\nFree T4 1.10 ng/dL（參考值 0.93-1.70）',r&&r.report);
+    check('備援的那幾行：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
   /* 截圖讀到的 ref 與 flag：全部沒有對應欄位的一批 */
   {const {page,errors}=await shotStart('cbc');let f=await sform(page);
     check('cbc：全部對不到，項目待選，5 項寫在報告內容',f.exam===''&&f.report.startsWith('其他檢驗（沒有對應的欄位）：\nHb L 10.0 g/dL（參考值 12.0-16.0）'),f);
