@@ -70,7 +70,7 @@
 | `days`，本週 7 天 | 對週一到今天的 7 個日期各做一次 `get`，collection `days`，doc_id 是那天的日期。不要用 `date` 欄位查詢，舊文件可能沒有這個欄位 |
 | `days`，本週一之前最早的 31 筆 | `query`，collection `days`，`query.where` `[["date","<",週一]]`，`query.order_by` `{"field":"date","direction":"asc"}`，`query.limit` 31。有 `order_by` 的查詢只有一頁，不用再翻頁。每份文件都記下文件 id（就是那天的日期） |
 | `exercise` | `query`，collection `exercise`，`query.where` `[["date",">=",週一],["date","<=",今天]]`，`query.limit` 1000；有 `next_cursor` 就把它放進 `query.cursor` 再讀，直到沒有 `next_cursor` |
-| `records` | `list`，collection `records`，`query.limit` 1000；有 `next_cursor` 就把它放進 `query.cursor` 再讀，直到沒有 `next_cursor` |
+| `records` | `list`，collection `records`，`query.limit` 1000；有 `next_cursor` 就把它放進 `query.cursor` 再讀，直到沒有 `next_cursor`。每份文件都記下回傳的文件 id |
 | `settings/intervals` | `get`，collection `settings`，doc_id `intervals`。不存在就當成 `{}` |
 | `meddose` | `list`，collection `meddose`，`query.limit` 1000；有 `next_cursor` 就把它放進 `query.cursor` 再讀，直到沒有 `next_cursor`。每份文件都記下回傳的文件 id |
 
@@ -103,7 +103,7 @@
 
 ### 檢查到期日的算法
 
-每一種檢查只看最新一筆紀錄。先只看 `date` 是合法日期的紀錄（`YYYY-MM-DD`，而且真的有這一天）：取 `date` 最大的那筆；同一天就取 `createdAt` 最大的。`date` 不合法或不存在的紀錄不能蓋過有合法 `date` 的紀錄；這種檢查沒有任何一筆合法 `date` 的紀錄時，才取 `createdAt` 最大的那筆。`exam` 不在下表的紀錄不看。
+每一種檢查只看最新一筆紀錄。先只看 `date` 是合法日期的紀錄（`YYYY-MM-DD`，而且真的有這一天）：取 `date` 最大的那筆；同一天就取 `createdAt` 最大的。`date` 不合法或不存在的紀錄不能蓋過有合法 `date` 的紀錄；這種檢查沒有任何一筆合法 `date` 的紀錄時，才取 `createdAt` 最大的那筆。比 `createdAt` 時，只有有限的數字才算，其他的（不存在、`null`、文字等）都當成 0；`createdAt` 也一樣時，取文件 id 比較大的那筆（照字元逐一比較）。`exam` 不在下表的紀錄不看。
 
 | 代號 | 名稱 | 預設間隔（月） |
 |---|---|---|

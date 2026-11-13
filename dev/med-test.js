@@ -177,6 +177,14 @@ eq('validFixed：固定間隔只收 1–120 的整數（0 不算）',[1,12,120,0
   eq('latestOf：沒有 date、date 是數字、date 是 2026-02-31 的紀錄也一樣不蓋過（兩種順序都一樣）',[{interval:0},{date:20270101,interval:0},{date:'2026-02-31',interval:0}].map(o=>both([V1,{exam:'bone_dxa',createdAt:9,tag:'bad',...o}])),Array(3).fill([{bone_dxa:'valid-old'},{bone_dxa:'valid-old'}]));
   eq('latestOf：兩筆合法日期取 date 大的；同一天取 createdAt 大的（兩種順序都一樣）',[both([V1,V2]),both([V2,{...V2,createdAt:2,tag:'same-day-later'}])],[[{bone_dxa:'valid-new'},{bone_dxa:'valid-new'}],[{bone_dxa:'same-day-later'},{bone_dxa:'same-day-later'}]]);
   eq('latestOf：這種檢查沒有任何合法日期的紀錄時，取 createdAt 最大的那筆（兩種順序都一樣）；頁面沒有的檢查代號不看',both([{exam:'gi_egd',createdAt:1,tag:'bad1'},{exam:'gi_egd',date:'zzzz',createdAt:5,tag:'bad5'},{exam:'gi_egd',date:'2026-02-31',createdAt:3,tag:'bad3'},{exam:'nope',date:'2026-01-01',tag:'x'}]),[{gi_egd:'bad5'},{gi_egd:'bad5'}]);
+  /* GPT 第三輪：完全同順位（同一天、createdAt 相同或沒有）用文件 id 決定；createdAt 不是數字當成 0。任何排列都選同一筆 */
+  const perms=a=>a.length<2?[a]:a.flatMap((x,i)=>perms([...a.slice(0,i),...a.slice(i+1)]).map(r=>[x,...r]));
+  const pickAll=recs=>[...new Set(perms(recs).map(o=>L(o).bone_dxa))];
+  eq('latestOf：同一天、都沒有 createdAt 的兩筆（一筆 12 個月、一筆不追蹤）：取文件 id 大的那筆，兩種順序都一樣',pickAll([{...V1,id:'a',tag:'a'},{...V1,id:'b',preset:'nofollow',interval:null,tag:'b'}].map(({createdAt,...r})=>r)),['b']);
+  eq('latestOf：同一天、createdAt 相同的三筆：六種排列都取文件 id 最大的',pickAll(['k2','k9','k5'].map(id=>({...V1,createdAt:7,id,tag:id}))),['k9']);
+  eq('latestOf：createdAt 混用文字與數字（"10"、"2"、3）：文字當成 0，六種排列都取數字 3 的那筆',pickAll([{...V1,createdAt:'10',id:'x1',tag:'s10'},{...V1,createdAt:'2',id:'x2',tag:'s2'},{...V1,createdAt:3,id:'x0',tag:'n3'}]),['n3']);
+  eq('latestOf：createdAt 是 NaN、Infinity、null 也當成 0，再比文件 id',pickAll([{...V1,createdAt:NaN,id:'p1',tag:'nan'},{...V1,createdAt:Infinity,id:'p3',tag:'inf'},{...V1,createdAt:null,id:'p2',tag:'null'}]),['inf']);
+  eq('latestOf：都沒有合法日期、createdAt 也相同：同樣用文件 id，六種排列一樣',[...new Set(perms([{exam:'gi_egd',id:'g1',tag:'g1'},{exam:'gi_egd',date:'zzzz',id:'g3',tag:'g3'},{exam:'gi_egd',date:20260101,id:'g2',tag:'g2'}]).map(o=>L(o).gi_egd))],['g3']);
   const SS=recs=>[S(recs),S([...recs].reverse())];
   eq('摘要：逾期的骨密度（2025-01-01＋12 個月）不會因為另一筆 date 是 zzzz 的不追蹤紀錄而消失（GPT 的反例，兩種順序）',SS([{exam:'bone_dxa',date:'2025-01-01',interval:12,createdAt:1},{exam:'bone_dxa',date:'zzzz',interval:null,preset:'nofollow',createdAt:2}]),Array(2).fill(['截至 2026/10/30 仍待處理：骨密度 DXA 2026/01/01 到期','之後 180 天內到期：沒有']));
   eq('摘要：有合法日期的紀錄時，沒有 date、interval 0 的紀錄不會讓結果隨順序改變',SS([{exam:'thy_lab',date:'2026-07-01',interval:6,createdAt:1},{exam:'thy_lab',interval:0,createdAt:2}]),Array(2).fill(['截至 2026/10/30 仍待處理：沒有','之後 180 天內到期：甲狀腺抽血 2027/01/01']));

@@ -72,9 +72,10 @@ function dueOf(r,intervals={}){
   const due=validDate(r.date)?D.addMonths(r.date,mo):null;
   return validDate(due)?{due}:{asap:true};
 }
-/* 每種檢查的最新一筆（頁面 latestOf 的同一套規則）：先比合法的 date，同一天再比 createdAt。date 不合法的紀錄不會蓋過有合法 date 的紀錄，
-   只有在這種檢查沒有任何一筆合法 date 的紀錄時才算（取 createdAt 最大的） */
-function latestByExam(records){const o={},newer=(r,c)=>{const a=validDate(r.date),b=validDate(c.date);return a!==b?a:a&&r.date!==c.date?r.date>c.date:(r.createdAt||0)>(c.createdAt||0)};
+/* 每種檢查的最新一筆（頁面 latestOf 的同一套規則）：先比合法的 date，同一天再比 createdAt（不是數字就當成 0），還是一樣就取文件 id 比較大的，
+   所以結果和讀到的順序無關。date 不合法的紀錄不會蓋過有合法 date 的紀錄，只有在這種檢查沒有任何一筆合法 date 的紀錄時才算 */
+function latestByExam(records){const o={},ts=r=>typeof r.createdAt==='number'&&Number.isFinite(r.createdAt)?r.createdAt:0,
+  newer=(r,c)=>{const a=validDate(r.date),b=validDate(c.date);if(a!==b)return a;if(a&&r.date!==c.date)return r.date>c.date;if(ts(r)!==ts(c))return ts(r)>ts(c);return String(r.id??'')>String(c.id??'')};
   for(const r of records||[]){if(!EXAM_NAMES[r.exam])continue;const c=o[r.exam];if(!c||newer(r,c))o[r.exam]=r}return o}
 /* 排序：盡快處理（rank 0）→ 有到期日，依到期日（1）→ 還沒有追蹤計畫（2）；同順位照檢查表的順序（ord），TSH 複查排在同一天的檢查之後。兩種待安排不看天數，一定列出 */
 const byPlan=(a,b)=>a.rank-b.rank||a.dd-b.dd||a.ord-b.ord;
@@ -170,7 +171,7 @@ async function execute(kind,api,mode){
       data={profile,days:{},records:[],exercise:[],intervals:{},meddose:[]};
       const dates=kind==='weekly'?[...Array(7)].map((_,i)=>D.addDays(date,i-6)):[date];
       for(const d of dates){const r=await retry(()=>T.get(api,'days',d));if(r.exists)data.days[d]=r.data}
-      if(kind!=='morning'){data.records=await retry(()=>T.all(api,'list','records'));const iv=await retry(()=>T.get(api,'settings','intervals'));data.intervals=iv.exists?iv.data:{};
+      if(kind!=='morning'){data.records=await retry(()=>T.all(api,'list','records',null,true));/* 文件 id 要留著：最新一筆完全同順位時用它決定 */const iv=await retry(()=>T.get(api,'settings','intervals'));data.intervals=iv.exists?iv.data:{};
         data.meddose=await retry(()=>T.all(api,'list','meddose',null,true))} // 文件 id 要留著：抽血紀錄用 id 連結到變更
       if(kind==='weekly'){data.exercise=await retry(()=>T.all(api,'query','exercise',[['date','>=',dates[0]],['date','<=',date]]));
         /* 追蹤起點：本週一之前最早的 31 筆日紀錄裡，第一天有體重或服藥的日子 */
@@ -224,7 +225,7 @@ function storeDocs(store){
   if(store.heartbeat)docs['system/heartbeat']=store.heartbeat;
   for(const[d,v]of Object.entries(store.days||{}))docs['days/'+d]=v;
   (store.exercise||[]).forEach((e,i)=>docs['exercise/e'+i]=e);
-  (store.records||[]).forEach((r,i)=>docs['records/r'+i]=r);
+  (store.records||[]).forEach((r,i)=>docs['records/'+(r.id||'r'+i)]=r);
   (store.meddose||[]).forEach((m,i)=>docs['meddose/'+(m.id||'m'+i)]=m);
   return docs;
 }

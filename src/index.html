@@ -868,9 +868,11 @@ function planOf(r,info,ivs){const e=info[r.exam],iv=r.interval,asap={due:r.date,
   else{if(e?.noFollow?.includes(r.preset))return dated(null);if(e?.def==null)return{due:null,asap:false,unplanned:true};const f=ivs?.[r.exam];m=validFixed(f)?f:e.def}
   const d=validDate(r.date)?addMonths(r.date,m):null;return validDate(d)?dated(d):asap}
 const dueWith=(r,info,ivs)=>planOf(r,info,ivs).due;
-/* the latest record of each exam: the largest valid date, then the largest createdAt. A record whose date is not a valid date never displaces one that has a valid date:
+/* the latest record of each exam: the largest valid date, then the largest createdAt (a createdAt that is not a number counts as 0), then the larger document id,
+   so the answer never depends on the order the records arrive in. A record whose date is not a valid date never displaces one that has a valid date:
    it would hide a plan that may be due, or put a stray 「待安排」 over a real date. It counts only while the exam has no validly dated record. known(exam) keeps the exams this page has */
-function latestOf(recs,known){const m={},newer=(r,p)=>{const a=validDate(r.date),b=validDate(p.date);return a!==b?a:a&&r.date!==p.date?r.date>p.date:(r.createdAt||0)>(p.createdAt||0)};
+function latestOf(recs,known){const m={},ts=r=>typeof r.createdAt==='number'&&Number.isFinite(r.createdAt)?r.createdAt:0,
+  newer=(r,p)=>{const a=validDate(r.date),b=validDate(p.date);if(a!==b)return a;if(a&&r.date!==p.date)return r.date>p.date;if(ts(r)!==ts(p))return ts(r)>ts(p);return String(r.id??'')>String(p.id??'')};
   for(const r of recs||[]){if(!known(r.exam))continue;const p=m[r.exam];if(!p||newer(r,p))m[r.exam]=r}return m}
 /* visit summary: facts only, every section present, nothing after `to` used. c = { days, exercise, records, meddose, settingDose, pause, weeks, info, intervals } */
 function summarize(c,from,to,today){
@@ -1989,9 +1991,11 @@ function applyPreset(){const e=EX[$('#fExam').value];if(!e)return;const p=picked
   setPresetHint(e,e.def==null?NODEF_HINT:'未分類時使用固定間隔：'+intervalText(defInterval(e.id)));updatePreview()}
 /* the plan as the form holds it: the interval (null when empty) and the doctor's date, with what is wrong with either field.
    The same check runs for the preview and for saving; a wrong value is shown on its field and never written */
-const IV_ERR='間隔請填 0–120 的整數（月）；0 是盡快處理',IV_NEED='請填追蹤間隔或指定日期';
+const IV_ERR='間隔請填 0–120 的整數（月）；0 是盡快處理',IV_NEED='請填追蹤間隔或指定日期',STOP_ERR='這個分類不追蹤；要安排追蹤，請先改選別的分類';
 function recPlan(){const i=$('#fInterval'),d=$('#fDue'),date=$('#fDate').value,p=i.validity.badInput?{ok:false,v:null}:parseInterval(i.value),bad=d.validity.badInput||(d.value!==''&&!validDate(d.value)),early=!bad&&d.value!==''&&validDate(date)&&d.value<date;
-  return{iv:p.v,ivErr:p.ok?'':IV_ERR,due:bad||early?'':d.value,dueErr:bad?'請填完整、有效的日期':early?'指定日期不能早於檢查日期':''}}
+  /* a class that stops the follow-up (stop) cannot be saved together with an interval or a date: the record would be listed again while its card still says it is not followed */
+  const stop=!!pickedPreset()?.stop,ivStop=stop&&p.ok&&p.v!=null,dueStop=stop&&!bad&&!early&&d.value!=='';
+  return{iv:p.v,ivErr:!p.ok?IV_ERR:ivStop?STOP_ERR:'',due:bad||early||dueStop?'':d.value,dueErr:bad?'請填完整、有效的日期':early?'指定日期不能早於檢查日期':dueStop?STOP_ERR:''}}
 /* neither an interval nor a date: fine for a no-follow class, and for an exam with no fixed interval (no plan yet); any other exam needs one of the two.
    ivNeed is set by a save that found it missing: the error then stays on the field, through blur, until the field is filled in or a no-follow class is picked */
 const planMissing=pl=>!pl.ivErr&&!pl.dueErr&&!pl.due&&pl.iv==null&&!noFollowPicked()&&EX[$('#fExam').value]?.def!=null;
@@ -2002,7 +2006,7 @@ function updatePreview(){const date=$('#fDate').value,e=EX[$('#fExam').value],pl
   if(!date)t='填入檢查日期後會顯示下次日期';else if(!validDate(date))t='檢查日期不是有效的日期';
   else if(pl.ivErr||pl.dueErr)t='先修正上面標出的欄位';
   else if(pl.due)t='下次檢查：'+fmt(pl.due)+'（醫師指定）';
-  else if(pl.iv==null)t=noFollowPicked()?'不排例行追蹤；醫師有安排再填間隔或日期':e&&e.def==null?UNPLANNED+'：醫師指定後再填間隔或日期':'請填追蹤間隔';
+  else if(pl.iv==null)t=noFollowPicked()?(pickedPreset().stop?'不排例行追蹤；醫師有安排時，先改選別的分類再填間隔或日期':'不排例行追蹤；醫師有安排再填間隔或日期'):e&&e.def==null?UNPLANNED+'：醫師指定後再填間隔或日期':'請填追蹤間隔';
   else if(pl.iv===0)t='待安排（依報告盡快處理）：不排日期，一直列在最前面';
   else t='下次檢查：'+fmt(addMonths(date,pl.iv))+'（'+intervalText(pl.iv)+'後）';
   $('#duePreview').textContent=t+(shotCls?.pending&&date?'（分類待確認）':'')}
@@ -2474,7 +2478,7 @@ setInterval(()=>{if(clockTick())renderCur();else{renderHb();if(anyPending()){if(
     const arrived=(k,s)=>{if(!loaded[k]&&!s.metadata?.fromCache){loaded[k]=true;ready=loaded.days&&loaded.profile&&loaded.meddose}};
     db.collection('days').onSnapshot(s=>{const o={};s.docs.forEach(x=>o[x.id]=x.data());days=o;arrived('days',s);renderCur()},fail('days'));
     db.collection('exercise').onSnapshot(s=>{exercises=s.docs.map(x=>({id:x.id,...x.data()}));arrived('exercise',s);renderCur()},fail('exercise'));
-    db.collection('records').onSnapshot(s=>{records=s.docs.map(x=>({id:x.id,...x.data()}));arrived('records',s);renderCur()},fail('records'));
+    db.collection('records').onSnapshot(s=>{records=s.docs.map(x=>({...x.data(),id:x.id}));arrived('records',s);renderCur()},fail('records')); // the document id last: an id field inside imported data must not replace it (editing, and the tie-break in latestOf, go by the document)
     db.collection('meddose').onSnapshot(s=>{meddose=s.docs.map(x=>({id:x.id,...x.data()}));arrived('meddose',s);renderCur()},fail('meddose'));
     db.doc('settings/intervals').onSnapshot(s=>{intervals=s.exists?{...s.data()}:{};arrived('intervals',s);renderCur()},fail('intervals'));
     db.doc('settings/profile').onSnapshot(s=>{profile=s.exists?{...s.data()}:{};arrived('profile',s);renderCur()},fail('profile'));

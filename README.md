@@ -42,9 +42,9 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
   - **依報告盡快處理**：`interval` 是 `0`。列表寫「待安排」，算逾期、排最前。已存的 `interval` 是數字但不是 0–120 的整數、或算不出合法日期時也歸在這裡，不拿去算日期，也不改資料。
   - **還沒有追蹤計畫**：沒有固定間隔的檢查（骨密度）沒有 `interval`。列表同樣寫「待安排」，但不算逾期，排在有日期的項目之後；今天頁、定期檢查頁、回診摘要、晚上提醒、週報都仍然列出。
   - **不追蹤**：沒有 `interval`，而且 `preset` 是不追蹤的分類（甲狀腺超音波的 `none`、`vlowSmall`，骨密度的 `nofollow`）。不列入到期與提醒。
-- 每種檢查只看最新一筆：合法 `date` 最大的那筆，同一天取 `createdAt` 最大的。`date` 不合法的紀錄不能蓋過有合法 `date` 的紀錄，只有在這種檢查沒有任何一筆合法 `date` 的紀錄時才算（`latestOf`）。同順位的項目照 `EXAMS` 的順序排，TSH 複查排在同一天的檢查之後。
+- 每種檢查只看最新一筆：合法 `date` 最大的那筆，同一天取 `createdAt` 最大的。`date` 不合法的紀錄不能蓋過有合法 `date` 的紀錄，只有在這種檢查沒有任何一筆合法 `date` 的紀錄時才算；`createdAt` 不是有限的數字就當成 0，再相同就取文件 id 比較大的（`latestOf`；頁面讀紀錄時一律用文件 id，資料裡的 `id` 欄位不算）。同順位的項目照 `EXAMS` 的順序排，TSH 複查排在同一天的檢查之後。
 - 固定間隔：`settings/intervals` 裡這個檢查的值是 1–120 的整數就用它，否則用預設值。設定頁存檔時用同一個檢查，不合格的值顯示在欄位上、不寫入；已存的不合格值讀取時當作沒有設定，不改資料。
-- `records` 的 `exam` 是檢查代號（`src/index.html` 的 `EXAMS`）。新增代號不需要遷移資料；頁面不認得的代號會略過。`bone_dxa`（骨密度 DXA，`cat: "bone"`）的 `preset` 是 `none`、`zlow`、`zok`、`poiLow`、`poiNormHT`、`tnorm`、`tlow`、`top`、`nofollow`（定義與依據見 `docs/exam-intervals.md`；分類一律手選，不從數值推；`nofollow` 是醫師表示目前不需例行追蹤，不會是預設值，也不會從截圖帶入）。選單找不到已存的 `preset` 時，編輯後原樣存回；`labs` 和抽血一樣存文字，key 是 `L1–L4 BMD`、`L1–L4 T`、`L1–L4 Z`，以及 `左股骨頸`、`右股骨頸`、`左全髖`、`右全髖` 各自的 `BMD` 與 `T`（例如 `左股骨頸 BMD`）。
+- `records` 的 `exam` 是檢查代號（`src/index.html` 的 `EXAMS`）。新增代號不需要遷移資料；頁面不認得的代號會略過。`bone_dxa`（骨密度 DXA，`cat: "bone"`）的 `preset` 是 `none`、`zlow`、`zok`、`poiLow`、`poiNormHT`、`tnorm`、`tlow`、`top`、`nofollow`（定義與依據見 `docs/exam-intervals.md`；分類一律手選，不從數值推；`nofollow` 是醫師表示目前不需例行追蹤，不會是預設值，也不會從截圖帶入；表單不讓它和間隔或指定日期一起存）。選單找不到已存的 `preset` 時，編輯後原樣存回；`labs` 和抽血一樣存文字，key 是 `L1–L4 BMD`、`L1–L4 T`、`L1–L4 Z`，以及 `左股骨頸`、`右股骨頸`、`左全髖`、`右全髖` 各自的 `BMD` 與 `T`（例如 `左股骨頸 BMD`）。
 - `meddose`：劑量或製劑變更，軟刪除。沒有任何有效紀錄時，劑量依 `settings/profile.medDose` 推定。
 - `meals`：每餐 `{ at, meal, src, thumb, thumbBytes, thumbCleared, note, attempts:{<attemptId>:{…}}, manual, ref, deleted, createdAt }`。每次估算只寫自己的 `attempts` key，手動熱量另存 `manual`，畫面取手動值，否則取最新開始的成功估算。格式與規則見 `docs/specs/phase-C.md`。
 - `mealthumbs`：縮圖（長邊 320、≤32 KiB），頁面只依 id 讀，不監聽也不查詢。設定頁可以清除舊縮圖。
