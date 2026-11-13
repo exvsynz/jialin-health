@@ -2163,9 +2163,10 @@ $('#labs').addEventListener('input',e=>{const box=e.target.closest('[data-labbox
   if(t.matches('[data-ref],[data-rr]'))box._refT=true;
   /* in a row the unit is the user's to change, and a reference range that came with the row belongs to the unit it came with: while the unit is another one the range is taken out,
      and it comes back with the unit. One the user typed is left alone. Another spelling of the same unit changes nothing.
-     The mark is worked out again only when the range was just taken out or put back, and never over the report's own mark: that one stays, to be confirmed (flagNote) */
-  if(t.matches('[data-ru]')&&box._orig){const o=box._orig,r=box.querySelector('[data-rr]'),want=unitSame(t.value,o.unit||'')?o.ref:'';
-    if(o.ref!=null&&!box._refT&&r.value!==want){r.value=want;if(b.dataset.src!=='report')flagAuto(b)}flagNote(box)}
+     The mark is worked out again only when the range was just taken out or put back. The report's own mark is left as it is while the row is back to what was read
+     (same value, same unit); beside a changed value it follows the usual rule: worked out when that is possible, else kept, to be confirmed (flagNote) */
+  if(t.matches('[data-ru]')&&box._orig){const o=box._orig,r=box.querySelector('[data-rr]'),same=unitSame(t.value,o.unit||''),want=same?o.ref:'',asRead=same&&o.value!=null&&box.querySelector('[data-rv]').value.trim()===o.value;
+    if(o.ref!=null&&!box._refT&&r.value!==want){r.value=want;if(!(b.dataset.src==='report'&&asRead))flagAuto(b)}flagNote(box)}
   /* a reference range that came with a value in another unit than the field's belongs to that value: when the value is changed (converted, most likely) the range is taken out,
      and comes back with the value; one the user typed is left alone */
   if(t.matches('[data-lab]')&&box._orig?.unitDiff&&!box._refT){const r=box.querySelector('[data-ref]');if(r)r.value=t.value.trim()===box._orig.value?box._orig.ref:''}
@@ -2406,8 +2407,9 @@ const shotOth=d=>(d.oth||(d.others||[]).map(o=>({name:o.name,value:o.value,unit:
 function cellItem(d,k){const c=d.labs[k],f=String(labVal(d,k)??'').trim(),same=!!c&&f===c.value,cu=String(c?.unit||'').trim(),other=unitOther(cu,k),tail=other?' '+cu:'',carries=!same&&!!tail&&f.endsWith(tail);
   return{name:k,value:same?c.num:carries?f.slice(0,-tail.length).trim():f,unit:c&&(same||carries||!other)&&cu?cu:c&&same?'':(SHOT_UNITS[k]||''),ref:d.refs&&k in d.refs?d.refs[k]:(c?.ref||''),st:d.flags?.[k]||null,flag:c?.flag??null,raw:c&&(same||carries)?c.raw:null,was:c&&(same||carries)?c.num:null,chg:!!c&&!same,refT:!!d.refT?.[k],unclear:same&&!!c.unclear}}
 /* such an item as a row of the form; orig is what the row came with: the value as read and its original text, its mark, and the unit and reference range it had when it became a row
-   (ou, oref once it has been a row before). refT: its range was typed by the user */
-const itemRow=o=>({name:o.name,value:o.value,unit:o.unit,ref:o.ref,state:o.st,meta:{flag:o.flag,flagSrc:'report'},orig:{value:o.was,raw:o.raw,flag:o.flag,pend:itemChanged(o),unit:o.ou??o.unit,ref:o.oref??o.ref},refT:!!o.refT,unclear:o.unclear});
+   (ou, oref once it has been a row before). pend: it came from a field whose text was already not the reading; a number or a unit changed in the row is not kept here,
+   the row is compared with value and unit each time, so putting both back needs no confirming. refT: its range was typed by the user */
+const itemRow=o=>({name:o.name,value:o.value,unit:o.unit,ref:o.ref,state:o.st,meta:{flag:o.flag,flagSrc:'report'},orig:{value:o.was,raw:o.raw,flag:o.flag,pend:!!o.chg||!!o.pend,unit:o.ou??o.unit,ref:o.oref??o.ref},refT:!!o.refT,unclear:o.unclear});
 /* itemChanged: the value is no longer the one that was read. itemPend: a report's mark beside such a value, or beside a row whose unit is no longer the one it came with (ou),
    that the user has not settled yet. In the form such a mark has to be confirmed before saving;
    where the lab is only written out as a line, the mark is left out */
