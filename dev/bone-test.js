@@ -77,7 +77,7 @@ async function shotFile(page){const b64=await page.evaluate(()=>{const c=documen
     check('原始碼：設定 #presetHint 文字的地方只有共用的 setPresetHint',(html.match(/\$\('#presetHint'\)\.textContent\s*=/g)||[]).length===1&&html.includes('function setPresetHint('),(html.match(/\$\('#presetHint'\)\.textContent\s*=/g)||[]).length);
     const doc=fs.readFileSync(path.join(ROOT,'docs/exam-intervals.md'),'utf8');
     check('docs/exam-intervals.md：骨密度段落有出處、短說明、九個分類與兩種待安排的說明，沒有「待使用者確認」',['doi:10.1093/hropen/hoae065','ISCD 2023 Adult Official Positions','停經前優先以 Z 值判讀；只有 T 值可先記錄，不自動分類。','同一台機器的 BMD (g/cm²) 變化','還沒有追蹤計畫','依報告盡快處理','`nofollow`',...PRESETS.map(p=>p[1]),PRESETS[8][3]].every(t=>doc.includes(t))&&!doc.includes('待使用者確認'),PRESETS.map(p=>p[1]).filter(t=>!doc.includes(t)));
-    check('DEPLOYED.md：保留要同步晚上與週報任務的註記',fs.readFileSync(path.join(ROOT,'ops/scheduled/DEPLOYED.md'),'utf8').includes('需由 claude.ai 用 update_trigger 同步晚上與週報任務'))}
+    check('DEPLOYED.md：記著晚上與週報的提示詞是用哪個 commit 同步的（2026-11-13 已同步，取代原本「還沒同步」的註記）',fs.readFileSync(path.join(ROOT,'ops/scheduled/DEPLOYED.md'),'utf8').includes('晚上與週報的提示詞已用 update_trigger 同步，對應 commit f6e0b09'))}
 
   /* ---- 九個分類：標籤、間隔、依據；邊界；不自動分類；還沒有追蹤計畫在各頁的樣子 ---- */
   {const {page,errors}=await open({time:NOW,hash:'exams',cfg:{latencyComp:true,seed:seed()}});await wait(600);
