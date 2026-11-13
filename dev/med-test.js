@@ -3,7 +3,7 @@
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(process.env.SRC?path.resolve(process.env.SRC):path.join(__dirname,'../src/index.html'),'utf8');
 const block=n=>{const m=html.match(new RegExp('\\/\\* ---- '+n+' helpers: begin[^*]*\\*\\/([\\s\\S]*?)\\/\\* ---- '+n+' helpers: end ---- \\*\\/'));if(!m){console.error('找不到 '+n+' helpers 區塊標記');process.exit(2)}return m[1]};
-const H=new Function(block('date')+block('med')+';return{tookMed,validDate,validDose,sortMeddose,doseOn,hasResult,trackStart,countable,recheckState,dueWith,validInterval,validFixed,parseInterval,planOf,summarize,summaryText,summaryMd,summaryHtml}')();
+const H=new Function(block('date')+block('med')+';return{tookMed,validDate,validDose,sortMeddose,doseOn,hasResult,trackStart,countable,recheckState,dueWith,validInterval,validFixed,parseInterval,planOf,latestOf,summarize,summaryText,summaryMd,summaryHtml}')();
 let fail=0;
 const eq=(name,got,want)=>{const ok=JSON.stringify(got)===JSON.stringify(want);if(!ok)fail++;console.log((ok?'  ok   ':'  FAIL ')+name+(ok?'':' → '+JSON.stringify(got)+'（應為 '+JSON.stringify(want)+'）'))};
 const md=(id,date,dose,o={})=>({id,date,dose,kind:'dose',createdAt:1,...o});
@@ -169,7 +169,22 @@ eq('validFixed：固定間隔只收 1–120 的整數（0 不算）',[1,12,120,0
   /* 2026-11-13 複查 R-06：date 不合法或不存在的紀錄，摘要和其他三處一樣照 planOf 列出 */
   eq('摘要（R-06）：date 是 2026-02-31 的抽血、沒有 date 的胃鏡都列為待安排，不再是「沒有」',S([{exam:'thy_lab',date:'2026-02-31',interval:6,createdAt:1},{exam:'gi_egd',interval:24,createdAt:1}]),['截至 2026/10/30 仍待處理：甲狀腺抽血 待安排、上消化道內視鏡（胃鏡） 待安排','之後 180 天內到期：沒有']);
   eq('摘要（R-06）：date 不合法但有合法的醫師指定日期 → 照日期列；不追蹤的分類照樣不列',S([{exam:'thy_lab',date:'2026-02-31',interval:6,nextDue:'2026-12-01',createdAt:1},{exam:'thy_us',date:'not-a-date',preset:'none',interval:null,createdAt:1}]),['截至 2026/10/30 仍待處理：沒有','之後 180 天內到期：甲狀腺抽血 2026/12/01']);
-  eq('摘要（R-06）：結束日之後才做的檢查（合法日期）照舊不算',S([{exam:'thy_lab',date:'2026-10-31',interval:0,createdAt:1}]),['截至 2026/10/30 仍待處理：沒有','之後 180 天內到期：沒有'])}
+  eq('摘要（R-06）：結束日之後才做的檢查（合法日期）照舊不算',S([{exam:'thy_lab',date:'2026-10-31',interval:0,createdAt:1}]),['截至 2026/10/30 仍待處理：沒有','之後 180 天內到期：沒有']);
+  /* GPT 複核（第二輪）第 1 點：date 不合法的紀錄不能蓋過有合法 date 的紀錄，結果也不能隨資料順序改變 */
+  const L=(recs)=>Object.fromEntries(Object.entries(H.latestOf(recs,x=>!!PI[x])).map(([k,r])=>[k,r.tag])),both=recs=>[L(recs),L([...recs].reverse())];
+  const V1={exam:'bone_dxa',date:'2025-01-01',interval:12,createdAt:1,tag:'valid-old'},V2={exam:'bone_dxa',date:'2026-03-01',interval:12,createdAt:1,tag:'valid-new'};
+  eq('latestOf：date 是 zzzz 的紀錄不蓋過合法日期的紀錄（兩種順序都一樣）',both([V1,{exam:'bone_dxa',date:'zzzz',interval:null,preset:'nofollow',createdAt:9,tag:'bad'}]),[{bone_dxa:'valid-old'},{bone_dxa:'valid-old'}]);
+  eq('latestOf：沒有 date、date 是數字、date 是 2026-02-31 的紀錄也一樣不蓋過（兩種順序都一樣）',[{interval:0},{date:20270101,interval:0},{date:'2026-02-31',interval:0}].map(o=>both([V1,{exam:'bone_dxa',createdAt:9,tag:'bad',...o}])),Array(3).fill([{bone_dxa:'valid-old'},{bone_dxa:'valid-old'}]));
+  eq('latestOf：兩筆合法日期取 date 大的；同一天取 createdAt 大的（兩種順序都一樣）',[both([V1,V2]),both([V2,{...V2,createdAt:2,tag:'same-day-later'}])],[[{bone_dxa:'valid-new'},{bone_dxa:'valid-new'}],[{bone_dxa:'same-day-later'},{bone_dxa:'same-day-later'}]]);
+  eq('latestOf：這種檢查沒有任何合法日期的紀錄時，取 createdAt 最大的那筆（兩種順序都一樣）；頁面沒有的檢查代號不看',both([{exam:'gi_egd',createdAt:1,tag:'bad1'},{exam:'gi_egd',date:'zzzz',createdAt:5,tag:'bad5'},{exam:'gi_egd',date:'2026-02-31',createdAt:3,tag:'bad3'},{exam:'nope',date:'2026-01-01',tag:'x'}]),[{gi_egd:'bad5'},{gi_egd:'bad5'}]);
+  const SS=recs=>[S(recs),S([...recs].reverse())];
+  eq('摘要：逾期的骨密度（2025-01-01＋12 個月）不會因為另一筆 date 是 zzzz 的不追蹤紀錄而消失（GPT 的反例，兩種順序）',SS([{exam:'bone_dxa',date:'2025-01-01',interval:12,createdAt:1},{exam:'bone_dxa',date:'zzzz',interval:null,preset:'nofollow',createdAt:2}]),Array(2).fill(['截至 2026/10/30 仍待處理：骨密度 DXA 2026/01/01 到期','之後 180 天內到期：沒有']));
+  eq('摘要：有合法日期的紀錄時，沒有 date、interval 0 的紀錄不會讓結果隨順序改變',SS([{exam:'thy_lab',date:'2026-07-01',interval:6,createdAt:1},{exam:'thy_lab',interval:0,createdAt:2}]),Array(2).fill(['截至 2026/10/30 仍待處理：沒有','之後 180 天內到期：甲狀腺抽血 2027/01/01']));
+  /* GPT 審查第 4 點：同順位照檢查表的順序，不看資料順序 */
+  eq('摘要：兩筆都是盡快處理、兩筆同一天到期，都照檢查表的順序（乳房超音波在甲狀腺超音波之前；胃鏡在大腸鏡之前），資料順序反過來也一樣',
+    SS([{exam:'thy_us',date:'2026-10-05',interval:0,createdAt:1},{exam:'breast_us',date:'2026-10-06',interval:0,createdAt:1},{exam:'gi_colo',date:'2025-12-01',interval:12,createdAt:1},{exam:'gi_egd',date:'2025-12-01',interval:12,createdAt:1}]),
+    Array(2).fill(['截至 2026/10/30 仍待處理：乳房超音波 待安排、甲狀腺超音波 待安排','之後 180 天內到期：上消化道內視鏡（胃鏡） 2026/12/01、大腸鏡 2026/12/01']));
+  eq('摘要：TSH 複查和檢查同一天到期時排在檢查之後',sec(H.summarize({...C({records:[{exam:'gi_colo',date:'2025-10-29',interval:12,createdAt:1}],meddose:[md('m','2026-10-01',75)],weeks:4}),info:PI},'2026-10-01','2026-10-30','2026-10-31'),'檢查')[0],'截至 2026/10/30 仍待處理：大腸鏡 2026/10/29 到期、TSH 複查（劑量變更後）2026/10/29 到期')}
 
 console.log(fail?`\n${fail} 項失敗`:'\n全部通過');
 process.exit(fail?1:0);

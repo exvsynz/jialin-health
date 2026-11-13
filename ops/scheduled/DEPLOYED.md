@@ -14,7 +14,7 @@
 - 2026-10-31 08:52 UTC：C 版晚上提示詞已同步（飲食檢查），對應 commit f68b2c8。只更新晚上任務；早上與週報的提示詞沒有改。飲食只在 `remind.food` 是 `true` 時檢查（預設關閉）。
 - 2026-11-12：`evening.md` 與 `weekly.md` 的檢查表加了一列 `bone_dxa`｜骨密度 DXA。**需由 claude.ai 用 update_trigger 同步晚上與週報任務**；同步前，排程任務不會把骨密度列入到期提醒與週報。早上的提示詞沒有改。
 - 2026-11-13：同一段再改一次，還沒同步。`bone_dxa` 的預設間隔改成「沒有」，沒有 `interval` 時是「待安排」；「到期日依序判斷」改成六步：`nextDue` 要是合法日期、`interval` 是數字但不是 1–120 的整數就當作「待安排」、算不出合法日期也是「待安排」。
-- 2026-11-13（複查 R-01、R-02）：同一段第三次修改，還沒同步，**同步時用這一版**（取代上面兩條）。待安排分成兩種：`interval` 是 `0` 或不合格的數字是「盡快處理」，排最前；`bone_dxa` 沒有 `interval` 是「還沒有追蹤計畫」，不算已到期、排最後，兩種都寫「名稱待安排」而且一定列出。`bone_dxa` 的 `nofollow` 加進「不追蹤」的分類。`settings/intervals` 的值要是 1–120 的整數才採用。晚上與週報各加了範例（`e-plan`、`e-nofollow`、`w-plan`）。早上的提示詞沒有改。
+- 2026-11-13（複查 R-01、R-02）：同一段第三次修改，還沒同步，**同步時用這一版**（取代上面兩條）。待安排分成兩種：`interval` 是 `0` 或不合格的數字是「盡快處理」，排最前；`bone_dxa` 沒有 `interval` 是「還沒有追蹤計畫」，不算已到期、排最後，兩種都寫「名稱待安排」而且一定列出。`bone_dxa` 的 `nofollow` 加進「不追蹤」的分類。`settings/intervals` 的值要是 1–120 的整數才採用。「最新一筆」改成合法的 `date` 優先，`date` 不合法的紀錄不能蓋過；同順位照檢查表的順序、TSH 複查排在同一天的檢查之後。晚上與週報各加了範例（`e-plan`、`e-nofollow`、`e-latest`、`w-plan`）。早上的提示詞沒有改。
 - 完成通知：三個任務建立時開了 push（`platform` 時期），update_trigger 不能關。實測這個通知送不到手機，所以留著也不會吵。要關的話在 app 的任務設定裡關。
 - 每次執行都開新的工作階段，核准設定為自動核准。
 - 已刪除的舊任務（使用者在 app 刪除）：`trig_01DHxi7ut795tPb7BetTEr7m`、`trig_011SzzP2uhnQnYLbTdYB6J9Q`、`trig_01ETPCvt3kkAseLL6QRF6qwu`（`tool` 版），`trig_01MdtFkvqKB14X3efw24nPqu`（`platform` 版早上）。claude.ai 停用或刪除任務會被權限擋下。

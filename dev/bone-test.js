@@ -156,6 +156,14 @@ async function shotFile(page){const b64=await page.evaluate(()=>{const c=documen
     check('沒有間隔的分類加上醫師指定日期：預覽是那個日期，間隔仍是空的',f.preview==='下次檢查：2027/03/01（醫師指定）'&&f.interval==='',f);
     await page.click('#btnSave');await wait(400);rs=await boneRecs(page);c=await boneCard(page);
     check('醫師指定日期：存 nextDue（interval null），卡片不再是待安排',rs.length===2&&rs[1].preset==='tlow'&&rs[1].interval===null&&rs[1].nextDue==='2027-03-01'&&c.facts.includes('下次2027/03/01')&&c.facts.includes('醫師指定日期')&&c.pill!=='待安排',{r:rs[1],c:c.facts,pill:c.pill});
+    /* GPT 審查（75e0110）第 2 點：使用者打過的值就是使用者的，即使和分類帶入的數字相同；0 也一樣 */
+    await page.click('[data-add="bone_dxa"]');await wait(250);await page.selectOption('#fPreset','poiNormHT');await typeInterval(page,'24');await typeInterval(page,'60');await page.selectOption('#fPreset','zok');f=await formState(page);
+    check('改分類：分類帶入 60 之後，使用者自己打了 24 再打回 60；改選沒有間隔的分類時 60 留著（打過就是使用者的值）',f.interval==='60'&&f.preview==='下次檢查：2031/10/30（5 年後）',f);
+    await typeInterval(page,'0');await page.selectOption('#fPreset','tlow');f=await formState(page);
+    check('改分類：使用者填的 0（依報告盡快處理）在改選沒有間隔的分類時也留著，不會悄悄變成還沒有追蹤計畫',f.interval==='0'&&f.preview===ASAP,f);
+    await page.selectOption('#fPreset','poiLow');f=await formState(page);
+    check('改分類：改選有自己間隔的分類時，照舊換成它的 12',f.interval==='12',f);
+    await page.click('#dlgRec [data-close]');await wait(150);
     const ref=await page.evaluate(()=>{document.querySelector('details.refbox').open=true;return{rows:[...document.querySelectorAll('#refTable tbody tr')].filter(tr=>tr.cells[0].textContent==='骨密度 DXA').map(tr=>[...tr.cells].map(c=>c.textContent)),other:[...document.querySelectorAll('#refTable tbody tr')].filter(tr=>tr.cells[0].textContent!=='骨密度 DXA').map(tr=>tr.cells[2].textContent),bone:document.querySelector('#boneRef').textContent}});
     check('追蹤間隔的依據：表格有九列骨密度；預設欄是「沒有」（六個）、1 年、5 年、不排，不寫成 0 的待安排',JSON.stringify(ref.rows.map(x=>[x[1],x[2],x[3]]))===JSON.stringify(PRESETS.map(p=>[p[1],p[0]===NOFOLLOW?'不排':{12:'1 年',60:'5 年'}[p[2]]||'沒有',p[3]])),ref.rows);
     check('追蹤間隔的依據：其他檢查的預設欄照舊（間隔 0 的八個分類仍寫待安排、甲狀腺兩個不排，沒有一列變成「沒有」）',ref.other.filter(t=>t==='待安排').length===8&&ref.other.filter(t=>t==='不排').length===2&&!ref.other.includes('沒有'),ref.other);
@@ -173,8 +181,9 @@ async function shotFile(page){const b64=await page.evaluate(()=>{const c=documen
     await page.selectOption('#fExam','thy_us');await page.selectOption('#fExam','bone_dxa');seen.push((await formState(page)).preset);
     await page.fill('[data-lab="L1–L4 Z"]','0.3');await page.fill('#fReport','醫師表示目前不需例行追蹤');seen.push((await formState(page)).preset);
     check('新增骨密度：打開、換過檢查項目再換回來、填了數值與報告文字之後，分類都還是（未分類），不會自己變成不追蹤',seen.every(v=>v===''),seen);
-    await page.fill('#fDate','2026-10-02');await page.selectOption('#fPreset',NOFOLLOW);let f=await formState(page);
-    check('手選「醫師表示目前不需例行追蹤」：間隔空白、預覽寫不排例行追蹤、沒有錯誤',f.preset===NOFOLLOW&&f.interval===''&&f.preview===NOFOLLOW_PV&&f.ivErr===null&&f.hint===hintOf(PRESETS[8]),f);
+    await page.fill('#fDate','2026-10-02');await page.fill('#fDue','2027-05-01');await typeInterval(page,'24');const before=await formState(page);
+    await page.selectOption('#fPreset',NOFOLLOW);let f=await formState(page);
+    check('手選「醫師表示目前不需例行追蹤」：先前填的間隔 24 與指定日期 2027-05-01 都清空（留著任何一個就仍會列入到期），預覽寫不排例行追蹤、沒有錯誤',before.due==='2027-05-01'&&before.interval==='24'&&f.preset===NOFOLLOW&&f.interval===''&&f.due===''&&f.preview===NOFOLLOW_PV&&f.ivErr===null&&f.dueErr===null&&f.hint===hintOf(PRESETS[8]),{before:[before.interval,before.due],f});
     const w0=await writes(page);await page.click('#btnSave');await wait(400);const rs=await boneRecs(page),c=await boneCard(page);
     check('存檔：preset nofollow、interval null、nextDue null，寫入一次',rs.length===1&&rs[0].preset===NOFOLLOW&&rs[0].interval===null&&rs[0].nextDue===null&&(await writes(page))===w0+1,rs);
     check('紀錄卡片寫「醫師表示目前不需例行追蹤」；標籤是不需例行追蹤，不是待安排也不是逾期；間隔寫不排例行追蹤',c.chip==='醫師表示目前不需例行追蹤'&&c.pill==='不需例行追蹤'&&/\bnone\b/.test(c.pillCls)&&c.facts.includes('下次—')&&c.facts.includes('間隔不排例行追蹤'),{chip:c.chip,pill:c.pill,facts:c.facts});
@@ -207,6 +216,15 @@ async function shotFile(page){const b64=await page.evaluate(()=>{const c=documen
     check('今天頁：其他檢查都超過 60 天時，還沒有追蹤計畫的骨密度仍然列出（沒有被藏起來）',t==='骨密度DXA待安排›',t);
     t=await cardOf({'records/a':R('breast_us','breast','2025-06-01'),'records/b':bone('2026-10-29',{preset:'zok',interval:0})});
     check('今天頁：骨密度的間隔填 0 就是盡快處理，和其他檢查一樣排最前（0 和留空是兩回事）',t==='骨密度DXA待安排・另有1項›',t);
+    /* GPT 複核（第二輪）：date 不合法的紀錄不能蓋過合法日期的紀錄；同順位照檢查表的順序，資料順序不影響 */
+    t=await cardOf({'records/a':R('breast_us','breast','2025-06-01'),'records/b':R('breast_us','breast','zzzz',{interval:null,createdAt:9})});
+    const t2=await cardOf({'records/a':R('breast_us','breast','zzzz',{interval:null,createdAt:9}),'records/b':R('breast_us','breast','2025-06-01')});
+    check('今天頁：逾期的乳房超音波不會被另一筆 date 是 zzzz 的紀錄蓋掉（兩種資料順序都一樣）',t==='乳房超音波已逾期151天›'&&t2===t,{t,t2});
+    t=await cardOf({'records/a':bone('2025-01-01'),'records/b':bone('zzzz',{preset:NOFOLLOW,interval:null,createdAt:99})});
+    check('今天頁：逾期的骨密度不會被 date 是 zzzz 的不追蹤紀錄蓋掉（GPT 的反例）',/^骨密度DXA已逾期\d+天›$/.test(t),t);
+    t=await cardOf({'records/a':R('thy_us','thyroid','2026-10-20',{interval:0}),'records/b':R('breast_us','breast','2026-10-21',{interval:0})});
+    const t3=await cardOf({'records/a':R('breast_us','breast','2026-10-21',{interval:0}),'records/b':R('thy_us','thyroid','2026-10-20',{interval:0})});
+    check('今天頁：兩筆都是盡快處理時照檢查表的順序（乳房超音波先），資料順序反過來也一樣',t==='乳房超音波待安排・另有1項›'&&t3===t,{t,t3});
     /* 接下來要做的檢查 */
     const six={a:R('breast_us','breast','2025-01-01'),b:R('breast_mammo','breast','2024-01-01',{interval:12}),c:R('thy_us','thyroid','2025-02-01'),d:R('thy_lab','thyroid','2025-03-01',{interval:6}),e:R('lung_ldct','lung','2025-04-01'),f:R('gyn_horm','gyn','2025-05-01',{interval:6})};
     const {page,errors}=await open({time:NOW,hash:'exams',cfg:{latencyComp:true,seed:{...base,...Object.fromEntries(Object.entries(six).map(([k,v])=>['records/'+k,v])),'records/g':unpl}}});await wait(600);let c=await boneCard(page);
@@ -292,9 +310,17 @@ async function shotFile(page){const b64=await page.evaluate(()=>{const c=documen
       check('其他檢查的分類說明照舊：只有依據，不多一行標籤（R-03 只用在骨密度）；改選分類照舊帶入它的間隔',f.hint==='ATA 2015：12–24 個月，取下限'&&f.interval==='12',f);
       await typeInterval(page,'18');await page.selectOption('#fPreset','high');f=await formState(page);
       check('其他檢查照舊：分類有自己的間隔時，改選分類就換成它的（高度懷疑 6 個月）',f.interval==='6',f);
+      await page.fill('#fDue','2027-02-01');await page.selectOption('#fPreset','none');f=await formState(page);
+      check('其他檢查照舊：甲狀腺超音波選「無結節」只清間隔，已填的醫師指定日期留著（只有骨密度的「醫師表示不需追蹤」會清日期）',f.interval===''&&f.due==='2027-02-01'&&f.preview==='下次檢查：2027/02/01（醫師指定）',f);
+      await clearDue(page);
       await page.fill('#fDate','');await page.click('#btnSave');await wait(250);const t1=await txt(page,'#toastText');
       await page.evaluate(()=>{const d=document.querySelector('#fDate');d.value='275760-01-01';d.dispatchEvent(new Event('input',{bubbles:true}))});await wait(80);f=await formState(page);await page.click('#btnSave');await wait(250);const t2=await txt(page,'#toastText');
       check('檢查日期（R-04）：沒填時提示請填檢查日期；填了不合法的日期時，提示和預覽是同一句',t1==='請填檢查日期'&&f.preview==='檢查日期不是有效的日期'&&t2==='檢查日期不是有效的日期',{t1,pv:f.preview,t2});
+      await page.click('#dlgRec [data-close]');await wait(150);
+      /* 表單狀態不殘留（兩份審查都要求）：必填錯誤留在上一張表單，關掉後開另一張新表單 */
+      await page.click('[data-add="gi_egd"]');await wait(250);await page.fill('#fInterval','');await page.click('#btnSave');await wait(250);const e1=(await formState(page)).ivErr;await page.click('#dlgRec [data-close]');await wait(150);
+      await page.click('[data-add="gi_colo"]');await wait(250);f=await formState(page);
+      check('表單狀態不殘留：上一張表單留著必填錯誤就關掉，再開另一張新表單時沒有錯誤，間隔是那個檢查自己的 120',e1===IV_NEED&&f.ivErr===null&&f.ivInvalid===null&&f.interval==='120'&&f.preview.startsWith('下次檢查：'),{e1,f});
       await page.click('#dlgRec [data-close]');await wait(150)}
     else{
       await typeInterval(page,'-1');await wait(100);const a=await page.evaluate(`(${scan.toString()})()`);
@@ -412,12 +438,27 @@ async function shotFile(page){const b64=await page.evaluate(()=>{const c=documen
     await page.evaluate(()=>__mock.externalSet('records/c9',{exam:'gi_egd',cat:'gi',date:'2026-05-01',preset:'zzz',interval:24,nextDue:null,report:'',place:'',doctor:'',note:'',labs:{},createdAt:9,updatedAt:9}));await wait(300);
     await page.click('[data-hist="gi_egd"]');await wait(200);await page.click('[data-edit="c9"]');await wait(250);await page.fill('#fPlace','某診所');await page.click('#btnSave');await wait(400);r=await stored(page,'c9');
     check('R-09 沒有分類選單的檢查（胃鏡）帶著不認得的代號：編輯後也原樣存回',r.preset==='zzz'&&r.place==='某診所'&&r.interval===24,r);
+    /* 表單狀態不殘留：保留舊代號的那張表單沒存就關掉，接著新增的紀錄不能帶到那個代號 */
+    await page.click('[data-edit="c9"]');await wait(250);await page.click('#dlgRec [data-close]');await wait(150);
+    await page.click('[data-add="gi_egd"]');await wait(250);await page.fill('#fDate','2026-06-01');await page.click('#btnSave');await wait(400);
+    const fresh=await page.evaluate(()=>[...__mock.store.entries()].filter(([k,v])=>k.startsWith('records/')&&v.exam==='gi_egd'&&k!=='records/c9').map(([,v])=>[v.date,v.preset,v.interval]));
+    check('表單狀態不殘留：開過帶舊代號的紀錄再新增一筆胃鏡，新紀錄的 preset 是 null，不是上一張表單保留的代號',JSON.stringify(fresh)===JSON.stringify([['2026-06-01',null,24]]),fresh);
     /* 已存的醫師指定間隔與日期：只改別的欄位時不動 */
     await page.evaluate(()=>{__mock.externalSet('records/c2',{exam:'bone_dxa',cat:'bone',date:'2026-01-10',preset:'zok',interval:24,nextDue:null,report:'',place:'',doctor:'',note:'',labs:{'L1–L4 Z':'-0.4'},createdAt:6,updatedAt:6});
       __mock.externalSet('records/c3',{exam:'bone_dxa',cat:'bone',date:'2026-02-10',preset:'top',interval:0,nextDue:'2026-12-15',report:'',place:'',doctor:'',note:'',labs:{},createdAt:7,updatedAt:7})});await wait(300);
     for(const id of ['c2','c3']){await page.click(`[data-edit="${id}"]`);await wait(250);await page.fill('#fPlace','另一家醫院');await page.click('#btnSave');await wait(400)}
     const c2=await stored(page,'c2'),c3=await stored(page,'c3');
     check('已存的醫師指定間隔（24）與指定日期：編輯別的欄位後原封不動',c2.interval===24&&c2.preset==='zok'&&c2.nextDue===null&&c2.place==='另一家醫院'&&c3.interval===0&&c3.nextDue==='2026-12-15'&&c3.preset==='top',{c2,c3});
+    /* GPT 審查（75e0110）第 1 點：已有醫師指定日期的紀錄改選不追蹤，日期不能留著繼續提醒 */
+    await page.click('[data-edit="c3"]');await wait(250);const was=await formState(page);await page.selectOption('#fPreset',NOFOLLOW);f=await formState(page);await page.click('#btnSave');await wait(400);r=await stored(page,'c3');
+    check('已有指定日期 2026-12-15 的紀錄改選「醫師表示目前不需例行追蹤」：間隔與指定日期都清空；存檔後 nextDue、interval 都是 null，不再照那個日期列入',was.due==='2026-12-15'&&f.interval===''&&f.due===''&&f.preview===NOFOLLOW_PV&&r.preset===NOFOLLOW&&r.interval===null&&r.nextDue===null,{was:was.due,f,r});
+    /* GPT 複核（第二輪）第 2 點：已存紀錄的間隔一律當作明確設定，就算剛好等於分類帶入的值 */
+    await page.evaluate(()=>__mock.externalSet('records/c6',{exam:'bone_dxa',cat:'bone',date:'2025-12-20',preset:'poiLow',interval:12,nextDue:null,report:'',place:'',doctor:'',note:'',labs:{},createdAt:8,updatedAt:8}));await wait(300);
+    await page.click('[data-edit="c6"]');await wait(250);await page.selectOption('#fPreset','zok');f=await formState(page);
+    check('已存的 poiLow＋12 個月改選沒有間隔的分類：12 留著（紀錄上看不出是分類帶的還是醫師指定的，不替使用者清掉）',f.interval==='12'&&f.preview==='下次檢查：2026/12/20（1 年後）',f);
+    await page.selectOption('#fPreset','poiNormHT');const g1=await formState(page);await page.selectOption('#fPreset','tnorm');const g2=await formState(page);
+    check('同一張表單裡再改選 POI 正常：換成它帶入的 60；之後改選沒有間隔的分類，這個 60 是表單剛帶入的，清掉',g1.interval==='60'&&g2.interval===''&&g2.preview===UNPL,{g1:g1.interval,g2:g2.interval});
+    await page.click('#dlgRec [data-close]');await wait(150);
     /* R-08：沒有間隔的骨密度紀錄（匯入的資料），顯示與編輯是同一套說法 */
     await page.evaluate(()=>__mock.externalSet('records/c4',{exam:'bone_dxa',cat:'bone',date:'2026-03-10',preset:null,interval:null,nextDue:null,report:'',place:'',doctor:'',note:'',labs:{},createdAt:8,updatedAt:8}));await wait(300);
     c=await boneCard(page);await page.click('[data-edit="c4"]');await wait(250);f=await formState(page);
@@ -502,6 +543,17 @@ async function shotFile(page){const b64=await page.evaluate(()=>{const c=documen
     await go(page,'summary',500);const pv=await txt(page,'#smPreview');
     check('R-06 抽血的 date 是 2026-02-31、胃鏡沒有 date：定期檢查頁兩項都是待安排，今天頁列出兩項，回診摘要的仍待處理也列出這兩項（不再寫沒有）',pills['甲狀腺抽血']==='待安排'&&pills['上消化道內視鏡（胃鏡）']==='待安排'&&tc==='甲狀腺抽血待安排・另有1項›'&&/仍待處理：甲狀腺抽血 待安排、上消化道內視鏡（胃鏡） 待安排/.test(pv),{pills,tc,pv:pv.slice(-120)});
     check('R-06：沒有 JS 錯誤、沒有 NaN',!errors.length&&!/NaN/.test(pv),errors);
+    await page.context().close()}
+
+  {const s={...noRecs(seed()),'records/d3':{exam:'breast_us',cat:'breast',date:20260101,preset:null,interval:12,nextDue:null,report:'',place:'',doctor:'',note:'',labs:{},createdAt:1,updatedAt:1},'records/d4':R('thy_lab','thyroid','2026-05-20',{interval:6})};
+    const {page,errors}=await open({time:NOW,hash:'exams',cfg:{latencyComp:true,seed:s}});await wait(600);
+    const v=await page.evaluate(()=>({pills:Object.fromEntries([...document.querySelectorAll('#cats article.exam')].map(a=>[a.querySelector('.exam-name').textContent,a.querySelector('.pill').textContent])),facts:document.querySelector('#h-breast').closest('section').querySelector('.facts').textContent,bone:!!document.querySelector('#h-bone'),next:[...document.querySelectorAll('#nextList li')].map(li=>li.textContent.replace(/\s+/g,' ').trim())}));
+    await page.click('[data-hist="breast_us"]');await wait(200);const hist=await page.evaluate(()=>document.querySelector('#h-breast').closest('section').querySelector('.hist li')?.textContent||'');
+    await page.click('[data-edit="d3"]');await wait(250);const fo=await formState(page);await page.click('#dlgRec [data-close]');await wait(150);
+    await go(page,'today');const tc=flat(await txt(page,'#examCard'));
+    await go(page,'summary',500);const pv=await txt(page,'#smPreview');
+    check('R-06 date 是數字（匯入的資料）：定期檢查頁照樣整頁畫得出來（GPT 審查第 3 點），乳房超音波是待安排、上次寫「—」，其他檢查不受影響',v.pills['乳房超音波']==='待安排'&&v.pills['甲狀腺抽血']==='21 天後到期'&&v.bone&&v.facts.includes('上次—')&&v.next.length===2&&v.next[0].includes('乳房超音波'),v);
+    check('R-06 date 是數字：歷史列與編輯表單打得開，今天頁與回診摘要同樣列為待安排；沒有 JS 錯誤、沒有 NaN',hist.includes('下次 待安排')&&fo.open&&fo.exam==='breast_us'&&tc==='乳房超音波待安排・另有1項›'&&/仍待處理：乳房超音波 待安排/.test(pv)&&!/NaN/.test(pv+tc+hist)&&!errors.length,{hist,fo,tc,pv:pv.slice(-120),errors});
     await page.context().close()}
 
   /* ---- 匯出、匯入：新備份往返、舊備份 ---- */

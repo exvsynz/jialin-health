@@ -785,7 +785,7 @@ function logicalToday(){const t=tpeNow();return t.h<4?addDays(t.date,-1):t.date}
 function nowHM(){const t=tpeNow();return pad(t.h)+':'+pad(t.m)}
 const WD='日一二三四五六';
 const wd=s=>WD[new Date(dnum(s)*864e5).getUTCDay()];
-function fmt(ds){if(!ds)return'—';const[y,m,d]=ds.split('-');return y+'/'+m+'/'+d}
+function fmt(ds){if(!ds||typeof ds!=='string')return'—';const[y,m,d]=ds.split('-');return y+'/'+m+'/'+d} // a date that is not text (imported data) is a dash, never an exception
 const md=ds=>ds.slice(5).replace('-','/');
 const cmd=ds=>(+ds.slice(5,7))+'月'+(+ds.slice(8))+'日';
 function addMonths(ds,m){const[y,mo,d]=ds.split('-').map(Number);const t=new Date(Date.UTC(y,mo-1+m,1));const last=new Date(Date.UTC(t.getUTCFullYear(),t.getUTCMonth()+1,0)).getUTCDate();t.setUTCDate(Math.min(d,last));return t.getUTCFullYear()+'-'+pad(t.getUTCMonth()+1)+'-'+pad(t.getUTCDate())}
@@ -868,6 +868,10 @@ function planOf(r,info,ivs){const e=info[r.exam],iv=r.interval,asap={due:r.date,
   else{if(e?.noFollow?.includes(r.preset))return dated(null);if(e?.def==null)return{due:null,asap:false,unplanned:true};const f=ivs?.[r.exam];m=validFixed(f)?f:e.def}
   const d=validDate(r.date)?addMonths(r.date,m):null;return validDate(d)?dated(d):asap}
 const dueWith=(r,info,ivs)=>planOf(r,info,ivs).due;
+/* the latest record of each exam: the largest valid date, then the largest createdAt. A record whose date is not a valid date never displaces one that has a valid date:
+   it would hide a plan that may be due, or put a stray 「待安排」 over a real date. It counts only while the exam has no validly dated record. known(exam) keeps the exams this page has */
+function latestOf(recs,known){const m={},newer=(r,p)=>{const a=validDate(r.date),b=validDate(p.date);return a!==b?a:a&&r.date!==p.date?r.date>p.date:(r.createdAt||0)>(p.createdAt||0)};
+  for(const r of recs||[]){if(!known(r.exam))continue;const p=m[r.exam];if(!p||newer(r,p))m[r.exam]=r}return m}
 /* visit summary: facts only, every section present, nothing after `to` used. c = { days, exercise, records, meddose, settingDose, pause, weeks, info, intervals } */
 function summarize(c,from,to,today){
   if(!validDate(from)||!validDate(to))return{error:'請填開始日和結束日。'};
@@ -922,17 +926,18 @@ function summarize(c,from,to,today){
     for(const k of marked){const lr=runs[runs.length-1];if(lr&&addDays(lr[1],1)===k)lr[1]=k;else runs.push([k,k])}
     S.push(['月經標記',runs.length?runs.map(([a,b])=>(a===b?dIn(a):dIn(a)+'–'+dIn(b))+(a===from||b===to?'（期間外可能還有）':'')):['期間內沒有標記']])}
   /* pending and upcoming, as of `to`. A record whose date is not a valid date cannot be placed before or after `to`: it stays in and planOf decides, as on the pages */
-  {const recs=(c.records||[]).filter(r=>(!validDate(r.date)||r.date<=to)&&c.info[r.exam]),latest={};
-    for(const r of recs){const p=latest[r.exam];if(!p||r.date>p.date||(r.date===p.date&&(r.createdAt||0)>(p.createdAt||0)))latest[r.exam]=r}
-    const pend=[],next=[],lim=addDays(to,180);
-    for(const r of Object.values(latest)){const name=c.info[r.exam].name;
+  {const recs=(c.records||[]).filter(r=>(!validDate(r.date)||r.date<=to)&&c.info[r.exam]),latest=latestOf(recs,x=>!!c.info[x]);
+    /* each entry: [key, place of the exam in the table, text]. The key gives the page's order by its first character: as soon as possible (0), dated (1 + the date), no plan yet (2);
+       equal keys go in the order of the exam table, the recheck after the exams */
+    const pend=[],next=[],lim=addDays(to,180),table=Object.keys(c.info);
+    for(const r of Object.values(latest)){const name=c.info[r.exam].name,o=table.indexOf(r.exam);
       const {due,asap,unplanned}=planOf(r,c.info,c.intervals);
-      if(asap||unplanned){pend.push([asap?'0':'2',name+' 待安排']);continue} // the page's order, by the first character of the key: as soon as possible (0), dated (1 + the date), no plan yet (2)
+      if(asap||unplanned){pend.push([asap?'0':'2',o,name+' 待安排']);continue}
       if(!due)continue;
-      if(due<=to)pend.push(['1'+due,`${name} ${fmt(due)} 到期`]);else if(due<=lim)next.push([due,`${name} ${fmt(due)}`])}
+      if(due<=to)pend.push(['1'+due,o,`${name} ${fmt(due)} 到期`]);else if(due<=lim)next.push([due,o,`${name} ${fmt(due)}`])}
     const rc=recheckState((c.meddose||[]).filter(m=>validDate(m.date)&&m.date<=to),recs,to,c.weeks);
-    if(rc.st==='manual'||rc.st==='auto'){if(rc.due<=to)pend.push(['1'+rc.due,`TSH 複查（劑量變更後）${fmt(rc.due)} 到期`]);else if(rc.due<=lim)next.push([rc.due,`TSH 複查（劑量變更後）${fmt(rc.due)}`])}
-    const ord=a=>a.sort((x,y)=>cmpStr(x[0],y[0])).map(x=>x[1]);
+    if(rc.st==='manual'||rc.st==='auto'){if(rc.due<=to)pend.push(['1'+rc.due,table.length,`TSH 複查（劑量變更後）${fmt(rc.due)} 到期`]);else if(rc.due<=lim)next.push([rc.due,table.length,`TSH 複查（劑量變更後）${fmt(rc.due)}`])}
+    const ord=a=>a.sort((x,y)=>cmpStr(x[0],y[0])||x[1]-y[1]).map(x=>x[2]);
     S.push(['檢查',[`截至 ${fmt(to)} 仍待處理：`+(pend.length?ord(pend).join('、'):'沒有'),'之後 180 天內到期：'+(next.length?ord(next).join('、'):'沒有')]])}
   return{title:`家琳回診摘要 ${fmt(from)}–${fmt(to)}（共 ${n} 天）`,sections:S}}
 /* three renderings of one summary; user text is escaped for each format, and nothing becomes a link or an image */
@@ -1359,11 +1364,12 @@ function renderSpark(){
 }
 function renderExamSlot(){
   const latest=latestByExam(),today=logicalToday();
-  /* the card names the first of: as soon as possible (rank 0); overdue or due within 60 days, by date (1); no plan yet (2), never ahead of anything that has a date */
-  const urgent=Object.values(latest).map(r=>{const {asap,unplanned,due}=planR(r);return{name:EX[r.exam].name,color:CAT[EX[r.exam].cat].color,arrange:asap||unplanned,rank:asap?0:unplanned?2:1,dd:asap||unplanned?0:due==null?Infinity:daysFrom(today,due)}});
+  /* the card names the first of: as soon as possible (rank 0); overdue or due within 60 days, by date (1); no plan yet (2), never ahead of anything that has a date.
+     Equal ones go in the order of the exam table (ord), the recheck after the exams */
+  const urgent=Object.values(latest).map(r=>{const {asap,unplanned,due}=planR(r);return{name:EX[r.exam].name,color:CAT[EX[r.exam].cat].color,arrange:asap||unplanned,rank:asap?0:unplanned?2:1,ord:EXAMS.indexOf(EX[r.exam]),dd:asap||unplanned?0:due==null?Infinity:daysFrom(today,due)}});
   const rc=recheckState(meddose,records,today,profile.tshRecheckWeeks);
-  if(rc.st==='manual'||rc.st==='auto')urgent.push({name:'TSH 複查（劑量變更後）',color:CAT.thyroid.color,arrange:false,rank:1,dd:daysFrom(today,rc.due),recheck:true});
-  const due=urgent.filter(x=>x.dd<=60).sort((a,b)=>a.rank-b.rank||a.dd-b.dd);
+  if(rc.st==='manual'||rc.st==='auto')urgent.push({name:'TSH 複查（劑量變更後）',color:CAT.thyroid.color,arrange:false,rank:1,ord:EXAMS.length,dd:daysFrom(today,rc.due),recheck:true});
+  const due=urgent.filter(x=>x.dd<=60).sort((a,b)=>a.rank-b.rank||a.dd-b.dd||a.ord-b.ord); // ties in the order of the exam table, as in the summary and the reminders
   if(!due.length){$('#examSlot').innerHTML='';return}
   const u=due[0];
   const t=u.arrange?'待安排':u.dd<0?`已逾期 ${-u.dd} 天`:u.dd===0?'今天到期':`${u.dd} 天後到期`;
@@ -1870,6 +1876,7 @@ const EXAMS=[
   /* bone density has no fixed interval (def null): only the two classes for confirmed POI carry one. Every other class, and no class, leaves the interval empty,
      which is 「還沒有追蹤計畫」 (unplanned) until the doctor's interval or date is filled in. It is not 0: 0 stays 「依報告盡快處理」, as for every exam.
      nofollow is the doctor's own decision that no routine follow-up is needed: picked by hand only, never the default, never filled in from a screenshot.
+     stop: picking it also empties the doctor's earlier date, which would otherwise keep the record listed. (A thyroid no-follow class is a finding, not a decision: there the doctor's date stays.)
      The class is always picked by hand: nothing is derived from the T or Z values typed below.
      fullLabel: the picked class is spelled out under the select, because the closed select cuts these labels short and the part cut off is the condition the class depends on.
      lab options: row starts a new row in the form, so each site's BMD and scores stay side by side;
@@ -1883,7 +1890,7 @@ const EXAMS=[
     {k:'tnorm',label:'停經後 T ≥ −1.0（WHO 正常）',m:null,src:'ISCD 2023／WHO 分類；重測間隔依個別臨床條件，請依醫囑。'},
     {k:'tlow',label:'停經後 −2.5 < T < −1.0（WHO 低骨量）',m:null,src:'ISCD 2023／WHO 分類；重測間隔依個別臨床條件，請依醫囑。'},
     {k:'top',label:'停經後 T ≤ −2.5，或醫師判定骨質疏鬆',m:null,src:'ISCD 2023／WHO 分類；重測間隔依個別臨床條件，請依醫囑。'},
-    {k:'nofollow',label:'醫師表示目前不需例行追蹤',m:null,noFollow:true,src:'依醫師判斷；ISCD 2023 未規定停經前或非 POI 的固定重測間隔。'}
+    {k:'nofollow',label:'醫師表示目前不需例行追蹤',m:null,noFollow:true,stop:true,src:'依醫師判斷；ISCD 2023 未規定停經前或非 POI 的固定重測間隔。'}
   ],labs:[['L1–L4 BMD','g/cm²',{row:1}],['L1–L4 T','',{signed:1}],['L1–L4 Z','',{signed:1}],
     ['左股骨頸 BMD','g/cm²',{row:1}],['左股骨頸 T','',{signed:1}],['右股骨頸 BMD','g/cm²',{row:1}],['右股骨頸 T','',{signed:1}],
     ['左全髖 BMD','g/cm²',{row:1}],['左全髖 T','',{signed:1}],['右全髖 BMD','g/cm²',{row:1}],['右全髖 T','',{signed:1}]]}
@@ -1902,13 +1909,14 @@ const planStatus=p=>p.asap?{c:'late',t:'待安排',d:-1}:p.unplanned?{c:'none',t
 const UNPLANNED='還沒有追蹤計畫';
 function statusOf(due){if(due==null)return{c:'none',t:'不需例行追蹤',d:Infinity};const d=daysFrom(logicalToday(),due);if(d<0)return{c:'late',t:'已逾期 '+(-d)+' 天',d};if(d<=60)return{c:'soon',t:d===0?'今天到期':d+' 天後到期',d};return{c:'ok',t:'還有 '+Math.round(d/30.4)+' 個月',d}}
 function presetOf(r){const e=EX[r.exam];return e&&e.presets?e.presets.find(p=>p.k===r.preset):null}
-function latestByExam(){const m={};for(const r of records){if(!EX[r.exam])continue;if(!m[r.exam]||r.date>m[r.exam].date||(r.date===m[r.exam].date&&(r.createdAt||0)>(m[r.exam].createdAt||0)))m[r.exam]=r}return m}
+function latestByExam(){return latestOf(records,x=>!!EX[x])}
 function renderExams(){
   const latest=latestByExam();
-  /* the same order as the today card, the summary and the reminders: as soon as possible, then by due date, then no plan yet; exams that are not followed come last.
+  /* the same order as the today card, the summary and the reminders: as soon as possible, then by due date, then no plan yet; exams that are not followed come last;
+     equal ones in the order of the exam table.
      The list is short, but nothing 「待安排」 is ever cut from it */
-  const rank=i=>i.asap?0:i.unplanned?2:i.due==null?3:1;
-  const items=Object.values(latest).map(r=>{const p=planR(r);return{r,...p,st:planStatus(p)}}).sort((a,b)=>rank(a)-rank(b)||(rank(a)===1?cmpStr(a.due,b.due):0));
+  const rank=i=>i.asap?0:i.unplanned?2:i.due==null?3:1,place=i=>EXAMS.indexOf(EX[i.r.exam]);
+  const items=Object.values(latest).map(r=>{const p=planR(r);return{r,...p,st:planStatus(p)}}).sort((a,b)=>rank(a)-rank(b)||(rank(a)===1?cmpStr(a.due,b.due):0)||place(a)-place(b));
   const late=items.filter(i=>i.st.c==='late').length, soon=items.filter(i=>i.st.c==='soon').length;
   $('#tally').textContent=items.length?`逾期 ${late}・60 天內 ${soon}・已追蹤 ${items.length}/${EXAMS.length} 項`:'';
   $('#nextList').innerHTML=items.length?items.filter((x,i)=>i<6||x.asap||x.unplanned).map(({r,due,asap,unplanned,st})=>{const e=EX[r.exam];return`<li style="--cat:${CAT[e.cat].color}"><span class="dot"></span><div><div>${esc(e.name)}</div><div class="when num">${asap||unplanned?'':`<span class="nw">${fmt(due)}</span> `}<span class="nw">上次 ${fmt(r.date)}</span></div></div><span class="pill ${st.c}">${st.t}</span></li>`}).join(''):'<li class="empty">還沒有任何紀錄。按「新增檢查紀錄」輸入最近一次檢查，這裡就會依到期日排出順序。</li>';
@@ -1965,7 +1973,7 @@ const pickedPreset=()=>EX[$('#fExam').value]?.presets?.find(x=>x.k===$('#fPreset
 const noFollowPicked=()=>!!pickedPreset()?.noFollow;
 /* what a class (or no class) of an exam brings into the interval field: nothing for a no-follow class, else the class's own months, else the exam's fixed interval; '' when there is none */
 const brings=(e,p)=>p?.noFollow?'':String(p?.m??defInterval(e.id)??'');
-/* ivAuto is what the form itself last put in the interval field. A change of class replaces that; anything else in the field is the doctor's interval */
+/* ivAuto is what the form itself last put in the interval field, until the user types in the field. A change of class replaces that; anything else is the doctor's interval */
 let ivAuto=null;
 const setIv=v=>{$('#fInterval').value=v;ivAuto=v};
 /* a class the record holds that the select does not offer (an older code, an import): saved back as it is unless the user picks a class */
@@ -1975,8 +1983,9 @@ let keptPreset=null;
 function setPresetHint(e,none=''){const p=e?.presets?.find(x=>x.k===$('#fPreset').value);
   $('#presetHint').textContent=p?(e.fullLabel?p.label+'\n':'')+p.src:keptPreset!=null?`已存的分類「${keptPreset}」不在選單裡，不改就原樣保留`:none}
 function applyPreset(){const e=EX[$('#fExam').value];if(!e)return;const p=pickedPreset(),v=brings(e,p),cur=$('#fInterval').value.trim();
-  /* a class that brings no interval leaves the doctor's interval alone and clears only what the form filled in; a no-follow class always empties the field */
-  if(!(v===''&&!p?.noFollow&&cur!==ivAuto&&validFixed(parseInterval(cur).v)))setIv(v);
+  /* a class that brings no interval leaves the doctor's interval alone (0 included) and clears only what the form filled in; a no-follow class always empties the field */
+  if(!(v===''&&!p?.noFollow&&cur!==ivAuto&&validInterval(parseInterval(cur).v)))setIv(v);
+  if(p?.stop)$('#fDue').value='';
   setPresetHint(e,e.def==null?NODEF_HINT:'未分類時使用固定間隔：'+intervalText(defInterval(e.id)));updatePreview()}
 /* the plan as the form holds it: the interval (null when empty) and the doctor's date, with what is wrong with either field.
    The same check runs for the preview and for saving; a wrong value is shown on its field and never written */
@@ -2004,14 +2013,16 @@ $('#fExam').addEventListener('change',()=>{fillPresets($('#fExam').value);update
 /* a class read from a screenshot is filled in only when the exam has it and it is not a no-follow class: not following an exam is always chosen by hand */
 const shotMayPick=(exam,k)=>!!EX[exam]?.presets?.some(p=>p.k===k&&!p.noFollow);
 $('#fPreset').addEventListener('change',()=>{keptPreset=null;if(shotCur){shotCur.clsOk=true;shotCls=shotClsOf(shotCur)}applyPreset();renderShotCls()}); // choosing any category oneself is a confirmation
+$('#fInterval').addEventListener('input',()=>{ivAuto=null}); // typed by the user: no longer the form's own value, even when it is the same number
 ['#fDate','#fDue','#fInterval'].forEach(s=>$(s).addEventListener('input',updatePreview));
 ['#fDue','#fInterval'].forEach(s=>$(s).addEventListener('blur',updatePreview)); // a half-typed date or number fires no input event: it is checked on leaving the field
 $('#fDate').addEventListener('input',()=>{renderCtx();renderDup()});
 function openRecord(examId,rec){if(shotCur)shotStash();editing=rec||null;recEpoch++;keptPreset=null;ivNeed=false;$('#recTitle').textContent=rec?'編輯檢查紀錄':'新增檢查紀錄';
   $('#fExam').value=rec?rec.exam:(examId||EXAMS[0].id);$('#fExam').disabled=!!rec;fillPresets($('#fExam').value,!!rec);$('#fDate').value=rec?rec.date:logicalToday();
   if(rec){const e=EX[rec.exam],p=presetOf(rec);$('#fPreset').value=p?rec.preset:'';keptPreset=!p&&rec.preset!=null&&rec.preset!==''?rec.preset:null;setPresetHint(e);
-    /* an interval equal to what the record's class brings counts as the class's own, so a change of class replaces it; any other is the doctor's (applyPreset) */
-    $('#fInterval').value=Number.isFinite(rec.interval)?rec.interval:'';ivAuto=e&&$('#fInterval').value===brings(e,p)?$('#fInterval').value:null;
+    /* a stored interval counts as set on purpose, even when it equals what the record's class brings: nothing on the record says who set it,
+       so a change to a class that brings none keeps it (applyPreset) */
+    $('#fInterval').value=Number.isFinite(rec.interval)?rec.interval:'';ivAuto=null;
     $$('[data-lab]').forEach(i=>i.value=(rec.labs&&rec.labs[i.dataset.lab])||'')}
   $('#fDue').value=rec?.nextDue||'';$('#fReport').value=rec?.report||'';$('#fPlace').value=rec?.place||'';$('#fDoctor').value=rec?.doctor||'';$('#fNote').value=rec?.note||'';
   /* a stored date that is not a valid date cannot be shown in the field and was never used: say so, since saving drops it */

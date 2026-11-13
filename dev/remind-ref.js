@@ -14,7 +14,7 @@ const clock=ms=>{fake=ms;return{date:D.logicalToday(),h:D.tpeNow().h}};
 
 /* 代號、名稱、預設間隔（月）；和 src/index.html 的 EXAMS 一致（測試會比對） */
 const EXAMS=[['breast_us','乳房超音波',12],['breast_mammo','乳房X光攝影',24],['breast_ct','乳房電腦斷層',12],['thy_us','甲狀腺超音波',12],['thy_lab','甲狀腺抽血',6],['lung_ldct','低劑量電腦斷層 LDCT',12],['gyn_horm','生殖軸激素',6],['gi_egd','上消化道內視鏡（胃鏡）',24],['gi_colo','大腸鏡',120],['bone_dxa','骨密度 DXA',null]]; // null：沒有預設間隔，沒有 interval 時是「還沒有追蹤計畫」
-const EXAM_NAMES=Object.fromEntries(EXAMS.map(([id,n])=>[id,n])),EXAM_DEF=Object.fromEntries(EXAMS.map(([id,,d])=>[id,d]));
+const EXAM_NAMES=Object.fromEntries(EXAMS.map(([id,n])=>[id,n])),EXAM_DEF=Object.fromEntries(EXAMS.map(([id,,d])=>[id,d])),EXAM_ORD=Object.fromEntries(EXAMS.map(([id],i)=>[id,i])); // EXAM_ORD：在檢查表裡的位置，同順位時照它排
 const NO_FOLLOW=[['thy_us','none'],['thy_us','vlowSmall'],['bone_dxa','nofollow']]; // 「不追蹤」的分類
 const ITEMS=[['am','早上體重'],['med','服藥'],['pm','晚上體重']];
 const CHECK={morning:['am','med'],evening:['am','med','pm']};
@@ -72,12 +72,15 @@ function dueOf(r,intervals={}){
   const due=validDate(r.date)?D.addMonths(r.date,mo):null;
   return validDate(due)?{due}:{asap:true};
 }
-function latestByExam(records){const o={};for(const r of records||[]){if(!EXAM_NAMES[r.exam])continue;const c=o[r.exam];if(!c||r.date>c.date||(r.date===c.date&&(r.createdAt||0)>(c.createdAt||0)))o[r.exam]=r}return o}
-/* 排序：盡快處理（rank 0）→ 有到期日，依到期日（1）→ 還沒有追蹤計畫（2）；同一級再依名稱。兩種待安排不看天數，一定列出 */
-const byPlan=(a,b)=>a.rank-b.rank||a.dd-b.dd||(a.name<b.name?-1:1);
+/* 每種檢查的最新一筆（頁面 latestOf 的同一套規則）：先比合法的 date，同一天再比 createdAt。date 不合法的紀錄不會蓋過有合法 date 的紀錄，
+   只有在這種檢查沒有任何一筆合法 date 的紀錄時才算（取 createdAt 最大的） */
+function latestByExam(records){const o={},newer=(r,c)=>{const a=validDate(r.date),b=validDate(c.date);return a!==b?a:a&&r.date!==c.date?r.date>c.date:(r.createdAt||0)>(c.createdAt||0)};
+  for(const r of records||[]){if(!EXAM_NAMES[r.exam])continue;const c=o[r.exam];if(!c||newer(r,c))o[r.exam]=r}return o}
+/* 排序：盡快處理（rank 0）→ 有到期日，依到期日（1）→ 還沒有追蹤計畫（2）；同順位照檢查表的順序（ord），TSH 複查排在同一天的檢查之後。兩種待安排不看天數，一定列出 */
+const byPlan=(a,b)=>a.rank-b.rank||a.dd-b.dd||a.ord-b.ord;
 function examsWithin(records,intervals,date,days){
   return Object.values(latestByExam(records)).map(r=>{const d=dueOf(r,intervals);if(!d)return null;const arrange=!!(d.asap||d.unplanned);
-    return{name:EXAM_NAMES[r.exam],due:d.due,arrange,rank:d.asap?0:d.unplanned?2:1,dd:arrange?0:daysFrom(date,d.due)}})
+    return{name:EXAM_NAMES[r.exam],due:d.due,arrange,rank:d.asap?0:d.unplanned?2:1,ord:EXAM_ORD[r.exam],dd:arrange?0:daysFrom(date,d.due)}})
     .filter(x=>x&&(x.arrange||x.dd<=days)).sort(byPlan);
 }
 /* TSH 複查（B 階段 3.4，和頁面 recheckState 同一套規則）：最新一筆生效的劑量或製劑變更，沒有明確連結的完成抽血，就依手動日期或週數排出到期日 */
@@ -97,7 +100,7 @@ function recheckDue(meddose,records,date,weeks){
 function dueItems(data,date,days){
   const x=examsWithin(data.records,data.intervals,date,days);
   const due=recheckDue(data.meddose,data.records,date,data.profile?.tshRecheckWeeks);
-  if(due){const dd=daysFrom(date,due);if(dd<=days)x.push({name:RECHECK_NAME,due,arrange:false,rank:1,dd})}
+  if(due){const dd=daysFrom(date,due);if(dd<=days)x.push({name:RECHECK_NAME,due,arrange:false,rank:1,ord:EXAMS.length,dd})}
   return x.sort(byPlan)}
 const examPhrase=(x,withWord)=>x.arrange?x.name+'待安排':x.dd<0?x.name+'已逾期':x.name+' '+mdShort(x.due)+(withWord?' 到期':'');
 
@@ -233,4 +236,4 @@ async function run(kind,nowIso,store={},opt={}){
   return{...out,push:out.msg||null,heartbeat:f.doc('system/heartbeat'),fake:f};
 }
 
-module.exports={calendarEvent,execute,run,storeDocs,EXAMS,EXAM_NAMES,NO_FOLLOW,dueOf,recheckDue,normalizeRecent,normalizeSent,RECENT_MAX};
+module.exports={calendarEvent,execute,run,storeDocs,EXAMS,EXAM_NAMES,NO_FOLLOW,dueOf,latestByExam,recheckDue,normalizeRecent,normalizeSent,RECENT_MAX};

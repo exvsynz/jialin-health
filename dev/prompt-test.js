@@ -10,7 +10,7 @@ const ROOT=path.join(__dirname,'..');
 const read=f=>fs.readFileSync(path.join(ROOT,f),'utf8');
 
 const KINDS={morning:{docs:['settings/profile','system/heartbeat','days/{今天}'],cases:['m-both','m-med','err'],exams:false},
-  evening:{docs:['settings/profile','system/heartbeat','days/{今天}','records','settings/intervals','meddose'],cases:['e-pm','e-exam','e-many','e-plan','e-nofollow','e-recheck','e-legacy','e-food','err'],exams:true},
+  evening:{docs:['settings/profile','system/heartbeat','days/{今天}','records','settings/intervals','meddose'],cases:['e-pm','e-exam','e-many','e-plan','e-nofollow','e-latest','e-recheck','e-legacy','e-food','err'],exams:true},
   weekly:{docs:['settings/profile','system/heartbeat','days','exercise','records','settings/intervals','meddose'],cases:['w-full','w-plan','w-empty','err'],exams:true}};
 const COMMON=[
   ['artifact 網址','https://claude.ai/artifact/LJViyfLqXv2VdD5krdJahh'],
@@ -65,6 +65,8 @@ for(const [kind,spec] of Object.entries(KINDS)){
     check(`${kind}：四種結果與排序（盡快處理 → 有到期日，依到期日 → 還沒有追蹤計畫）；兩種待安排不受天數限制`,
       s.includes('每一筆的結果是四種之一：有到期日、「盡快處理」、「還沒有追蹤計畫」、不列入')&&s.includes('排序：「盡快處理」最前面；接著是有到期日的，依到期日先後（TSH 複查也在這一段一起排）；「還沒有追蹤計畫」排最後。')
       &&s.includes('「盡快處理」和「還沒有追蹤計畫」沒有剩餘天數，不受天數限制，一定列出')&&s.includes(`列出三種項目：「盡快處理」、剩餘天數 ≤ ${kind==='weekly'?30:7}（含已逾期）、「還沒有追蹤計畫」`)&&!s.includes('「待安排」最前面'));
+    check(`${kind}：最新一筆的選法（合法的 date 優先，不合法的不能蓋過；都不合法才看 createdAt）`,s.includes('先只看 `date` 是合法日期的紀錄（`YYYY-MM-DD`，而且真的有這一天）：取 `date` 最大的那筆；同一天就取 `createdAt` 最大的。')&&s.includes('`date` 不合法或不存在的紀錄不能蓋過有合法 `date` 的紀錄；這種檢查沒有任何一筆合法 `date` 的紀錄時，才取 `createdAt` 最大的那筆。'));
+    check(`${kind}：同順位照檢查表的順序，TSH 複查排在同一天的檢查之後`,s.includes('同一順位的（同樣是盡快處理、到期日同一天，或同樣是還沒有追蹤計畫），照上表由上到下的順序；TSH 複查排在同一天到期的檢查之後。'));
     check(`${kind}：設定的固定間隔要是 1–120 的整數，否則用預設`,s.includes('`settings/intervals` 裡這個代號的值是 1–120 的整數就用它；其他情況（不存在、`0`、負數、小數、超過 120、不是數字）都用上表的預設間隔')&&!s.includes('的值是數字就用它'));
     check(`${kind}：骨密度的 nofollow 是「不追蹤」`,s.includes('`exam` 是 `bone_dxa`，`preset` 是 `nofollow`'));
     check(`${kind}：骨密度沒有預設間隔`,rows.some(r=>r[0]==='bone_dxa'&&r[2]===null),rows.find(r=>r[0]==='bone_dxa'));

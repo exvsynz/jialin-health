@@ -14,6 +14,7 @@ module.exports={
   'e-many':['evening',SAT+'T22:21:00+08:00',st({},{records:[rec('breast_us','2025-06-01'),rec('thy_us','2026-10-20',{interval:0})]})],
   'e-plan':['evening',SAT+'T22:21:00+08:00',st({[SAT]:{am,med}},{records:[rec('breast_us','2025-06-01'),rec('thy_us','2026-10-20',{interval:0}),rec('bone_dxa','2026-10-01',{preset:'zok',interval:null})]})],
   'e-nofollow':['evening',SAT+'T22:21:00+08:00',st({[SAT]:{am,med}},{records:[rec('bone_dxa','2026-10-01',{preset:'nofollow',interval:null})]})],
+  'e-latest':['evening',SAT+'T22:21:00+08:00',st({[SAT]:{am,med}},{records:[rec('gyn_horm','2026-10-25',{interval:0}),rec('breast_us','zzzz',{interval:null,createdAt:9}),rec('thy_us','2026-10-20',{interval:0}),rec('breast_us','2025-06-01')]})],
   'e-recheck':['evening',SAT+'T22:21:00+08:00',st({[SAT]:{am,med}},{meddose:[{id:'m2',kind:'dose',date:'2026-10-01',dose:75,createdAt:1}],profile:{tshRecheckWeeks:5}})],
   'e-food':['evening',SAT+'T22:21:00+08:00',st({[SAT]:{am,med,pm}},{profile:{remind:{food:true}}})],
   'e-legacy':['evening',SAT+'T22:21:00+08:00',st({[SAT]:{am,med}},{records:[rec('thy_lab','2026-05-03',{interval:null})]})],

@@ -94,6 +94,14 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
     eq('三種一起：盡快處理最前、有到期日的依到期日、還沒有追蹤計畫最後',await ev({records:[...planned,rec('lung_ldct','2026-10-25',{preset:'l4b',interval:0})]}),'家琳今天還沒記：晚上體重；低劑量電腦斷層 LDCT待安排、乳房超音波已逾期、甲狀腺抽血 11/5 到期、骨密度 DXA待安排');
     eq('還沒有追蹤計畫不受 7 天限制：其他檢查都還很久，仍然列出',await ev({records:[rec('bone_dxa','2026-10-01',{preset:'tlow',interval:null}),rec('thy_lab','2026-10-01',{interval:6})]}),'家琳今天還沒記：晚上體重；骨密度 DXA待安排');
     eq('TSH 複查和有到期日的一起排，還沒有追蹤計畫仍在最後',await ev({records:[rec('bone_dxa','2026-10-01',{preset:null,interval:null}),rec('thy_lab','2026-05-07',{interval:6})],meddose:[{id:'m2',kind:'dose',date:'2026-10-01',dose:75,createdAt:1}],profile:{medDose:50,tshRecheckWeeks:5}}),'家琳今天還沒記：晚上體重；TSH 複查（劑量變更後） 11/5 到期、甲狀腺抽血 11/7 到期、骨密度 DXA待安排')}
+  /* GPT 複核（第二輪）：最新一筆的選法與同順位的排序，資料順序反過來結果也要一樣 */
+  {const two=async recs=>[await ev({records:recs}),await ev({records:[...recs].reverse()})],same=v=>[v,v];
+    eq('逾期的乳房超音波不會被另一筆 date 是 zzzz 的紀錄蓋掉（createdAt 比較大也一樣）',await two([rec('breast_us','2025-06-01'),rec('breast_us','zzzz',{interval:null,createdAt:9})]),same('家琳今天還沒記：晚上體重；乳房超音波已逾期'));
+    eq('逾期的骨密度不會被 date 是 zzzz 的不追蹤紀錄蓋掉',await two([rec('bone_dxa','2025-01-01',{preset:'poiLow',interval:12}),rec('bone_dxa','zzzz',{preset:'nofollow',interval:null,createdAt:9})]),same('家琳今天還沒記：晚上體重；骨密度 DXA已逾期'));
+    eq('有合法日期的紀錄時，沒有 date、interval 0 的紀錄不算最新一筆',await two([rec('thy_lab','2026-10-01',{interval:6}),{exam:'thy_lab',interval:0,createdAt:9}]),same('家琳今天還沒記：晚上體重'));
+    eq('這種檢查只有 date 不合法的紀錄：取 createdAt 最大的那筆（interval 0 → 待安排；另一筆是 6 個月也不看）',await two([{exam:'thy_lab',interval:6,createdAt:1},rec('thy_lab','zzzz',{interval:0,createdAt:5})]),same('家琳今天還沒記：晚上體重；甲狀腺抽血待安排'));
+    eq('同順位照檢查表的順序：兩筆盡快處理（甲狀腺超音波、生殖軸激素）、兩筆同一天到期（胃鏡、大腸鏡 11/5）',await two([rec('gyn_horm','2026-10-25',{interval:0}),rec('thy_us','2026-10-20',{interval:0}),rec('gi_colo','2025-11-05'),rec('gi_egd','2025-11-05')]),same('家琳今天還沒記：晚上體重；甲狀腺超音波待安排、生殖軸激素待安排、上消化道內視鏡（胃鏡） 11/5 到期、大腸鏡 11/5 到期'));
+    eq('TSH 複查和檢查同一天到期（11/5）：排在檢查之後',await ev({records:[rec('gi_colo','2025-11-05')],meddose:[{id:'m2',kind:'dose',date:'2026-10-01',dose:75,createdAt:1}],profile:{medDose:50,tshRecheckWeeks:5}}),'家琳今天還沒記：晚上體重；大腸鏡 11/5 到期、TSH 複查（劑量變更後） 11/5 到期')}
   /* R-01b：nofollow 是手選的不追蹤 */
   eq('骨密度 nofollow（醫師表示目前不需例行追蹤）：不列入',await ev({records:[rec('bone_dxa','2026-10-01',{preset:'nofollow',interval:null})]}),'家琳今天還沒記：晚上體重');
   eq('骨密度 nofollow 之後又填了間隔：照間隔算（和甲狀腺的不追蹤同一個順序）',await ev({records:[rec('bone_dxa','2025-11-05',{preset:'nofollow',interval:12})]}),'家琳今天還沒記：晚上體重；骨密度 DXA 11/5 到期');
@@ -403,13 +411,14 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
     /* 2026-11-13 複查 R-01、R-02、R-06：還沒有追蹤計畫、nofollow、骨密度的 0、不合格的固定間隔、不合法或缺少的 date */
     'records/p1':rec('bone_dxa','2026-10-09',{preset:'zok',interval:null}),'records/p2':{exam:'bone_dxa',date:'2026-10-10',preset:'tlow',createdAt:1},'records/p3':rec('bone_dxa','2026-10-11',{preset:'nofollow',interval:null}),'records/p4':rec('bone_dxa','2026-10-12',{preset:'zlow',interval:0}),
     'records/p5':rec('bone_dxa','2026-10-13',{preset:'nofollow',interval:24}),'records/p6':rec('bone_dxa','2026-10-14',{preset:'none',interval:'12'}),'records/p7':rec('gi_egd','2026-01-31',{interval:null}),'records/p8':rec('gi_colo','2026-01-31',{interval:null}),
-    'records/p9':rec('gyn_horm','2026-01-31',{interval:null}),'records/q1':rec('breast_ct','2026-01-31',{interval:null}),'records/q2':rec('lung_ldct','2026-01-31',{interval:null}),'records/q3':rec('thy_us','2026-02-31',{interval:6}),'records/q4':{exam:'breast_mammo',preset:null,interval:6,createdAt:1},
-    'records/q5':rec('thy_us','2026-02-31',{interval:null,nextDue:'2027-01-05'}),'records/q6':rec('thy_lab','2026-01-31',{preset:'nofollow',interval:null})};
+    'records/p9':rec('gyn_horm','2026-01-31',{interval:null,createdAt:2}),'records/q1':rec('breast_ct','2026-01-31',{interval:null}),'records/q2':rec('lung_ldct','2026-01-31',{interval:null}),'records/q3':rec('thy_us','2026-02-31',{interval:6}),'records/q4':{exam:'breast_mammo',preset:null,interval:6,createdAt:1},
+    'records/q5':rec('thy_us','2026-02-31',{interval:null,nextDue:'2027-01-05'}),'records/q6':rec('thy_lab','2026-01-31',{preset:'nofollow',interval:null}),'records/q7':rec('gyn_horm',20260101,{interval:6})}; // q7：date 是數字
   const ivs={thy_lab:3,gi_egd:180,gi_colo:1200,gyn_horm:0.4,breast_ct:0,lung_ldct:'6',bone_dxa:12}; // 只有 thy_lab 的 3 合格；其他的都要改用預設值，骨密度不看設定
   const {page}=await open({hash:'exams',cfg:{latencyComp:true,seed:{...sampleSeed(T),...extra,'settings/intervals':ivs}}});await wait(500);
   const pageDue=await page.evaluate(()=>records.map(r=>{const p=planR(r);return['records/'+r.id,p.asap?'asap':p.unplanned?'unplanned':p.due]}));
+  const pageLatest=await page.evaluate(()=>Object.fromEntries(Object.entries(latestByExam()).map(([k,r])=>[k,'records/'+r.id])));
   await page.context().close();
-  const {dueOf:refDue}=require('./remind-ref');
+  const {dueOf:refDue,latestByExam:refLatest}=require('./remind-ref');
   const recs=[...Object.entries(sampleSeed(T)).filter(([k])=>k.startsWith('records/')),...Object.entries(extra)];
   const refMap=Object.fromEntries(recs.map(([id,r])=>{const d=refDue(r,ivs);return[id,d?(d.asap?'asap':d.unplanned?'unplanned':d.due):null]}));
   const sorted=o=>Object.fromEntries(Object.entries(o).sort());
@@ -420,7 +429,12 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   eq('到期日：無效的 interval 是盡快處理；沒有間隔的骨密度是還沒有追蹤計畫，兩者不同',got(['n1','n2','n3','n4','m9','p1','p2','p6']),['asap','asap','asap','asap','unplanned','unplanned','unplanned','unplanned']);
   eq('到期日：骨密度 nofollow 不列入；又填了間隔就照算；骨密度的 0 是盡快處理；其他檢查叫 nofollow 的 preset 不是不追蹤',got(['p3','p5','p4','q6']),[null,'2028-10-13','asap','2026-04-30']);
   eq('到期日：不合格的固定間隔（180、1200、0.4、0、字串）都改用預設值 24、120、6、12、12',got(['p7','p8','p9','q1','q2']),['2028-01-31','2036-01-31','2026-07-31','2027-01-31','2027-01-31']);
-  eq('到期日：date 不合法或不存在 → 盡快處理；有合法的 nextDue 就照它',got(['q3','q4','q5']),['asap','asap','2027-01-05']);
+  eq('到期日：date 不合法、不存在或不是文字 → 盡快處理；有合法的 nextDue 就照它',got(['q3','q4','q5','q7']),['asap','asap','2027-01-05','asap']);
+  /* 最新一筆：頁面與參考實作對同一批紀錄選出同一筆，資料順序反過來也一樣 */
+  const withId=recs.map(([id,r])=>({...r,id})),pick=list=>Object.fromEntries(Object.entries(refLatest(list)).map(([k,r])=>[k,r.id]));
+  eq('最新一筆：參考實作和頁面 latestByExam 對每種檢查選出同一筆（這批紀錄裡有 date 不合法、不存在、不是文字的）',sorted(pageLatest),sorted(pick(withId)));
+  eq('最新一筆：資料順序反過來，參考實作選出的還是同一筆',sorted(pick([...withId].reverse())),sorted(pick(withId)));
+  eq('最新一筆：甲狀腺超音波有兩筆 2026-02-31 的紀錄，仍選合法日期最大的 m4；生殖軸激素有一筆 date 是數字，仍選 p9；乳房X光的 q4 沒有 date，仍選 m7',[pageLatest.thy_us,pageLatest.gyn_horm,pageLatest.breast_mammo],['records/m4','records/p9','records/m7']);
 
   await close();
   process.exit(summary()?1:0);
