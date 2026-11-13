@@ -2119,9 +2119,9 @@ const flagState=b=>({f:b.dataset.mark||b.dataset.f||null,src:b.dataset.src||''})
    When nothing can be worked out, a mark that came from the range goes, and the report's own mark stays */
 function flagAuto(b){if(b.dataset.src==='manual')return;const box=b.closest('[data-labbox]'),f=refFlag(box.querySelector('[data-lab],[data-rv]').value,box.querySelector('[data-ref],[data-rr]').value);
   if(f!==undefined)setFlag(b,f,f?'ref':'');else if(b.dataset.src!=='report')setFlag(b,null,'');flagNote(box)}
-/* a report's mark that stays beside a value the user has changed was printed for the value as read. The field says so and the record is not saved until the user settles it:
+/* a report's mark that stays beside a value the user has changed (another number, or in a row another unit) was printed for the value as read. The field says so and the record is not saved until the user settles it:
    one tap on the mark keeps it as the user's own, and from there it steps like any other; a reference range that can be worked out settles it too */
-function flagNote(box){const b=box.querySelector('.flagbtn'),o=box._orig,v=box.querySelector('[data-lab],[data-rv]').value.trim(),on=!!b&&b.dataset.src==='report'&&!!o&&v!==''&&(!!o.pend||(o.value!=null&&v!==o.value)),n=box.querySelector('[data-flagnote]');
+function flagNote(box){const b=box.querySelector('.flagbtn'),o=box._orig,v=box.querySelector('[data-lab],[data-rv]').value.trim(),ru=box.querySelector('[data-ru]'),on=!!b&&b.dataset.src==='report'&&!!o&&v!==''&&(!!o.pend||(o.value!=null&&v!==o.value)||(!!ru&&!!o.unit&&!unitSame(ru.value,o.unit))),n=box.querySelector('[data-flagnote]');
   if(on&&!n)box.insertAdjacentHTML('beforeend','<span class="shotnote warn" data-flagnote>標記是報告上原本數值的，點一下標記確認</span>');else if(!on&&n)n.remove()}
 /* a stored or read mark is shown as it is; with none, the mark is worked out from the range */
 function flagInit(b,m){const k=flagKind(m?.flag),mk=flagNorm(m?.mark);if(k)setFlag(b,flagKind(mk)===k?mk:m.flag,FLAG_SRC.includes(m.flagSrc)?m.flagSrc:'report');else if(m?.flagSrc==='manual')setFlag(b,null,'manual');else{setFlag(b,null,'');flagAuto(b)}}
@@ -2162,12 +2162,14 @@ function labLoad(rec){const e=EX[rec.exam],L=rec.labs&&typeof rec.labs==='object
 $('#labs').addEventListener('input',e=>{const box=e.target.closest('[data-labbox]');if(!box)return;const b=box.querySelector('.flagbtn'),t=e.target;
   if(t.matches('[data-ref],[data-rr]'))box._refT=true;
   /* in a row the unit is the user's to change, and a reference range that came with the row belongs to the unit it came with: while the unit is another one the range is taken out,
-     and it comes back with the unit. One the user typed is left alone */
-  if(t.matches('[data-ru]')&&box._orig&&box._orig.ref!=null&&!box._refT)box.querySelector('[data-rr]').value=unitSame(t.value,box._orig.unit||'')?box._orig.ref:'';
+     and it comes back with the unit. One the user typed is left alone. Another spelling of the same unit changes nothing.
+     The mark is worked out again only when the range was just taken out or put back, and never over the report's own mark: that one stays, to be confirmed (flagNote) */
+  if(t.matches('[data-ru]')&&box._orig){const o=box._orig,r=box.querySelector('[data-rr]'),want=unitSame(t.value,o.unit||'')?o.ref:'';
+    if(o.ref!=null&&!box._refT&&r.value!==want){r.value=want;if(b.dataset.src!=='report')flagAuto(b)}flagNote(box)}
   /* a reference range that came with a value in another unit than the field's belongs to that value: when the value is changed (converted, most likely) the range is taken out,
      and comes back with the value; one the user typed is left alone */
   if(t.matches('[data-lab]')&&box._orig?.unitDiff&&!box._refT){const r=box.querySelector('[data-ref]');if(r)r.value=t.value.trim()===box._orig.value?box._orig.ref:''}
-  if(b&&t.matches('[data-lab],[data-ref],[data-rv],[data-rr],[data-ru]'))flagAuto(b);
+  if(b&&t.matches('[data-lab],[data-ref],[data-rv],[data-rr]'))flagAuto(b);
   if(box.matches('.labrow')&&!box.querySelector('.ferr').hidden)labRowsCheck(); // an error on a row follows the typing
   shotStashLabs(true)});
 /* a tap on the mark steps through none, high, low, abnormal: from then on it is the user's, and typing no longer changes it. A deleted row can be put back */
@@ -2278,7 +2280,7 @@ $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
   for(const i of $$('[data-lab]')){const k=i.dataset.lab,v=i.value.trim();if(!v){delete lab[k];delete meta[k];continue}lab[k]=v;
     const c=shotCur?shotCur.labs[k]:null,src=shotCur?(c&&v===c.value?c:null):(v===kept.labs?.[k]?kept.labMeta?.[k]:null),m=labMetaOf(i.closest('[data-labbox]'),src);if(m)meta[k]=m;else delete meta[k]}
   if(erows)for(const d of $$('#labs .labrow')){const q=x=>d.querySelector(x).value.trim(),n=q('[data-rn]'),v=q('[data-rv]');if(!n||!v)continue;lab[n]=v;
-    const m=labMetaOf(d,d._orig&&d._orig.value===v?d._orig:null,q('[data-ru]'));if(m)meta[n]=m}
+    const o=d._orig,u=q('[data-ru]'),m=labMetaOf(d,o&&o.value===v&&(!o.unit||unitSame(u,o.unit))?o:null,u);if(m)meta[n]=m} // the original text stays with the value as read, in the unit it was read in
   full.labs=lab;
   /* labs of the draft that this record has no field for go into its report. With the switch under the report on, they also become a draft of 「其他抽血」 of their own, confirmed next;
      their lines leave this report only when that record is saved (shotStrip), so until then nothing read is in neither place */
@@ -2405,10 +2407,12 @@ function cellItem(d,k){const c=d.labs[k],f=String(labVal(d,k)??'').trim(),same=!
   return{name:k,value:same?c.num:carries?f.slice(0,-tail.length).trim():f,unit:c&&(same||carries||!other)&&cu?cu:c&&same?'':(SHOT_UNITS[k]||''),ref:d.refs&&k in d.refs?d.refs[k]:(c?.ref||''),st:d.flags?.[k]||null,flag:c?.flag??null,raw:c&&(same||carries)?c.raw:null,was:c&&(same||carries)?c.num:null,chg:!!c&&!same,refT:!!d.refT?.[k],unclear:same&&!!c.unclear}}
 /* such an item as a row of the form; orig is what the row came with: the value as read and its original text, its mark, and the unit and reference range it had when it became a row
    (ou, oref once it has been a row before). refT: its range was typed by the user */
-const itemRow=o=>({name:o.name,value:o.value,unit:o.unit,ref:o.ref,state:o.st,meta:{flag:o.flag,flagSrc:'report'},orig:{value:o.was,raw:o.raw,flag:o.flag,pend:itemPend(o),unit:o.ou??o.unit,ref:o.oref??o.ref},refT:!!o.refT,unclear:o.unclear});
-/* a report's mark beside a value that is no longer the one it was printed for, and that the user has not settled yet. In the form such a mark has to be confirmed before saving;
+const itemRow=o=>({name:o.name,value:o.value,unit:o.unit,ref:o.ref,state:o.st,meta:{flag:o.flag,flagSrc:'report'},orig:{value:o.was,raw:o.raw,flag:o.flag,pend:itemChanged(o),unit:o.ou??o.unit,ref:o.oref??o.ref},refT:!!o.refT,unclear:o.unclear});
+/* itemChanged: the value is no longer the one that was read. itemPend: a report's mark beside such a value, or beside a row whose unit is no longer the one it came with (ou),
+   that the user has not settled yet. In the form such a mark has to be confirmed before saving;
    where the lab is only written out as a line, the mark is left out */
-const itemPend=o=>(o.st?o.st.src==='report':!!flagKind(o.flag))&&(!!o.chg||!!o.pend||(o.was!=null&&String(o.value).trim()!==String(o.was).trim()));
+const itemChanged=o=>!!o.chg||!!o.pend||(o.was!=null&&String(o.value).trim()!==String(o.was).trim());
+const itemPend=o=>(o.st?o.st.src==='report':!!flagKind(o.flag))&&(itemChanged(o)||(!!o.ou&&!unitSame(o.unit,o.ou)));
 /* the mark an item has now: the one the form last held, else the one read, else what its reference range gives */
 const itemFlag=o=>itemPend(o)?null:o.st?o.st.f:flagKind(o.flag)?o.flag:refFlag(o.value,o.ref)||null;
 /* the labs this record will not hold, for a record of 「其他抽血」 of their own: the ones with no field anywhere, and the fields the exam now chosen does not have */

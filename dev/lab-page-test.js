@@ -357,6 +357,19 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
     await page.click('#dlgRec [data-close]');await wait(150);await page.click('#btnAdd');await wait(150);await page.click('[data-shot="go"]');await wait(150);await fillRow(page,1,{u:'pmol/L'});rs=await rows(page);
     check('關掉面板再繼續，再改單位：自己填的參考值仍然不會被拿掉',same([rs[1].u,rs[1].r],['pmol/L','0.93-1.70']),rs[1]);
     check('列的單位與參考值：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 列上有報告的標記時改單位：同一個單位換個寫法不動標記；真的換了單位，標記要確認（GPT 第六輪） */
+  {const {page,errors}=await shotStart('unitflag');await page.selectOption('#fExam','lab_other');await wait(80);const rowNote=()=>page.evaluate(()=>document.querySelector('#labs .labrow [data-flagnote]')?.textContent||null);
+    let rs=await rows(page);check('unitflag 選其他抽血：Free T4 30 pmol/L、參考值 12-22、↑ HH（報告的）',same(brief(rs),[['Free T4','30','pmol/L','12-22','↑ HH','report']]),brief(rs));
+    await fillRow(page,0,{u:'PMOL/L'});rs=await rows(page);check('把單位改成 PMOL/L（同一個單位）：參考值與報告的 ↑ HH 都不動，不用確認',same([rs[0].r,rs[0].flag,rs[0].src],['12-22','↑ HH','report'])&&(await rowNote())===null,rs[0]);
+    await fillRow(page,0,{u:'ng/dL'});rs=await rows(page);check('把單位改成 ng/dL：參考值拿掉，↑ HH 留著但要確認',same([rs[0].r,rs[0].flag,rs[0].src],['','↑ HH','report'])&&(await rowNote())==='標記是報告上原本數值的，點一下標記確認',{r:rs[0],n:await rowNote()});
+    const w0=await writes(page);await page.click('#btnSave');await wait(300);check('沒確認不能存',(await writes(page))===w0&&(await toastText(page)).includes('先確認標記'));
+    await page.click('#dlgRec [data-close]');await wait(150);await page.click('#btnAdd');await wait(150);await page.click('[data-shot="go"]');await wait(150);rs=await rows(page);
+    check('關掉面板再繼續：單位仍是 ng/dL，仍要確認',same([rs[0].u,rs[0].flag,rs[0].src],['ng/dL','↑ HH','report'])&&(await rowNote())==='標記是報告上原本數值的，點一下標記確認',{r:rs[0],n:await rowNote()});
+    await fillRow(page,0,{u:'pmol/L'});rs=await rows(page);check('把單位改回 pmol/L：參考值回來，報告的 ↑ HH 不用確認',same([rs[0].r,rs[0].flag,rs[0].src],['12-22','↑ HH','report'])&&(await rowNote())===null,{r:rs[0],n:await rowNote()});
+    await fillRow(page,0,{u:'ng/dL'});await page.click(rowSel(0,'.flagbtn'));rs=await rows(page);check('再改成 ng/dL 並點一下確認：↑ HH 變成使用者確認過的',same([rs[0].flag,rs[0].src],['↑ HH','manual'])&&(await rowNote())===null,rs[0]);
+    await page.click('#btnSave');await until(page,()=>!document.querySelector('#dlgRec').open);const r=(await newRecs(page))[0],N=null;
+    check('存檔：單位 ng/dL，標記是手動確認的 H（mark HH）；單位換了，不留原文',r&&same(r.labs,{'Free T4':'30'})&&same(r.labMeta,{'Free T4':{raw:N,unit:'ng/dL',ref:N,flag:'H',flagSrc:'manual',mark:'HH'}}),r&&r.labMeta);
+    check('列的單位與報告標記：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
   /* 編輯已存的「其他抽血」：改了單位，已存的參考值同樣先拿掉 */
   {const seed={...sampleSeed(T),'records/u1':other('2026-10-05',{Glucose:'98'},{Glucose:{raw:null,unit:'mg/dL',ref:'70-99',flag:null,flagSrc:null}})};
     const {page,errors}=await start({seed});await openHistOf(page,'lab_other');await page.click('[data-edit="u1"]');await wait(150);
