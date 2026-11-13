@@ -2131,7 +2131,7 @@ function flagRestore(b,st,m){if(st&&(st.src==='manual'||st.src==='report'))setFl
 /* one row of an exam of free rows. x: name, value, unit, ref; meta (a stored or read mark) or state (a mark exactly as stashed); orig, the value and original text the row came with */
 function addLabRow(x={}){const d=document.createElement('div');d.className='labrow';d.dataset.labbox='';d.setAttribute('role','group');
   d.innerHTML=`<div class="lr"><input class="w2" data-rn aria-label="名稱" placeholder="名稱" maxlength="40" ${TXT_IN}><input data-rv aria-label="數值" placeholder="數值" maxlength="40" ${TXT_IN}></div><div class="lr"><input data-ru aria-label="單位" placeholder="單位" maxlength="20" ${TXT_IN}><input class="w2" data-rr aria-label="參考值" placeholder="參考值" maxlength="40" ${TXT_IN}>${flagBtn('')}<button type="button" class="ghost rowdel" data-rdel aria-label="刪除這一列">✕</button></div><span class="ferr" role="alert" hidden></span>`;
-  const q=s=>d.querySelector(s);q('[data-rn]').value=x.name??'';q('[data-rv]').value=x.value??'';q('[data-ru]').value=x.unit??'';q('[data-rr]').value=x.ref??'';d._orig=x.orig||null;
+  const q=s=>d.querySelector(s);q('[data-rn]').value=x.name??'';q('[data-rv]').value=x.value??'';q('[data-ru]').value=x.unit??'';q('[data-rr]').value=x.ref??'';d._orig=x.orig||null;d._refT=!!x.refT;
   $('#labs').appendChild(d);labRowsLabel();flagRestore(q('.flagbtn'),x.state,x.meta);flagNote(d);
   if(x.unclear)d.insertAdjacentHTML('beforeend','<span class="shotnote warn" data-shotn>截圖看不清楚，請核對</span>');return d}
 const labRowsLabel=()=>$$('#labs .labrow').forEach((d,i)=>d.setAttribute('aria-label','第 '+(i+1)+' 列'));
@@ -2158,13 +2158,16 @@ function labLoad(rec){const e=EX[rec.exam],L=rec.labs&&typeof rec.labs==='object
   for(const i of $$('[data-lab]')){const k=i.dataset.lab,box=i.closest('[data-labbox]'),r=box.querySelector('[data-ref]');i.value=L[k]||'';
     if(r){r.value=M[k]?.ref??'';box._orig={value:i.value.trim(),ref:r.value,unitDiff:unitOther(M[k]?.unit,k)};box._refT=false;flagInit(box.querySelector('.flagbtn'),M[k])}}
   if(!e.rows)return;$('#labs').innerHTML='';const ks=Object.keys(L).filter(k=>L[k]!=null&&L[k]!=='');
-  for(const k of ks)addLabRow({name:k,value:L[k],unit:M[k]?.unit,ref:M[k]?.ref,meta:M[k],orig:{value:String(L[k]).trim(),raw:M[k]?.raw??null}});if(!ks.length)addLabRow()}
+  for(const k of ks)addLabRow({name:k,value:L[k],unit:M[k]?.unit,ref:M[k]?.ref,meta:M[k],orig:{value:String(L[k]).trim(),raw:M[k]?.raw??null,unit:String(M[k]?.unit??''),ref:String(M[k]?.ref??'')}});if(!ks.length)addLabRow()}
 $('#labs').addEventListener('input',e=>{const box=e.target.closest('[data-labbox]');if(!box)return;const b=box.querySelector('.flagbtn'),t=e.target;
-  if(t.matches('[data-ref]'))box._refT=true;
+  if(t.matches('[data-ref],[data-rr]'))box._refT=true;
+  /* in a row the unit is the user's to change, and a reference range that came with the row belongs to the unit it came with: while the unit is another one the range is taken out,
+     and it comes back with the unit. One the user typed is left alone */
+  if(t.matches('[data-ru]')&&box._orig&&box._orig.ref!=null&&!box._refT)box.querySelector('[data-rr]').value=unitSame(t.value,box._orig.unit||'')?box._orig.ref:'';
   /* a reference range that came with a value in another unit than the field's belongs to that value: when the value is changed (converted, most likely) the range is taken out,
      and comes back with the value; one the user typed is left alone */
   if(t.matches('[data-lab]')&&box._orig?.unitDiff&&!box._refT){const r=box.querySelector('[data-ref]');if(r)r.value=t.value.trim()===box._orig.value?box._orig.ref:''}
-  if(b&&t.matches('[data-lab],[data-ref],[data-rv],[data-rr]'))flagAuto(b);
+  if(b&&t.matches('[data-lab],[data-ref],[data-rv],[data-rr],[data-ru]'))flagAuto(b);
   if(box.matches('.labrow')&&!box.querySelector('.ferr').hidden)labRowsCheck(); // an error on a row follows the typing
   shotStashLabs(true)});
 /* a tap on the mark steps through none, high, low, abnormal: from then on it is the user's, and typing no longer changes it. A deleted row can be put back */
@@ -2292,7 +2295,7 @@ $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
     if(!$('#rcRow').hidden){if(rcTargetId&&$('#fRecheck').checked&&!$('#fRecheck').disabled)c.recheckOf=rcTargetId;else delete c.recheckOf}
     if(Object.keys(c).length)full.drawCtx=c;else delete full.drawCtx}
   const fromShot=shotCur,wasEditing=!!editing,epoch=recEpoch;recSaving=true;renderShotCls();renderShotBar();
-  try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(full);if(fromShot?.strip){const job={...fromShot.strip,dead:false};await Promise.race([shotStrip(job),sleep(STRIP_MS)]);job.dead=true}openHist.add(exam);recSaving=false;
+  try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(full);if(fromShot?.strip)await shotStrip(fromShot.strip);openHist.add(exam);recSaving=false;
     if(fromShot){if(split.length)shotSplit(fromShot,full,split,{id:ref.id,parts:strip});shotSaved1(fromShot,full)}else{if(dlg.open&&recEpoch===epoch)dlg.close();toast(wasEditing?'已更新':'已儲存')}/* a form opened since then stays open */if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{recSaving=false;renderShotCls();renderShotBar()}});
 $('#btnDel').addEventListener('click',async()=>{if(!editing||!canSave())return;const rec=records.find(x=>x.id===editing.id)||editing;const {id,...body}=rec;
   try{await retry1(()=>db.doc('records/'+id).delete());dlg.close();toast('已刪除 '+EX[rec.exam].name+' '+fmt(rec.date),[['撤銷',()=>retry1(()=>db.doc('records/'+id).set(body)).catch(writeErr)]])}catch(e){writeErr(e)}});
@@ -2387,7 +2390,7 @@ function shotStashLabs(edit){const d=shotCur;if(!d||$('#labs').dataset.draft!==d
   for(const r of $$('[data-ref]')){const k=r.dataset.ref,box=r.closest('[data-labbox]');d.refs[k]=r.value;d.flags[k]=flagState(box.querySelector('.flagbtn'));if(box._refT)d.refT[k]=true}
   if(!edit||!shotInRows())return;
   d.oth=$$('#labs .labrow').filter(rowHas).map(x=>{const q=sel=>x.querySelector(sel).value,o=x._orig||{};
-    return{name:q('[data-rn]'),value:q('[data-rv]').trim(),unit:q('[data-ru]').trim(),ref:q('[data-rr]'),st:flagState(x.querySelector('.flagbtn')),flag:o.flag??null,raw:o.raw??null,was:o.value??null,pend:!!o.pend,unclear:!!x.querySelector('[data-shotn]')}});
+    return{name:q('[data-rn]'),value:q('[data-rv]').trim(),unit:q('[data-ru]').trim(),ref:q('[data-rr]'),st:flagState(x.querySelector('.flagbtn')),flag:o.flag??null,raw:o.raw??null,was:o.value??null,pend:!!o.pend,ou:o.unit??null,oref:o.ref??null,refT:!!x._refT,unclear:!!x.querySelector('[data-shotn]')}});
   for(const k of d.rowKeys||[])for(const o of [d.labs,d.edits,d.refs,d.flags,d.refT])delete o[k];d.rowKeys=[]}
 const shotInRows=()=>!!EX[$('#fExam').value]?.rows;
 const shotSplitOn=()=>!$('#shotSplitRow').hidden&&$('#fSplit').checked;
@@ -2399,9 +2402,10 @@ const shotOth=d=>(d.oth||(d.others||[]).map(o=>({name:o.name,value:o.value,unit:
    was and raw are the reading, kept while the value is still in the unit it was read in: they count only for a value that equals it.
    chg: the field no longer holds the text that was read (another number, or the same number without its unit) */
 function cellItem(d,k){const c=d.labs[k],f=String(labVal(d,k)??'').trim(),same=!!c&&f===c.value,cu=String(c?.unit||'').trim(),other=unitOther(cu,k),tail=other?' '+cu:'',carries=!same&&!!tail&&f.endsWith(tail);
-  return{name:k,value:same?c.num:carries?f.slice(0,-tail.length).trim():f,unit:c&&(same||carries||!other)&&cu?cu:c&&same?'':(SHOT_UNITS[k]||''),ref:d.refs&&k in d.refs?d.refs[k]:(c?.ref||''),st:d.flags?.[k]||null,flag:c?.flag??null,raw:c&&(same||carries)?c.raw:null,was:c&&(same||carries)?c.num:null,chg:!!c&&!same,unclear:same&&!!c.unclear}}
-/* such an item as a row of the form; orig is the reading the row came from: its value, its original text, its mark */
-const itemRow=o=>({name:o.name,value:o.value,unit:o.unit,ref:o.ref,state:o.st,meta:{flag:o.flag,flagSrc:'report'},orig:{value:o.was,raw:o.raw,flag:o.flag,pend:itemPend(o)},unclear:o.unclear});
+  return{name:k,value:same?c.num:carries?f.slice(0,-tail.length).trim():f,unit:c&&(same||carries||!other)&&cu?cu:c&&same?'':(SHOT_UNITS[k]||''),ref:d.refs&&k in d.refs?d.refs[k]:(c?.ref||''),st:d.flags?.[k]||null,flag:c?.flag??null,raw:c&&(same||carries)?c.raw:null,was:c&&(same||carries)?c.num:null,chg:!!c&&!same,refT:!!d.refT?.[k],unclear:same&&!!c.unclear}}
+/* such an item as a row of the form; orig is what the row came with: the value as read and its original text, its mark, and the unit and reference range it had when it became a row
+   (ou, oref once it has been a row before). refT: its range was typed by the user */
+const itemRow=o=>({name:o.name,value:o.value,unit:o.unit,ref:o.ref,state:o.st,meta:{flag:o.flag,flagSrc:'report'},orig:{value:o.was,raw:o.raw,flag:o.flag,pend:itemPend(o),unit:o.ou??o.unit,ref:o.oref??o.ref},refT:!!o.refT,unclear:o.unclear});
 /* a report's mark beside a value that is no longer the one it was printed for, and that the user has not settled yet. In the form such a mark has to be confirmed before saving;
    where the lab is only written out as a line, the mark is left out */
 const itemPend=o=>(o.st?o.st.src==='report':!!flagKind(o.flag))&&(!!o.chg||!!o.pend||(o.was!=null&&String(o.value).trim()!==String(o.was).trim()));
@@ -2419,10 +2423,12 @@ function shotSplit(d,full,items,strip){const i=shotQ.indexOf(d);
 /* once the labs split off are saved as their own record, their lines leave the report of the record they came from. Only lines still exactly as they were saved there are taken out,
    and only the report is written. The record is read again right before: its report may have been edited since, here or on another device. The store has no transactions,
    so this narrows that gap and cannot close it. If anything fails the lines simply stay in both records.
-   The save that asked for it waits, but not for ever: after STRIP_MS it goes on and marks the job dead, and a dead job writes nothing when its read comes back at last */
+   The save that asked for it waits for it. A read that has not answered after STRIP_MS is given up, before anything was written, and what it answers later is not used.
+   Once the write has been sent the save waits for it to end, like every other write of this form: the record is not opened for editing while a write to it is on its way */
 const STRIP_MS=8000;
-async function shotStrip(job){if(!db)return;
-  try{const ref=db.doc('records/'+job.id),snap=await ref.get();if(job.dead||!snap.exists)return;const cur=snap.data().report;if(typeof cur!=='string')return;let t=cur;for(const p of job.parts){const c=cutBlock(t,p);if(c!=null)t=c}
+async function shotStrip({id,parts}){if(!db)return;
+  try{const ref=db.doc('records/'+id),snap=await Promise.race([ref.get(),sleep(STRIP_MS).then(()=>null)]);if(!snap||!snap.exists)return;
+    const cur=snap.data().report;if(typeof cur!=='string')return;let t=cur;for(const p of parts){const c=cutBlock(t,p);if(c!=null)t=c}
     if(t!==cur)await ref.update({report:t,updatedAt:Date.now()})}catch(_){}}
 /* the lab fields of the exam now chosen: values, reference ranges and marks as read, or as the user left them. Labs that belong elsewhere are announced; on save they go into the report, or into a record of their own */
 function shotFillLabs(){const d=shotCur;if(!d)return;

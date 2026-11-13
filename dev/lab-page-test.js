@@ -347,6 +347,22 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
     await page.click(rowSel(2,'[data-rdel]'));await wait(60);await page.click('#btnSave');await wait(400);const r=(await newRecs(page))[0],N=null;
     check('刪掉重複的那列再存：其他抽血那筆的 Free T4 是 30 pmol/L、H（由參考值算出），TSH 留著原文',r&&r.exam==='lab_other'&&same(r.labs,{TSH:'2.0','Free T4':'30'})&&same(r.labMeta,{TSH:{raw:'2.0',unit:'mIU/L',ref:N,flag:N,flagSrc:N},'Free T4':{raw:N,unit:'pmol/L',ref:'12-22',flag:'H',flagSrc:'ref'}}),r&&{l:r.labs,m:r.labMeta});
     check('欄位與列：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 列上改了單位：跟著原本單位來的參考值不能拿來算新單位的數值（GLM 審查） */
+  {const {page,errors}=await shotStart('unit');await page.selectOption('#fExam','lab_other');await wait(80);
+    await fillRow(page,1,{u:'ng/dL'});let rs=await rows(page);check('把 Free T4 那列的單位改成 ng/dL：原本 pmol/L 的參考值 12-22 自動拿掉',same([rs[1].v,rs[1].u,rs[1].r,rs[1].flag],['15.4','ng/dL','','—']),rs[1]);
+    await fillRow(page,1,{v:'1.5'});rs=await rows(page);check('再把數值改成 1.5：沒有參考值，不會算出偏低',same([rs[1].v,rs[1].r,rs[1].flag,rs[1].src],['1.5','','—','']),rs[1]);
+    await fillRow(page,1,{u:'pmol/L'});rs=await rows(page);check('把單位改回 pmol/L：參考值 12-22 回來，這時 1.5 才算偏低',same([rs[1].u,rs[1].r,rs[1].flag,rs[1].src],['pmol/L','12-22','↓ L','ref']),rs[1]);
+    await fillRow(page,1,{u:'ng/dL',r:'0.93-1.70'});await fillRow(page,1,{u:'ng/dl '});rs=await rows(page);
+    check('自己填了 ng/dL 的參考值 0.93-1.70 之後再動單位：自己填的不會被拿掉（1.5 在範圍內）',same([rs[1].r,rs[1].flag],['0.93-1.70','—']),rs[1]);
+    await page.click('#dlgRec [data-close]');await wait(150);await page.click('#btnAdd');await wait(150);await page.click('[data-shot="go"]');await wait(150);await fillRow(page,1,{u:'pmol/L'});rs=await rows(page);
+    check('關掉面板再繼續，再改單位：自己填的參考值仍然不會被拿掉',same([rs[1].u,rs[1].r],['pmol/L','0.93-1.70']),rs[1]);
+    check('列的單位與參考值：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 編輯已存的「其他抽血」：改了單位，已存的參考值同樣先拿掉 */
+  {const seed={...sampleSeed(T),'records/u1':other('2026-10-05',{Glucose:'98'},{Glucose:{raw:null,unit:'mg/dL',ref:'70-99',flag:null,flagSrc:null}})};
+    const {page,errors}=await start({seed});await openHistOf(page,'lab_other');await page.click('[data-edit="u1"]');await wait(150);
+    await fillRow(page,0,{v:'5.4',u:'mmol/L'});let rs=await rows(page);check('編輯已存的列：數值改成 5.4、單位改成 mmol/L，mg/dL 的參考值 70-99 拿掉，不會算出偏低',same([rs[0].v,rs[0].u,rs[0].r,rs[0].flag],['5.4','mmol/L','','—']),rs[0]);
+    await save(page);await saved(page);const r=await stored(page,'u1'),N=null;check('存檔：單位是 mmol/L，沒有參考值，沒有標記',same(r.labs,{Glucose:'5.4'})&&same(r.labMeta,{Glucose:{raw:N,unit:'mmol/L',ref:N,flag:N,flagSrc:N}}),r);
+    check('編輯列的單位：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
   /* 換了項目之後寫進報告內容的那幾行，要照表單現在的樣子，不是截圖原本的（GPT 第二輪） */
   {const {page,errors}=await shotStart('single');await page.fill('[data-ref="TSH"]','1-10');const auto=(await box(page,'TSH')).flag;for(let i=0;i<4;i++)await tapFlag(page,'TSH');let b=await box(page,'TSH');
     check('single：TSH 的參考值改成 1-10（5.2 在範圍內，報告的 H 改由參考值重算成沒有標記），再點四下回到手動的沒有標記',auto==='—'&&b.ref==='1-10'&&b.flag==='—'&&b.src==='manual',{auto,b});
@@ -401,7 +417,8 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
     check('清理還沒回應時：仍在儲存中（儲存鍵停用）；這時按別筆的「編輯」不會打開，toast「儲存中，請稍候」',mid.saving&&mid.off&&(await toastText(page)).includes('儲存中，請稍候')&&(await sform(page)).exam==='lab_other',{mid,t:await toastText(page)});
     await until(page,x=>document.querySelector('#shotBar').textContent.startsWith(x),12000,'截圖 3/3');const took=Date.now()-t0;await until(page,()=>!recSaving,3000);
     check('清理一直沒回應：大約 8 秒後放手，另存的那筆已經存好，接著下一筆草稿',took>=7000&&took<9400&&(await newRecs(page)).some(x=>x.exam==='lab_other')&&!(await page.evaluate(()=>recSaving)),took);
-    await wait(2600);check('遲到的清理不再寫入：原本那筆的報告內容還帶著那幾行（兩邊都有，沒有遺失）',(await stored(page,host.id)).report===BLK,(await stored(page,host.id)).report);
+    await wait(2600);check('遲到的讀取不再用來寫入：原本那筆的報告內容還帶著那幾行（兩邊都有，沒有遺失）',(await stored(page,host.id)).report===BLK,(await stored(page,host.id)).report);
+    check('這段期間對原本那筆只有一開始的那一次寫入（沒有清理的 update）',await page.evaluate(id=>__mock.writes.filter(w=>w.path==='records/'+id).map(w=>w.op).join(),host.id)==='set');
     check('清理逾時：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
   /* 截圖讀到的 ref 與 flag：全部沒有對應欄位的一批 */
   {const {page,errors}=await shotStart('cbc');let f=await sform(page);
