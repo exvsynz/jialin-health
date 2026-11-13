@@ -64,6 +64,8 @@ const F={
   noflag:J({items:[
     lab({name:'TSH',value:'5.2',unit:'μIU/mL',ref:'0.27-4.20'}),
     lab({name:'Free T4',value:'HH 3.0',unit:'ng/dL',ref:'0.93-1.70'})]}),
+  /* 單位和表單不同、報告又印了 HH 的 Free T4 */
+  unitflag:J({items:[lab({name:'Free T4',value:'HH 30',unit:'pmol/L',ref:'12-22'})]}),
   empty:J({items:[]}),
   bad:'讀不出來，這不是 JSON',
   partial:J({items:[{type:'lab',name:'TSH',value:'1.5',unit:'μIU/mL',date:'115/10/20',place:'測試醫院'},{type:'weird'},{type:'lab',value:'3'}]}),

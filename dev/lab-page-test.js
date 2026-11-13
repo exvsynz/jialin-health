@@ -372,6 +372,37 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
     await page.click('#btnSave');await until(page,()=>!document.querySelector('#dlgRec').open);await wait(200);const ro=(await newRecs(page)).find(x=>x.exam==='lab_other'),N=null;
     check('確認後存檔：flag 是 H、mark 是 HH、flagSrc 是 manual；原本那筆的那幾行拿掉了',ro&&same(ro.labMeta['Free T4'],{raw:N,unit:'ng/dL',ref:'see report',flag:'H',flagSrc:'manual',mark:'HH'})&&(await stored(page,r.id)).report==='',{ro:ro&&ro.labMeta,host:(await stored(page,r.id)).report});
     check('未確認的標記：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 數字一樣、只是把單位拿掉（等於換了單位）：也是改過的值，報告的標記一樣要確認（GPT 第四輪） */
+  {const {page,errors}=await shotStart('unitflag');let b=await box(page,'Free T4');
+    check('unitflag：Free T4 讀到 HH 30 pmol/L，欄位是「30 pmol/L」、↑ HH（報告的）',b.v==='30 pmol/L'&&b.flag==='↑ HH'&&b.src==='report'&&b.ref==='12-22',b);
+    await page.fill('[data-lab="Free T4"]','30');b=await box(page,'Free T4');
+    check('把欄位改成 30（拿掉單位，等於變成 ng/dL）：舊單位的參考值拿掉，HH 保留並提醒確認',b.ref===''&&b.flag==='↑ HH'&&(await fieldNote(page,'Free T4'))==='標記是報告上原本數值的，點一下標記確認',b);
+    await page.selectOption('#fExam','lab_other');await wait(80);let rs=await rows(page);
+    check('換到其他抽血：那一列是 30 ng/dL、↑ HH，列上一樣提醒要確認（數字相同也算改過）',same([rs[0].n,rs[0].v,rs[0].u,rs[0].flag,rs[0].src],['Free T4','30','ng/dL','↑ HH','report'])&&await page.evaluate(()=>!!document.querySelector('#labs .labrow [data-flagnote]')),rs[0]);
+    const w0=await writes(page);await page.click('#btnSave');await wait(300);check('沒確認不能存',(await writes(page))===w0&&(await toastText(page)).includes('先確認標記'));
+    await page.selectOption('#fExam','gyn_horm');await wait(80);await page.click('#btnSave');await until(page,()=>!document.querySelector('#dlgRec').open);const r=(await newRecs(page))[0];
+    check('換成生殖軸再存：寫進報告內容的那行是「Free T4 30 ng/dL」，不帶還沒確認的 HH',r&&r.report==='截圖讀到的其他檢驗：\nFree T4 30 ng/dL',r&&r.report);
+    check('單位拿掉也算改過：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 使用者改過報告內容裡那幾行之後，又在列上動過：換回原本的項目直接存，那些檢驗一定要進得了紀錄（GPT 第四輪：原本會整個漏存） */
+  {const {page,errors}=await shotStart('unmapped');const EDIT='其他檢驗（沒有對應的欄位）：\nFT3 3.1 pg/mL（參考值 2.0-4.4）\nFree testosterone 0.9 pg/mL（空腹）';
+    await page.fill('#fReport',EDIT);await page.selectOption('#fExam','lab_other');await wait(80);let rs=await rows(page);
+    check('改過報告內容再選其他抽血：改過的字留著，三項（兩項對不到的加 TSH）各一列',(await sform(page)).report===EDIT&&same(rs.map(x=>x.n),['FT3','Free testosterone','TSH']),rs.map(x=>x.n));
+    await fillRow(page,2,{v:'9.0'});await page.selectOption('#fExam','thy_lab');await wait(80);const f=await sform(page);
+    check('把 TSH 那列改成 9.0 再換回甲狀腺抽血：TSH 欄位是空的，報告內容仍是使用者改過的字（頁面不去動它），另存的選項寫其他 3 項',(await box(page,'TSH')).v===''&&f.report===EDIT&&f.split==='其他 3 項檢驗另存成一筆「其他抽血」',f);
+    await page.click('#btnSave');await barIs(page,'截圖 2/2');const r=(await newRecs(page))[0];
+    check('不開另存直接存：改過的字原樣留著，後面補上現在的三行（TSH 9.0 在裡面），沒有哪一項漏掉',r&&r.report===EDIT+'\n其他檢驗（沒有對應的欄位）：\nFT3 3.1 pg/mL（參考值 2.0-4.4）\nFree testosterone 0.9 pg/mL\nTSH 9.0 μIU/mL'&&same(r.labs,{}),r&&r.report);
+    check('改過報告又動過列：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 另一筆存檔與清理進行中，不開別的紀錄來編輯；清理一直沒有回應時，等一陣子就放手，之後也不再寫 */
+  {const {page,errors}=await shotStart('unmapped');const BLK='其他檢驗（沒有對應的欄位）：\nFT3 3.1 pg/mL（參考值 2.0-4.4）\nFree testosterone 0.9 pg/mL';
+    await page.click('#fSplit');await page.click('#btnSave');await barIs(page,'截圖 2/3');const host=(await newRecs(page))[0];
+    await page.evaluate(id=>{__mock.cfg.getDelay={['records/'+id]:9500}},host.id);const t0=Date.now();await page.click('#btnSave');await wait(600);
+    const mid=await page.evaluate(()=>({saving:recSaving,off:document.querySelector('#btnSave').disabled}));
+    await page.evaluate(()=>{openHist.add('thy_lab');renderExams()});await wait(100);await page.evaluate(id=>document.querySelector(`[data-edit="${id}"]`).click(),'r3');await wait(150);
+    check('清理還沒回應時：仍在儲存中（儲存鍵停用）；這時按別筆的「編輯」不會打開，toast「儲存中，請稍候」',mid.saving&&mid.off&&(await toastText(page)).includes('儲存中，請稍候')&&(await sform(page)).exam==='lab_other',{mid,t:await toastText(page)});
+    await until(page,x=>document.querySelector('#shotBar').textContent.startsWith(x),12000,'截圖 3/3');const took=Date.now()-t0;await until(page,()=>!recSaving,3000);
+    check('清理一直沒回應：大約 8 秒後放手，另存的那筆已經存好，接著下一筆草稿',took>=7000&&took<9400&&(await newRecs(page)).some(x=>x.exam==='lab_other')&&!(await page.evaluate(()=>recSaving)),took);
+    await wait(2600);check('遲到的清理不再寫入：原本那筆的報告內容還帶著那幾行（兩邊都有，沒有遺失）',(await stored(page,host.id)).report===BLK,(await stored(page,host.id)).report);
+    check('清理逾時：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
   /* 截圖讀到的 ref 與 flag：全部沒有對應欄位的一批 */
   {const {page,errors}=await shotStart('cbc');let f=await sform(page);
     check('cbc：全部對不到，項目待選，5 項寫在報告內容',f.exam===''&&f.report.startsWith('其他檢驗（沒有對應的欄位）：\nHb L 10.0 g/dL（參考值 12.0-16.0）'),f);
