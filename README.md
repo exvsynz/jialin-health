@@ -60,8 +60,10 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 `src/index.html` 改好後，要由有 Artifact 工具的 Claude 工作階段發布到同一個網址（publish 時帶 `url`），才會保留資料庫與網址。宣告的 capabilities：
 
 ```json
-{ "db": { "rules": [{ "path": "", "read": "admin", "write": "admin" }] }, "user": {}, "downloads": true }
+{ "db": { "rules": [{ "path": "", "read": "admin", "write": "admin" }] }, "user": {}, "downloads": true, "sample": { "images": true } }
 ```
+
+執行環境版本（contract）：2026-11-13 發布 f6e0b09 時升級到 0.2.96。之後發布不帶 `contract` 就會維持這個版本。
 
 ## 本機檢查
 
