@@ -109,3 +109,9 @@
 2026-11-13 的改動依據獨立審查 `docs/reviews/2026-11-12-bone-tabbar-review.md` 的 B-01–B-03 與 4.1（報告在 `review/bone-tabbar-2026-11-12` 分支）。
 
 同一天的第二次改動（兩種待安排、`nofollow`、固定間隔只收 1–120）依據複查 `docs/reviews/2026-11-13-bone-tabbar-recheck.md` 的 R-01、R-02（報告在 `review/bone-tabbar-recheck-2026-11-13` 分支），做法由使用者決定。`nofollow` 的標籤與依據文字是使用者指定的；「未規定固定重測間隔」對應 ISCD 2023「Follow-up BMD Measurements」的原文：「Repeat BMD testing intervals must be individualized」，整節沒有給停經前女性固定的月數或年數（2026-11-13 直接從 iscd.org 下載 `2023-ISCD-Adult-Positions.pdf` 核對這一節與「BMD Reporting in Females Prior to Menopause」）。沒有改動任何帶入的月數。
+
+## 其他抽血與檢驗值的高低（2026-11-13）
+
+- 「其他抽血」（`lab_other`）沒有固定間隔，預設不排追蹤；要追蹤時由使用者填醫師給的間隔或日期。這不是臨床預設值，沒有引用指引。
+- 檢驗值的偏高、偏低、異常，只依各醫院報告自己的參考值，或報告上印的標記。頁面沒有內建任何檢驗的參考值，也不替不同醫院、不同試劑的參考值做換算。
+- 骨密度的 T、Z 值不提供參考值與標記：報告上沒有參考範圍，分類一律手選（見上一節）。

@@ -26,6 +26,8 @@ const form=page=>page.evaluate(()=>({bar:document.querySelector('#shotBar').hidd
   tags:document.querySelectorAll('#recForm .shottag').length,save:document.querySelector('#btnSave').textContent,saveOff:document.querySelector('#btnSave').disabled,
   preview:document.querySelector('#duePreview').textContent,dup:document.querySelector('#dupNote').hidden?null:document.querySelector('#dupNote').textContent,
   examNote:document.querySelector('#shotExamNote').hidden?null:document.querySelector('#shotExamNote').textContent,cls:document.querySelector('#presetField .shotcls')?.textContent||null,open:document.querySelector('#dlgRec').open}));
+/* 欄位下方那一行：參考值、標記的文字、來源與 aria-label */
+const labRef=(page,k)=>page.evaluate(k=>{const box=document.querySelector(`[data-lab="${k}"]`).closest('[data-labbox]'),b=box.querySelector('.flagbtn');return{ref:box.querySelector('[data-ref]').value,flag:b.textContent,src:b.dataset.src,aria:b.getAttribute('aria-label')}},k);
 const labNotes=(page,k)=>page.evaluate(k=>[...document.querySelector(`[data-lab="${k}"]`).closest('.field').querySelectorAll('.shotnote')].map(n=>n.textContent),k);
 const newRecs=page=>page.evaluate(seed=>[...__mock.store.entries()].filter(([k])=>k.startsWith('records/')&&!seed.includes(k)).map(([k,v])=>({id:k.slice(8),...v})).sort((a,b)=>a.date<b.date?1:-1),SEEDREC);
 const toastText=page=>page.textContent('#toastText').catch(()=>'');
@@ -113,21 +115,24 @@ const calls=page=>page.evaluate(()=>__mock.sampleCalls.map(c=>({input:c.input,n:
   {const {page,errors}=await start({sample:{shot:'single'}});let clicks=0;await addRec(page);clicks++;await pick(page,await shotFile(page));clicks++;await drafted(page);
     const f=await form(page);
     check('single：填入項目、日期（民國轉西元）、醫院、數值；草稿列 1/1',f.exam==='thy_lab'&&f.date==='2026-10-20'&&f.place==='測試醫院'&&f.labs.TSH==='5.2'&&f.labs['Free T4']==='1.10'&&f.bar.startsWith('截圖 1/1・甲狀腺抽血・10/20'),f);
-    check('single：填入的欄位有「截圖」小標；參考範圍、旗標、原文在欄位下方',f.tags>=5&&(await labNotes(page,'TSH')).includes('參考 0.27-4.20・H・原文 H 5.2'),{tags:f.tags,n:await labNotes(page,'TSH')});
+    const tshRef=await labRef(page,'TSH'),ft4Ref=await labRef(page,'Free T4');
+    check('single：填入的欄位有「截圖」小標；原文在欄位下方的註記，參考值與標記在自己那一行（TSH 是報告上的 H；Free T4 在範圍內，沒有標記）',f.tags>=5&&(await labNotes(page,'TSH')).join()==='原文 H 5.2'&&tshRef.ref==='0.27-4.20'&&tshRef.flag==='↑ H'&&tshRef.src==='report'&&tshRef.aria==='TSH 標記：偏高'&&ft4Ref.ref==='0.93-1.70'&&ft4Ref.flag==='—'&&ft4Ref.src===''&&ft4Ref.aria==='Free T4 標記：無',{tags:f.tags,n:await labNotes(page,'TSH'),tshRef,ft4Ref});
     check('single：沒有提醒樣式、沒有重複提示、可以直接存',!f.warn.length&&!f.dup&&!f.saveOff&&f.save==='儲存',f);
     await page.click('#btnSave');clicks++;await until(page,()=>!document.querySelector('#dlgRec').open);
     const r=(await newRecs(page))[0];
     check('single：頁面上 3 次點擊（新增、從截圖填入、儲存）就存好，面板關閉',clicks===3&&!(await form(page)).open&&!!r,clicks);
-    check('single：labs 存 5.2、labMeta 存原文 H 5.2 與旗標 H、shot 有張數與版本',r.labs.TSH==='5.2'&&r.labMeta.TSH.raw==='H 5.2'&&r.labMeta.TSH.flag==='H'&&r.labMeta.TSH.ref==='0.27-4.20'&&r.labMeta.TSH.unit==='μIU/mL'&&r.shot.n===1&&r.shot.promptVer==='d2'&&r.shot.tier==='default'&&r.interval===6,r);
+    check('single：labs 存 5.2、labMeta 存原文 H 5.2 與旗標 H（flagSrc 是 report）、沒有標記的 Free T4 的 flag 與 flagSrc 都是 null、shot 有張數與版本',r.labs.TSH==='5.2'&&r.labMeta.TSH.raw==='H 5.2'&&r.labMeta.TSH.flag==='H'&&r.labMeta.TSH.flagSrc==='report'&&r.labMeta['Free T4'].flag===null&&r.labMeta['Free T4'].flagSrc===null&&r.labMeta.TSH.ref==='0.27-4.20'&&r.labMeta.TSH.unit==='μIU/mL'&&r.shot.n===1&&r.shot.promptVer==='d2'&&r.shot.tier==='default'&&r.interval===6,r);
     await page.evaluate(()=>{openHist.add('thy_lab');renderExams()});await wait(100);
     const cell=await page.evaluate(()=>[...document.querySelectorAll('.labtable td')].map(t=>t.textContent));
-    check('歷史表格：數值後面加旗標（5.2 H），手動輸入的照舊',cell.includes('5.2 H')&&cell.includes('2.1'),cell);
-    /* 編輯：改過的檢驗刪掉 labMeta，沒改的保留；編輯畫面顯示參考範圍 */
+    const ab=await page.evaluate(()=>[...document.querySelectorAll('.labtable td.lab-ab .lab-flag')].map(x=>x.getAttribute('role')+'|'+x.getAttribute('aria-label')));
+    check('歷史表格：異常值寫成「5.2 ↑ H」，標記有「偏高」的 aria-label；手動輸入的照舊',cell.includes('5.2 ↑ H')&&cell.includes('2.1')&&ab.join()==='img|偏高',{cell,ab});
+    /* 編輯：改過的檢驗不留原文與單位，參考值與標記照表單；沒改的保留 */
     await page.click(`[data-edit="${r.id}"]`);await wait(100);
-    check('編輯：欄位下方顯示參考範圍與旗標',(await labNotes(page,'TSH')).includes('參考 0.27-4.20・H・原文 H 5.2')&&(await boxText(page))===null);
+    const eRef=await labRef(page,'TSH');
+    check('編輯：參考值與標記回到欄位下方那一行（仍是報告上的 H），原文在註記；不顯示截圖入口',(await labNotes(page,'TSH')).join()==='原文 H 5.2'&&eRef.ref==='0.27-4.20'&&eRef.flag==='↑ H'&&eRef.src==='report'&&(await boxText(page))===null,eRef);
     await page.fill('[data-lab="TSH"]','5.0');await page.click('#btnSave');await until(page,()=>!document.querySelector('#dlgRec').open);
     const r2=await page.evaluate(id=>__mock.store.get('records/'+id),r.id);
-    check('編輯：改過的 TSH 刪掉 labMeta，沒改的 Free T4 保留；shot 保留',!r2.labMeta.TSH&&r2.labMeta['Free T4']?.raw==='1.10'&&r2.shot?.n===1&&r2.labs.TSH==='5.0',r2.labMeta);
+    check('編輯：改過的 TSH 不再留原文與單位，參考值照表單，標記改由參考值算出（5.0 仍高於 4.20，flagSrc 是 ref）；沒改的 Free T4 原樣保留；shot 保留',JSON.stringify(r2.labMeta.TSH)===JSON.stringify({raw:null,unit:null,ref:'0.27-4.20',flag:'H',flagSrc:'ref'})&&JSON.stringify(r2.labMeta['Free T4'])===JSON.stringify({raw:'1.10',unit:'ng/dL',ref:'0.93-1.70',flag:null,flagSrc:null})&&r2.shot?.n===1&&r2.labs.TSH==='5.0',r2.labMeta);
     check('匯入檢查：備份裡沒有 labMeta／shot 的紀錄算進「會被取代」',await page.evaluate(id=>{const b={...__mock.store.get('records/'+id)};delete b.labMeta;delete b.shot;return importLoses({records:{[id]:b}})===1&&importLoses({records:{[id]:__mock.store.get('records/'+id)}})===0},r.id));
     check('single：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
   {const {page}=await start({sample:{shot:'multi'}});await addRec(page);await pick(page,await shotFile(page));await drafted(page);

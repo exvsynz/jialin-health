@@ -8,6 +8,7 @@ node dev/heartbeat-test.js
 node dev/med-test.js
 node dev/meal-test.js
 node dev/shot-test.js
+node dev/lab-test.js
 node dev/merge-test.js
 node dev/sample-mock-test.js
 node dev/data-test.js
@@ -31,5 +32,6 @@ node dev/review-d-r2after-test.js
 node dev/review-d-r2fail-test.js
 node dev/review-b-test.js
 node dev/bone-test.js "$@"
+node dev/lab-page-test.js "$@"
 node dev/tabbar-test.js "$@"
 node dev/e2e.js "$@"

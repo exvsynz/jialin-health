@@ -81,8 +81,8 @@ async function shotFile(page){const b64=await page.evaluate(()=>{const c=documen
 
   /* ---- 九個分類：標籤、間隔、依據；邊界；不自動分類；還沒有追蹤計畫在各頁的樣子 ---- */
   {const {page,errors}=await open({time:NOW,hash:'exams',cfg:{latencyComp:true,seed:seed()}});await wait(600);
-    const card=await page.evaluate(()=>{const s=document.querySelector('#h-bone')?.closest('section');return s?{h:s.querySelector('h3').textContent,en:s.querySelector('.en').textContent,name:s.querySelector('.exam-name').textContent,sub:s.querySelector('.exam-sub').textContent,pill:s.querySelector('.pill').textContent,facts:s.querySelector('.facts').textContent,last:document.querySelector('#cats').lastElementChild===s}:null});
-    check('定期檢查頁：最後一類是「骨骼 Bone」，裡面是「骨密度 DXA」，還沒有紀錄',card&&card.h==='骨骼'&&card.en==='Bone'&&card.name==='骨密度 DXA'&&card.pill==='尚無紀錄'&&card.last,card);
+    const card=await page.evaluate(()=>{const s=document.querySelector('#h-bone')?.closest('section');return s?{h:s.querySelector('h3').textContent,en:s.querySelector('.en').textContent,name:s.querySelector('.exam-name').textContent,sub:s.querySelector('.exam-sub').textContent,pill:s.querySelector('.pill').textContent,facts:s.querySelector('.facts').textContent,last:s.nextElementSibling?.querySelector('h3')?.textContent==='其他檢驗'&&document.querySelector('#cats').lastElementChild===s.nextElementSibling}:null});
+    check('定期檢查頁：「骨骼 Bone」排在最後的「其他檢驗」之前，裡面是「骨密度 DXA」，還沒有紀錄',card&&card.h==='骨骼'&&card.en==='Bone'&&card.name==='骨密度 DXA'&&card.pill==='尚無紀錄'&&card.last,card);
     check('還沒有紀錄的卡片：寫明沒有固定間隔，不顯示 12 個月',card&&card.facts==='固定間隔沒有，依分類或醫囑'&&card.sub.includes('沒有固定間隔')&&!/1 年|12/.test(card.facts+card.sub),card);
     check('已追蹤的分母是 10 項',/\/10 項/.test(await txt(page,'#tally')),await txt(page,'#tally'));
     await page.click('[data-add="bone_dxa"]');await wait(250);

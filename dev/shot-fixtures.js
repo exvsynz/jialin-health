@@ -53,6 +53,13 @@ const F={
   conflict:J({items:[lab({name:'TSH',value:'5.2',unit:'μIU/mL'}),lab({name:'TSH',value:'5.3',unit:'μIU/mL'}),lab({name:'Free T4',value:'1.0',unit:'ng/dL'})]}),
   /* 跳脫：讀出的文字含 HTML */
   xss:J({items:[rep({exam:'breast_us',title:'<img src=x onerror="window.__xss=1">',text:'<script>window.__xss=1</script> "quoted" BI-RADS 1'})]}),
+  /* 血球與鐵蛋白：全部沒有對應的欄位。旗標有寫在值裡的（L）、獨立一欄的（L）、HH，也有沒有旗標但超出參考值的（Ferritin） */
+  cbc:J({items:[
+    lab({name:'Hb',value:'L 10.0',unit:'g/dL',ref:'12.0-16.0'}),
+    lab({name:'MCV',value:'61.0',flag:'L',unit:'fL',ref:'80-100'}),
+    lab({name:'WBC',value:'6.5',unit:'10^3/uL',ref:'4.0-10.0'}),
+    lab({name:'PLT',value:'HH 620',unit:'10^3/uL',ref:'150-400'}),
+    lab({name:'Ferritin',value:'4',unit:'ng/mL',ref:'>13'})]}),
   empty:J({items:[]}),
   bad:'讀不出來，這不是 JSON',
   partial:J({items:[{type:'lab',name:'TSH',value:'1.5',unit:'μIU/mL',date:'115/10/20',place:'測試醫院'},{type:'weird'},{type:'lab',value:'3'}]}),

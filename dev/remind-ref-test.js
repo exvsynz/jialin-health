@@ -403,8 +403,10 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
 
   /* 檢查表和 src/index.html 一致：名稱、預設間隔、不追蹤的分類 */
   const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');
-  const fromPage=[...html.matchAll(/\{id:'([a-z_]+)',cat:'[a-z]+',name:'([^']+)',def:(\d+|null)/g)].map(x=>[x[1],x[2],x[3]==='null'?null:+x[3]]);
-  eq('參考實作的檢查表（代號、名稱、預設間隔）和 EXAMS 一致',EXAMS,fromPage);
+  /* 頁面上標了 noPlan 的檢查（其他抽血）預設不排追蹤，排程提示詞與參考實作的表上沒有它：表上沒有的 exam 不看 */
+  const pageExams=[...html.matchAll(/\{id:'([a-z_]+)',cat:'[a-z]+',name:'([^']+)',def:(\d+|null)(,noPlan:true)?/g)],fromPage=pageExams.filter(x=>!x[4]).map(x=>[x[1],x[2],x[3]==='null'?null:+x[3]]);
+  eq('參考實作的檢查表（代號、名稱、預設間隔）和 EXAMS 一致（不含預設不排追蹤的檢查）',EXAMS,fromPage);
+  eq('頁面上預設不排追蹤的檢查只有其他抽血，參考實作的表上沒有它',[pageExams.filter(x=>x[4]).map(x=>x[1]),EXAMS.some(x=>x[0]==='lab_other')],[['lab_other'],false]);
   const nf=[];let curExam=null;for(const line of html.split('\n')){const e=line.match(/\{id:'([a-z_]+)',cat:/);if(e)curExam=e[1];for(const p of line.matchAll(/\{k:'([^']+)',[^}]*noFollow:true/g))nf.push([curExam,p[1]])}
   eq('不追蹤的分類和頁面一致',NO_FOLLOW,nf);
 
