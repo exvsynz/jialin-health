@@ -1176,7 +1176,8 @@ function dupOf(exam,date,recs,skipId){return exam&&date?(recs||[]).find(r=>r.exa
 /* ---- shot helpers: end ---- */
 /* ---- lab helpers: begin (extracted and tested outside the page, together with the shot helpers they use) ---- */
 /* High or low is only ever what the report says: its own mark, or its own reference range. The page holds no reference range of its own.
-   labMeta[name] = { raw, unit, ref, flag, flagSrc }. flag is H, L or A (abnormal, no direction), or null; a report's own HH, LL and * are kept as read.
+   labMeta[name] = { raw, unit, ref, flag, flagSrc }. flag is H, L or A (abnormal, no direction), or null. A report that prints HH or LL keeps that beside it, in mark;
+   records from before this hold HH, LL or * in flag itself, and are read the same way.
    flagSrc says where the flag came from: 'report' (printed on the report), 'ref' (worked out from the reference range) or 'manual' (set by hand; then a null flag means
    "the user says it is not abnormal" and is kept as well). A record from before flagSrc existed has none: its flag came from a report */
 const LAB_FLAG_TXT={H:'偏高',L:'偏低',A:'異常'},FLAG_SRC=['report','ref','manual'];
@@ -1206,14 +1207,15 @@ function refFlag(value,ref){const v=labNum(value),r=parseRef(ref);if(!v||!r)retu
   if(hi!=null&&(v.eq?v.n>hi:v.n>=hi))return'H';return hi==null&&v.n>=lo?null:undefined}
 /* the flag a stored value shows, as stored or as worked out: what is stored comes first (the report's mark, one worked out when it was saved, or the user's own choice, none included);
    a value that has a reference range and no stored mark is worked out here, so a record saved before marks existed shows it too */
-function labFlagOf(value,m){if(!m||typeof m!=='object')return null;const f=flagKind(m.flag)?flagNorm(m.flag):null;if(f||m.flagSrc==='manual')return f;return refFlag(value,m.ref)||null}
+function labFlagOf(value,m){if(!m||typeof m!=='object')return null;const k=flagKind(m.flag),mk=flagNorm(m.mark),f=k?(flagKind(mk)===k?mk:flagNorm(m.flag)):null;if(f||m.flagSrc==='manual')return f;return refFlag(value,m.ref)||null}
 /* two names are one test when they differ only in case, in full or half width, or in spacing */
 const labNameKey=s=>half(s).trim().toLowerCase().replace(/\s+/g,' ');
 /* the abnormal values of one record, [{name,value,flag}], in the order of names (an exam's fields) or of the record's own keys */
 function labAbnormal(r,names){const L=r&&r.labs&&typeof r.labs==='object'?r.labs:{},M=r&&r.labMeta&&typeof r.labMeta==='object'?r.labMeta:{},out=[];
   for(const k of names||Object.keys(L)){const v=L[k];if(v==null||v==='')continue;const f=labFlagOf(v,M[k]);if(f)out.push({name:k,value:String(v),flag:f})}return out}
-/* the same list as text: every one with its letter, or (max given) the first few with the arrow alone and a count of the rest */
-function labSummary(list,max){return(max?list.slice(0,max):list).map(x=>`${x.name} ${x.value} ${max?flagArrow(x.flag):flagMark(x.flag)}`).concat(max&&list.length>max?['另 '+(list.length-max)+' 項']:[]).join('、')}
+/* a text without one block of whole lines; null when the block is not there exactly. A block with a line edited, or made longer, is not a match: text the user changed is never taken out */
+function cutBlock(t,b){if(!b)return null;const L=String(t??'').split('\n'),B=String(b).split('\n');
+  for(let i=0;i+B.length<=L.length;i++)if(B.every((x,k)=>L[i+k]===x)){L.splice(i,B.length);return L.join('\n')}return null}
 /* ---- lab helpers: end ---- */
 
 /* toast with optional actions */
@@ -2063,14 +2065,17 @@ const flagHtml=(f,short)=>{const k=flagKind(f);return k?`<span class="lab-flag" 
 function abnHtml(e,r,max){const L=labAbnormal(r,e.labs?[...new Set([...e.labs.map(x=>x[0]),...Object.keys(r.labs&&typeof r.labs==='object'?r.labs:{})])]:null);if(!L.length)return'';
   return`<div class="${max?'abn':'labline'} lab-ab">${(max?L.slice(0,max):L).map(x=>`${esc(x.name)} <span class="num">${esc(x.value)}</span> ${flagHtml(x.flag,!!max)}`).join('、')}${max&&L.length>max?`、另 ${L.length-max} 項`:''}</div>`}
 /* the values of every record of one exam, newest first. Fixed fields are the columns. An exam of free rows gets a column per test name: the same name, whatever its case, width or spacing,
-   is one column, headed by its newest spelling and unit; a value in another unit carries that unit */
-function labTable(e,hist){let cols,cell;const own=h=>h.labs&&typeof h.labs==='object'?h.labs:{};
-  if(e.rows){const m=new Map();for(const h of hist)for(const k of Object.keys(own(h))){if(own(h)[k]==null||own(h)[k]==='')continue;const nk=labNameKey(k);if(!m.has(nk))m.set(nk,{nk,n:k,u:''});const c=m.get(nk),u=h.labMeta?.[k]?.unit;if(!c.u&&u)c.u=String(u)}
-    cols=[...m.values()];cell=(h,c)=>{const k=Object.keys(own(h)).find(x=>labNameKey(x)===c.nk&&own(h)[x]!=null&&own(h)[x]!=='');if(k==null)return null;const u=h.labMeta?.[k]?.unit;return{v:own(h)[k],u:u&&c.u&&!unitSame(u,c.u)?String(u):'',m:h.labMeta?.[k]}}}
-  else{cols=e.labs.filter(([n])=>hist.some(h=>h.labs&&h.labs[n])).map(([n,u])=>({n,u}));cell=(h,c)=>h.labs&&h.labs[c.n]?{v:h.labs[c.n],u:'',m:h.labMeta?.[c.n]}:null}
+   is one column, headed by its newest spelling. The column carries a unit only when every value in it has that same unit; otherwise each value carries its own and one without a unit shows none,
+   so no value borrows a unit from another draw. Two keys of one record that come to the same name (only from an import) are both shown, each with its own name */
+function labTable(e,hist){let cols,cells;const own=h=>h.labs&&typeof h.labs==='object'?h.labs:{},has=(h,k)=>own(h)[k]!=null&&own(h)[k]!=='',unit=(h,k)=>String(h.labMeta?.[k]?.unit??'').trim();
+  if(e.rows){const m=new Map();for(const h of hist)for(const k of Object.keys(own(h))){if(!has(h,k))continue;const nk=labNameKey(k);if(!m.has(nk))m.set(nk,{nk,n:k,us:[]});m.get(nk).us.push(unit(h,k))}
+    cols=[...m.values()].map(c=>({...c,u:c.us.every(u=>u&&unitSame(u,c.us[0]))?c.us[0]:''}));
+    cells=(h,c)=>Object.keys(own(h)).filter(k=>has(h,k)&&labNameKey(k)===c.nk).map(k=>({k,v:own(h)[k],u:c.u?'':unit(h,k),m:h.labMeta?.[k]}))}
+  else{cols=e.labs.filter(([n])=>hist.some(h=>h.labs&&h.labs[n])).map(([n,u])=>({n,u}));cells=(h,c)=>h.labs&&h.labs[c.n]?[{v:h.labs[c.n],u:'',m:h.labMeta?.[c.n]}]:[]}
   if(!cols.length)return'';
-  return`<div class="labtable"><table><thead><tr><th>日期</th>${cols.map(c=>`<th>${esc(c.n)}<br><span style="font-size:.75rem">${esc(c.u)}</span></th>`).join('')}</tr></thead><tbody>${hist.map(h=>`<tr><td class="num">${fmt(h.date)}</td>${cols.map(c=>{const x=cell(h,c),f=x&&labFlagOf(x.v,x.m);
-    return`<td class="num${f?' lab-ab':''}">${x?esc(x.v)+(x.u?' '+esc(x.u):'')+(f?' '+flagHtml(f):''):'—'}</td>`}).join('')}</tr>`).join('')}</tbody></table></div>`}
+  const part=(x,many)=>{const f=labFlagOf(x.v,x.m);return`<span${f?' class="lab-ab"':''}>${many?esc(x.k)+' ':''}${esc(x.v)}${x.u?' '+esc(x.u):''}${f?' '+flagHtml(f):''}</span>`};
+  return`<div class="labtable"><table><thead><tr><th>日期</th>${cols.map(c=>`<th>${esc(c.n)}<br><span style="font-size:.75rem">${esc(c.u)}</span></th>`).join('')}</tr></thead><tbody>${hist.map(h=>`<tr><td class="num">${fmt(h.date)}</td>${cols.map(c=>{const xs=cells(h,c);
+    return`<td class="num">${xs.length?xs.map(x=>part(x,xs.length>1)).join('、'):'—'}</td>`}).join('')}</tr>`).join('')}</tbody></table></div>`}
 function histItem(r){const p=presetOf(r);
   return`<li><div class="row1"><strong class="num">${fmt(r.date)}</strong>${p?`<span class="chip">${esc(p.label)}</span>`:''}${(pl=>EX[r.exam].noPlan&&!pl.asap&&pl.due==null?'':`<span class="meta">下次 ${pl.asap?'待安排':pl.unplanned?UNPLANNED:fmt(pl.due)}</span>`)(planR(r))}<span style="flex:1"></span><button type="button" class="ghost" data-edit="${esc(r.id)}" ${canWrite?'':'disabled'}>編輯</button></div>
   ${abnHtml(EX[r.exam],r)}${r.report?`<div class="report">${esc(r.report)}</div>`:''}${(r.place||r.doctor||r.note)?`<div class="meta">${[r.place,r.doctor&&('醫師 '+r.doctor),r.note].filter(Boolean).map(esc).join('・')}</div>`:''}</li>`}
@@ -2105,21 +2110,28 @@ function fillPresets(examId,keep){labGen++;const e=EX[examId];if(!e){$('#presetF
 /* ---- the lab fields: a reference range and a mark under each value; free rows for an exam that has no fixed fields ---- */
 const TXT_IN='autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"',FLAG_STEPS=[null,'H','L','A'],ROW_IN=['[data-rn]','[data-rv]','[data-ru]','[data-rr]'];
 let labGen=0; // every rebuild of the lab fields: an undo from an earlier build puts nothing back
-const flagBtn=n=>`<button type="button" class="flagbtn" data-nm="${esc(n)}" data-f="" data-src="" aria-label="${esc(n?n+' ':'')}標記：無">—</button>`;
-/* the mark of one lab sits on its button: data-f is the flag ('' for none), data-src where it came from ('' when there is nothing to keep) */
-function setFlag(b,f,src){const k=flagKind(f);b.dataset.f=k?flagNorm(f):'';b.dataset.src=k||src==='manual'?(src||''):'';b.textContent=k?flagMark(f):'—';b.classList.toggle('on',!!k);
+const flagBtn=n=>`<button type="button" class="flagbtn" data-nm="${esc(n)}" data-f="" data-mark="" data-src="" aria-label="${esc(n?n+' ':'')}標記：無">—</button>`;
+/* the mark of one lab sits on its button: data-f is the flag (H, L, A, or '' for none), data-mark a report's own HH or LL, data-src where the flag came from ('' when there is nothing to keep) */
+function setFlag(b,f,src){const k=flagKind(f),s=flagNorm(f),mk=s==='HH'||s==='LL'?s:'';b.dataset.f=k||'';b.dataset.mark=mk;b.dataset.src=k||src==='manual'?(src||''):'';b.textContent=k?flagMark(mk||k):'—';b.classList.toggle('on',!!k);
   b.setAttribute('aria-label',(b.dataset.nm?b.dataset.nm+' ':'')+'標記：'+(k?LAB_FLAG_TXT[k]:'無'))}
+const flagState=b=>({f:b.dataset.mark||b.dataset.f||null,src:b.dataset.src||''});
 /* worked out again from the value and the reference range beside the button whenever either is typed in. A mark set by hand is never touched.
    When nothing can be worked out, a mark that came from the range goes, and the report's own mark stays */
 function flagAuto(b){if(b.dataset.src==='manual')return;const box=b.closest('[data-labbox]'),f=refFlag(box.querySelector('[data-lab],[data-rv]').value,box.querySelector('[data-ref],[data-rr]').value);
-  if(f!==undefined)setFlag(b,f,f?'ref':'');else if(b.dataset.src!=='report')setFlag(b,null,'')}
+  if(f!==undefined)setFlag(b,f,f?'ref':'');else if(b.dataset.src!=='report')setFlag(b,null,'');flagNote(box)}
+/* a report's mark that stays beside a value the user has changed was printed for the value as read: the field says so, until the mark is worked out again or set by hand */
+function flagNote(box){const b=box.querySelector('.flagbtn'),o=box._orig,v=box.querySelector('[data-lab],[data-rv]').value.trim(),on=!!b&&b.dataset.src==='report'&&!!o&&o.value!=null&&v!==''&&v!==o.value,n=box.querySelector('[data-flagnote]');
+  if(on&&!n)box.insertAdjacentHTML('beforeend','<span class="shotnote warn" data-flagnote>標記是報告上原本數值的，請確認</span>');else if(!on&&n)n.remove()}
 /* a stored or read mark is shown as it is; with none, the mark is worked out from the range */
-function flagInit(b,m){if(flagKind(m?.flag))setFlag(b,m.flag,FLAG_SRC.includes(m.flagSrc)?m.flagSrc:'report');else if(m?.flagSrc==='manual')setFlag(b,null,'manual');else{setFlag(b,null,'');flagAuto(b)}}
+function flagInit(b,m){const k=flagKind(m?.flag),mk=flagNorm(m?.mark);if(k)setFlag(b,flagKind(mk)===k?mk:m.flag,FLAG_SRC.includes(m.flagSrc)?m.flagSrc:'report');else if(m?.flagSrc==='manual')setFlag(b,null,'manual');else{setFlag(b,null,'');flagAuto(b)}}
+/* a mark kept on a draft goes back as it was only when it is the report's or the user's; one that was worked out is worked out again from what the field holds now.
+   m: the mark as read, used only while the draft holds no state for this lab */
+function flagRestore(b,st,m){if(st&&(st.src==='manual'||st.src==='report'))setFlag(b,st.f,st.src);else flagInit(b,st?null:m)}
 /* one row of an exam of free rows. x: name, value, unit, ref; meta (a stored or read mark) or state (a mark exactly as stashed); orig, the value and original text the row came with */
 function addLabRow(x={}){const d=document.createElement('div');d.className='labrow';d.dataset.labbox='';d.setAttribute('role','group');
   d.innerHTML=`<div class="lr"><input class="w2" data-rn aria-label="名稱" placeholder="名稱" maxlength="40" ${TXT_IN}><input data-rv aria-label="數值" placeholder="數值" maxlength="40" ${TXT_IN}></div><div class="lr"><input data-ru aria-label="單位" placeholder="單位" maxlength="20" ${TXT_IN}><input class="w2" data-rr aria-label="參考值" placeholder="參考值" maxlength="40" ${TXT_IN}>${flagBtn('')}<button type="button" class="ghost rowdel" data-rdel aria-label="刪除這一列">✕</button></div><span class="ferr" role="alert" hidden></span>`;
   const q=s=>d.querySelector(s);q('[data-rn]').value=x.name??'';q('[data-rv]').value=x.value??'';q('[data-ru]').value=x.unit??'';q('[data-rr]').value=x.ref??'';d._orig=x.orig||null;
-  $('#labs').appendChild(d);labRowsLabel();if(x.state)setFlag(q('.flagbtn'),x.state.f,x.state.src);else flagInit(q('.flagbtn'),x.meta);
+  $('#labs').appendChild(d);labRowsLabel();flagRestore(q('.flagbtn'),x.state,x.meta);flagNote(d);
   if(x.unclear)d.insertAdjacentHTML('beforeend','<span class="shotnote warn" data-shotn>截圖看不清楚，請核對</span>');return d}
 const labRowsLabel=()=>$$('#labs .labrow').forEach((d,i)=>d.setAttribute('aria-label','第 '+(i+1)+' 列'));
 const rowHas=d=>ROW_IN.some(s=>d.querySelector(s).value.trim());
@@ -2134,22 +2146,29 @@ function labRowsCheck(){let bad=null;const seen=new Set();
 /* what is saved beside one value. The report's own text (raw) and unit stay only while the value is the one that was read or stored (src, else null);
    the reference range and the mark are what the form shows. A field with no range and mark of its own (noRef) keeps what src holds.
    unit, when given, is the row's own unit field. null when there is nothing to save */
-function labMetaOf(box,src,unit){const b=box.querySelector('.flagbtn'),r=box.querySelector('[data-ref],[data-rr]');
-  const flag=b?(b.dataset.f||null):flagKind(src?.flag)?flagNorm(src.flag):null,flagSrc=b?(b.dataset.src||null):flag?(FLAG_SRC.includes(src.flagSrc)?src.flagSrc:'report'):src?.flagSrc==='manual'?'manual':null;
-  const m={raw:src?.raw??null,unit:unit!==undefined?(unit||null):(src?.unit??null),ref:(r?r.value.trim():src?.ref)||null,flag,flagSrc};
+function labMetaOf(box,src,unit){const b=box.querySelector('.flagbtn'),r=box.querySelector('[data-ref],[data-rr]'),sk=flagKind(src?.flag),sm=[src?.mark,src?.flag].map(flagNorm).find(x=>(x==='HH'||x==='LL')&&flagKind(x)===sk);
+  const flag=b?(b.dataset.f||null):sk,mark=b?(b.dataset.mark||null):(sm||null),flagSrc=b?(b.dataset.src||null):flag?(FLAG_SRC.includes(src.flagSrc)?src.flagSrc:'report'):src?.flagSrc==='manual'?'manual':null;
+  const m={raw:src?.raw??null,unit:unit!==undefined?(unit||null):(src?.unit??null),ref:(r?r.value.trim():src?.ref)||null,flag,flagSrc};if(mark)m.mark=mark;
   return Object.values(m).some(x=>x!=null)?m:null}
+/* a unit read or stored that is not the unit of the field it sits in */
+const unitOther=(u,k)=>!!(u&&SHOT_UNITS[k]&&!unitSame(u,SHOT_UNITS[k]));
 /* the stored values of a record into the lab fields: each value with its reference range and its mark; for an exam of free rows, one row per stored value */
 function labLoad(rec){const e=EX[rec.exam],L=rec.labs&&typeof rec.labs==='object'?rec.labs:{},M=rec.labMeta&&typeof rec.labMeta==='object'?rec.labMeta:{};
-  for(const i of $$('[data-lab]')){const k=i.dataset.lab,box=i.closest('[data-labbox]'),r=box.querySelector('[data-ref]');i.value=L[k]||'';if(r){r.value=M[k]?.ref??'';flagInit(box.querySelector('.flagbtn'),M[k])}}
+  for(const i of $$('[data-lab]')){const k=i.dataset.lab,box=i.closest('[data-labbox]'),r=box.querySelector('[data-ref]');i.value=L[k]||'';
+    if(r){r.value=M[k]?.ref??'';box._orig={value:i.value.trim(),ref:r.value,unitDiff:unitOther(M[k]?.unit,k)};box._refT=false;flagInit(box.querySelector('.flagbtn'),M[k])}}
   if(!e.rows)return;$('#labs').innerHTML='';const ks=Object.keys(L).filter(k=>L[k]!=null&&L[k]!=='');
   for(const k of ks)addLabRow({name:k,value:L[k],unit:M[k]?.unit,ref:M[k]?.ref,meta:M[k],orig:{value:String(L[k]).trim(),raw:M[k]?.raw??null}});if(!ks.length)addLabRow()}
-$('#labs').addEventListener('input',e=>{const box=e.target.closest('[data-labbox]');if(!box)return;const b=box.querySelector('.flagbtn');
-  if(b&&e.target.matches('[data-lab],[data-ref],[data-rv],[data-rr]'))flagAuto(b);
+$('#labs').addEventListener('input',e=>{const box=e.target.closest('[data-labbox]');if(!box)return;const b=box.querySelector('.flagbtn'),t=e.target;
+  if(t.matches('[data-ref]'))box._refT=true;
+  /* a reference range that came with a value in another unit than the field's belongs to that value: when the value is changed (converted, most likely) the range is taken out,
+     and comes back with the value; one the user typed is left alone */
+  if(t.matches('[data-lab]')&&box._orig?.unitDiff&&!box._refT){const r=box.querySelector('[data-ref]');if(r)r.value=t.value.trim()===box._orig.value?box._orig.ref:''}
+  if(b&&t.matches('[data-lab],[data-ref],[data-rv],[data-rr]'))flagAuto(b);
   if(box.matches('.labrow')&&!box.querySelector('.ferr').hidden)labRowsCheck(); // an error on a row follows the typing
   shotStashLabs()});
 /* a tap on the mark steps through none, high, low, abnormal: from then on it is the user's, and typing no longer changes it. A deleted row can be put back */
 $('#labs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
-  if(b.matches('.flagbtn'))setFlag(b,FLAG_STEPS[(FLAG_STEPS.indexOf(flagKind(b.dataset.f))+1)%FLAG_STEPS.length],'manual');
+  if(b.matches('.flagbtn')){setFlag(b,FLAG_STEPS[(FLAG_STEPS.indexOf(flagKind(b.dataset.f))+1)%FLAG_STEPS.length],'manual');flagNote(b.closest('[data-labbox]'))}
   else if(b.matches('[data-rdel]')){const d=b.closest('.labrow'),next=d.nextElementSibling,gen=labGen,had=rowHas(d);d.remove();if(!$('#labs .labrow'))addLabRow();labRowsLabel();
     if(had)toast('已刪除一列',[['撤銷',()=>{if(gen!==labGen||!dlg.open)return;const all=$$('#labs .labrow');if(all.length===1&&all[0]!==next&&!rowHas(all[0]))all[0].remove(); // the empty row that took its place
       $('#labs').insertBefore(d,next&&next.isConnected?next:null);labRowsLabel();shotStashLabs()}]])}
@@ -2255,9 +2274,11 @@ $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
   if(erows)for(const d of $$('#labs .labrow')){const q=x=>d.querySelector(x).value.trim(),n=q('[data-rn]'),v=q('[data-rv]');if(!n||!v)continue;lab[n]=v;
     const m=labMetaOf(d,d._orig&&d._orig.value===v?d._orig:null,q('[data-ru]'));if(m)meta[n]=m}
   full.labs=lab;
-  /* labs of the draft that this record has no field for: into the report, or (the switch under the report) into a record of 「其他抽血」 of their own, confirmed next */
-  const split=shotCur&&shotSplitOn()?shotRowsOf(shotCur,shotAwayKeys()):[];
-  if(shotCur){const away=split.length||erows?[]:shotAway();if(away.length)full.report=[full.report,'截圖讀到的其他檢驗：',...away].filter(Boolean).join('\n');
+  /* labs of the draft that this record has no field for go into its report. With the switch under the report on, they also become a draft of 「其他抽血」 of their own, confirmed next;
+     their lines leave this report only when that record is saved (shotStrip), so until then nothing read is in neither place */
+  const split=shotCur&&shotSplitOn()?shotSplitItems(shotCur):[];let strip=[];
+  if(shotCur){const away=erows?[]:shotAway(),parts=[split.length&&!shotCur.blkLost&&!shotCur.blkIn?shotBlock(shotCur):'',away.length?['截圖讀到的其他檢驗：',...away].join('\n'):''].filter(Boolean);
+    if(parts.length)full.report=[full.report,...parts].filter(Boolean).join('\n');if(split.length)strip=parts;
     full.shot={...shotCur.meta}}
   if(Object.keys(meta).length)full.labMeta=meta;else delete full.labMeta;
   if(exam==='thy_lab'){const c={...(kept.drawCtx||{})};
@@ -2266,7 +2287,7 @@ $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
     if(Object.keys(c).length)full.drawCtx=c;else delete full.drawCtx}
   const fromShot=shotCur,wasEditing=!!editing,epoch=recEpoch;recSaving=true;renderShotCls();renderShotBar();
   try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(full);openHist.add(exam);recSaving=false;
-    if(fromShot){if(split.length)shotSplit(fromShot,full,split);shotSaved1(fromShot,full)}else{if(dlg.open&&recEpoch===epoch)dlg.close();toast(wasEditing?'已更新':'已儲存')}/* a form opened since then stays open */if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{recSaving=false;renderShotCls();renderShotBar()}});
+    if(fromShot){if(fromShot.strip)shotStrip(fromShot.strip);if(split.length)shotSplit(fromShot,full,split,{id:ref.id,parts:strip});shotSaved1(fromShot,full)}else{if(dlg.open&&recEpoch===epoch)dlg.close();toast(wasEditing?'已更新':'已儲存')}/* a form opened since then stays open */if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{recSaving=false;renderShotCls();renderShotBar()}});
 $('#btnDel').addEventListener('click',async()=>{if(!editing||!canSave())return;const rec=records.find(x=>x.id===editing.id)||editing;const {id,...body}=rec;
   try{await retry1(()=>db.doc('records/'+id).delete());dlg.close();toast('已刪除 '+EX[rec.exam].name+' '+fmt(rec.date),[['撤銷',()=>retry1(()=>db.doc('records/'+id).set(body)).catch(writeErr)]])}catch(e){writeErr(e)}});
 
@@ -2351,41 +2372,62 @@ function shotMetaNotes(meta){for(const i of $$('[data-lab]')){const m=meta&&meta
 const labVal=(d,k)=>d.edits&&k in d.edits?d.edits[k]:d.labs[k]?.value;
 function shotStash(){const d=shotCur;if(!d)return;d.edits=d.edits||{};for(const i of $$('[data-lab]'))d.edits[i.dataset.lab]=i.value;shotStashLabs();
   d.form={exam:$('#fExam').value,date:$('#fDate').value,place:$('#fPlace').value,report:$('#fReport').value,note:$('#fNote').value,doctor:$('#fDoctor').value,due:$('#fDue').value,interval:$('#fInterval').value,ivAuto,preset:$('#fPreset').value,ctx:{...formCtx},rc:$('#fRecheck').checked,rcTouched,split:$('#fSplit').checked}}
-/* the reference ranges, the marks and the free rows of the draft in the form are kept on the draft like its values, at every change: switching the exam or closing never loses them */
-function shotStashLabs(){const d=shotCur;if(!d)return;d.refs=d.refs||{};d.flags=d.flags||{};const st=b=>({f:b.dataset.f||null,src:b.dataset.src||''});
-  for(const r of $$('[data-ref]')){d.refs[r.dataset.ref]=r.value;d.flags[r.dataset.ref]=st(r.closest('[data-labbox]').querySelector('.flagbtn'))}
-  if(shotInRows())d.rows=$$('#labs .labrow').map(x=>({name:x.querySelector('[data-rn]').value,value:x.querySelector('[data-rv]').value,unit:x.querySelector('[data-ru]').value,ref:x.querySelector('[data-rr]').value,state:st(x.querySelector('.flagbtn')),orig:x._orig,unclear:!!x.querySelector('[data-shotn]')}))}
+/* the reference ranges, the marks and the free rows of the draft in the form are kept on the draft like its values, at every change: switching the exam or closing never loses them.
+   Among the rows, one that is still a field of the draft (same name) is kept as that field (edits, refs, flags, units); every other row is a lab with no field of its own (oth).
+   A field whose row was deleted, or renamed into a lab of its own, is emptied */
+function shotStashLabs(){const d=shotCur;if(!d)return;d.edits=d.edits||{};d.refs=d.refs||{};d.flags=d.flags||{};d.refT=d.refT||{};d.units=d.units||{};
+  for(const r of $$('[data-ref]')){const k=r.dataset.ref,box=r.closest('[data-labbox]');d.refs[k]=r.value;d.flags[k]=flagState(box.querySelector('.flagbtn'));if(box._refT)d.refT[k]=true}
+  if(!shotInRows())return;const oth=[],kept=new Set();
+  for(const x of $$('#labs .labrow')){if(!rowHas(x))continue;const q=sel=>x.querySelector(sel).value,o=x._orig||{},n=q('[data-rn]'),v=q('[data-rv]'),st=flagState(x.querySelector('.flagbtn'));
+    if(o.key&&n.trim()===o.key){kept.add(o.key);d.edits[o.key]=v.trim()===o.shown?o.field:v;d.refs[o.key]=q('[data-rr]');d.flags[o.key]=st;d.units[o.key]=q('[data-ru]')}
+    else oth.push({name:n,value:v,unit:q('[data-ru]'),ref:q('[data-rr]'),st,flag:o.flag??null,raw:o.raw??null,was:o.value??null,unclear:!!x.querySelector('[data-shotn]')})}
+  for(const k of d.rowKeys||[])if(!kept.has(k))d.edits[k]='';
+  d.oth=oth}
 const shotInRows=()=>!!EX[$('#fExam').value]?.rows;
 const shotSplitOn=()=>!$('#shotSplitRow').hidden&&$('#fSplit').checked;
-/* labs of a draft as rows of 「其他抽血」: the ones read with no field of their own, then the given fields with what the form holds for them now.
-   A value still as read goes in as the number alone, with the unit it was read with; a corrected one goes in as corrected */
-function shotRowsOf(d,keys){return[...(d.others||[]).map(o=>({flagSrc:'report',...o})),...keys.map(k=>{const v=String(labVal(d,k)??'').trim(),c=d.labs[k],same=!!c&&v===c.value,st=d.flags?.[k];
-  return{name:k,value:same?c.num:v,unit:c?(c.unit||''):(SHOT_UNITS[k]||''),ref:d.refs&&k in d.refs?d.refs[k]:(c?.ref||''),flag:st?st.f:(c?.flag??null),flagSrc:st?st.src:'report',raw:same?c.raw:null,unclear:same&&!!c.unclear}})]}
+/* the labs of a draft that have no field of their own: as read from the screenshot (others) or, once their rows have been in the form, as the user left them (oth: corrected, deleted, added).
+   st is the mark as the form last held it, null while it was never shown; was is the value as read, which the original text (raw) goes with */
+const shotOth=d=>(d.oth||(d.others||[]).map(o=>({name:o.name,value:o.value,unit:o.unit,ref:o.ref,st:null,flag:o.flag,raw:o.raw,was:o.value,unclear:o.unclear}))).filter(o=>(o.name+o.value+o.unit+o.ref).trim());
+/* a field of the draft in the same shape, with what the form holds for it now. A value still as read is the number alone, with the unit it was read with; a corrected one is as corrected */
+function cellItem(d,k){const c=d.labs[k],f=String(labVal(d,k)??''),same=!!c&&f.trim()===c.value;
+  return{key:k,field:f,name:k,value:same?c.num:f.trim(),unit:d.units&&k in d.units?d.units[k]:c?(c.unit||''):(SHOT_UNITS[k]||''),ref:d.refs&&k in d.refs?d.refs[k]:(c?.ref||''),st:d.flags?.[k]||null,flag:c?.flag??null,raw:same?c.raw:null,was:same?c.num:null,unclear:same&&!!c.unclear}}
+/* such an item as a row of the form; orig is what the row came with: the field it stands for (key, and field, that field's own text), the value shown, the value as read and its original text */
+const itemRow=o=>({name:o.name,value:o.value,unit:o.unit,ref:o.ref,state:o.st,meta:{flag:o.flag,flagSrc:'report'},orig:{key:o.key,field:o.field,shown:String(o.value).trim(),value:o.was,raw:o.raw,flag:o.flag},unclear:o.unclear});
+/* the labs this record will not hold, for a record of 「其他抽血」 of their own: the ones with no field anywhere, and the fields the exam now chosen does not have */
+const shotSplitItems=d=>[...shotOth(d),...shotAwayKeys().map(k=>{const {key,field,...o}=cellItem(d,k);return o})];
+/* the lines those labs make in the report: exactly as read while nothing about them was changed, else written again from what the user left */
+const othLine=o=>{const f=o.st?o.st.f:o.flag;return`${o.name.trim()} ${String(o.value).trim()||'（看不清楚）'}${o.unit.trim()?' '+o.unit.trim():''}${o.ref.trim()?'（參考值 '+o.ref.trim()+'）':''}${f?' '+f:''}`};
+function shotBlock(d){if(!d.oth)return d.othersBlock||'';const L=shotOth(d).map(othLine);return L.length?['其他檢驗（沒有對應的欄位）：',...L].join('\n'):''}
 /* the labs a saved draft had no field for, as a draft of their own for 「其他抽血」, next in the queue: confirmed in the form like any other, with the date and place just saved.
-   It is not read again with its screenshots (the reading has no draft of this kind), and a reading again of the batch leaves it waiting */
-function shotSplit(d,full,items){const i=shotQ.indexOf(d);
-  shotQ.splice(i<0?0:i+1,0,{type:'lab',key:'split|'+d.key,splitOf:d.key,exam:'lab_other',date:full.date,dateNote:null,place:full.place||null,title:null,labs:{},conflicts:{},report:'',reportCut:false,extraLines:[],cls:{preset:null,text:null,hint:null},unclear:[],others:items,id:newId('s'),meta:d.meta,batch:d.batch,skipped:0})}
+   strip: the record they came from and the lines they still make in its report. It is not read again with its screenshots (the reading has no draft of this kind), and a reading again of the batch leaves it waiting */
+function shotSplit(d,full,items,strip){const i=shotQ.indexOf(d);
+  shotQ.splice(i<0?0:i+1,0,{type:'lab',key:'split|'+d.key,splitOf:d.key,strip,exam:'lab_other',date:full.date,dateNote:null,place:full.place||null,title:null,labs:{},conflicts:{},report:'',reportCut:false,extraLines:[],cls:{preset:null,text:null,hint:null},unclear:[],oth:items,id:newId('s'),meta:d.meta,batch:d.batch,skipped:0})}
+/* once the labs split off are saved as their own record, their lines leave the report of the record they came from. Only lines still exactly as they were saved there are taken out;
+   if this write fails they simply stay in both records */
+function shotStrip({id,parts}){const h=records.find(x=>x.id===id);if(!db||!h||typeof h.report!=='string')return;let t=h.report;for(const p of parts){const c=cutBlock(t,p);if(c!=null)t=c}
+  if(t!==h.report)db.doc('records/'+id).update({report:t,updatedAt:Date.now()}).catch(()=>{})}
 /* the lab fields of the exam now chosen: values, reference ranges and marks as read, or as the user left them. Labs that belong elsewhere are announced; on save they go into the report, or into a record of their own */
 function shotFillLabs(){const d=shotCur;if(!d)return;
   for(const i of $$('[data-lab]')){const k=i.dataset.lab,c=d.labs[k],v=labVal(d,k),box=i.closest('[data-labbox]'),r=box.querySelector('[data-ref]');if(v!=null)i.value=v;
-    if(r){r.value=d.refs&&k in d.refs?d.refs[k]:(c?.ref||'');const st=d.flags?.[k],b=box.querySelector('.flagbtn');if(st)setFlag(b,st.f,st.src);else flagInit(b,c?{flag:c.flag,flagSrc:'report'}:null)}
+    if(r){box._orig={value:c?c.value:null,ref:c?.ref||'',unitDiff:c?.unitNote==='diff'};box._refT=!!d.refT?.[k];r.value=d.refs&&k in d.refs?d.refs[k]:(c?.ref||'');flagRestore(box.querySelector('.flagbtn'),d.flags?.[k],c?{flag:c.flag,flagSrc:'report'}:null);flagNote(box)}
     if(c){shotTag(i);const t=metaLine(c,c.value,!r);if(t)shotNote(i,t,false);
       if(c.unclear)shotNote(i,c.value?'截圖看不清楚，請核對':'截圖看不清楚',true);
       if(c.unitNote==='diff')shotNote(i,`單位和表單（${SHOT_UNITS[k]}）不同，未換算`,true);else if(c.unitNote==='none'&&c.value)shotNote(i,'截圖沒有單位',true)}
     else if(d.conflicts[k])shotNote(i,'截圖裡有不同的值：'+d.conflicts[k].map(x=>x.value+(x.unit?' '+x.unit:'')).join('、'),true)}
-  if(shotInRows()){$('#labs').innerHTML='';const rows=d.rows||shotRowsOf(d,shotAwayKeys()).map(o=>({name:o.name,value:o.value,unit:o.unit,ref:o.ref,meta:{flag:o.flag,flagSrc:o.flagSrc},orig:{value:o.value,raw:o.raw},unclear:o.unclear}));
+  /* an exam of free rows takes every lab of the draft: the ones with no field of their own, then its fields (rowKeys) */
+  if(shotInRows()){$('#labs').innerHTML='';d.rowKeys=shotAwayKeys();const rows=[...shotOth(d),...d.rowKeys.map(k=>cellItem(d,k))].map(itemRow);
     for(const x of rows)addLabRow(x);if(!rows.length)addLabRow()}
   shotOthersUi()}
 /* labs of the draft that the exam now chosen has no field for: named under the exam, and offered as a record of 「其他抽血」 of their own (the switch under the report).
-   The lines of the labs that have no field anywhere stay in the report text unless those labs become rows, in this record or in the one split off;
-   only lines still exactly as read are taken out, and only lines taken out are put back */
+   The lines of the labs that have no field anywhere stand in the report text, except while those labs are rows of this form or are going to a record of their own.
+   blkIn is the block as the page last put it there. It is taken out or written again only while it is still there line for line; once the user has changed it (blkLost) the text is theirs */
 function shotOthersUi(){const d=shotCur,row=$('#shotSplitRow'),note=$('#shotExamNote');if(!d){row.hidden=true;return}
-  const rows=shotInRows(),away=rows?[]:shotAwayKeys(),n=rows||!$('#fExam').value?0:(d.others?.length||0)+away.length;
+  const rows=shotInRows(),away=rows?[]:shotAwayKeys(),n=rows||!$('#fExam').value?0:shotOth(d).length+away.length;
   row.hidden=!n;$('#shotSplitLbl').textContent=n?`其他 ${n} 項檢驗另存成一筆「其他抽血」`:'';
   note.hidden=!away.length;note.textContent=away.length?`換成這個項目後，${away.join('、')} ${shotSplitOn()?'會另存成「其他抽血」':'會放進報告內容'}`:'';
-  const blk=d.othersBlock,t=$('#fReport');if(!blk)return;const out=rows||shotSplitOn();
-  if(out&&t.value.includes(blk)){t.value=t.value.includes('\n'+blk)?t.value.replace('\n'+blk,''):t.value.replace(blk,'').replace(/^\n/,'');d.blockOut=true}
-  else if(!out&&d.blockOut){if(!t.value.includes(blk))t.value=[t.value,blk].filter(Boolean).join('\n');d.blockOut=false}}
+  if(d.blkLost)return;if(d.blkIn===undefined)d.blkIn=d.othersBlock||'';const want=rows||shotSplitOn()?'':shotBlock(d);if(want===d.blkIn)return;
+  const t=$('#fReport');let v=t.value;if(d.blkIn){const c=cutBlock(v,d.blkIn);if(c==null){d.blkLost=true;return}v=c}
+  t.value=[v,want].filter(Boolean).join('\n');d.blkIn=want}
 $('#fSplit').addEventListener('change',shotOthersUi);
 function shotAwayKeys(){const d=shotCur;if(!d)return[];const here=new Set($$('[data-lab]').map(i=>i.dataset.lab));
   return[...new Set([...Object.keys(d.labs),...Object.keys(d.edits||{})])].filter(k=>!here.has(k)&&String(labVal(d,k)??'').trim())}

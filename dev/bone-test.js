@@ -384,7 +384,7 @@ async function shotFile(page){const b64=await page.evaluate(()=>{const c=documen
   /* ---- R-02：設定頁的固定間隔和 planOf 用同一個檢查（1–120 的整數）；舊的不合格設定值改用預設值 ---- */
   {const s={...noRecs(seed()),'settings/intervals':{gi_egd:180,gi_colo:1200,thy_lab:0.4,breast_us:0,thy_us:9},'records/e1':R('gi_egd','gi','2025-01-01',{interval:null}),'records/e2':R('gi_colo','gi','2020-05-01',{interval:null}),'records/e3':R('thy_us','thyroid','2026-03-01',{interval:null})};
     const {page,errors}=await open({time:NOW,hash:'exams',cfg:{latencyComp:true,seed:s}});await wait(600);
-    const facts=()=>page.evaluate(()=>Object.fromEntries([...document.querySelectorAll('#cats article.exam')].map(a=>[a.querySelector('.exam-name').textContent,a.querySelector('.facts').textContent])));
+    const facts=()=>page.evaluate(()=>Object.fromEntries([...document.querySelectorAll('#cats article.exam')].map(a=>[a.querySelector('.exam-name').textContent,a.querySelector('.facts')?.textContent||''])));
     let cards=await facts();
     check('舊的不合格設定值（胃鏡 180、大腸鏡 1200）改用預設值：胃鏡下次 2027/01/01・間隔 2 年，大腸鏡 2030/05/01・間隔 10 年；合格的 9 個月照用',cards['上消化道內視鏡（胃鏡）'].includes('下次2027/01/01')&&cards['上消化道內視鏡（胃鏡）'].includes('間隔2 年')&&cards['大腸鏡'].includes('下次2030/05/01')&&cards['大腸鏡'].includes('間隔10 年')&&cards['甲狀腺超音波'].includes('下次2026/12/01')&&cards['甲狀腺超音波'].includes('間隔9 個月'),cards);
     check('還沒有紀錄的卡片：固定間隔顯示預設值，不顯示不合格的設定（甲狀腺抽血 0.4 → 6 個月、乳房超音波 0 → 1 年）',cards['甲狀腺抽血']==='固定間隔6 個月'&&cards['乳房超音波']==='固定間隔1 年',cards);

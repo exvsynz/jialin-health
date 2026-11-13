@@ -124,7 +124,7 @@ const calls=page=>page.evaluate(()=>__mock.sampleCalls.map(c=>({input:c.input,n:
     check('single：labs 存 5.2、labMeta 存原文 H 5.2 與旗標 H（flagSrc 是 report）、沒有標記的 Free T4 的 flag 與 flagSrc 都是 null、shot 有張數與版本',r.labs.TSH==='5.2'&&r.labMeta.TSH.raw==='H 5.2'&&r.labMeta.TSH.flag==='H'&&r.labMeta.TSH.flagSrc==='report'&&r.labMeta['Free T4'].flag===null&&r.labMeta['Free T4'].flagSrc===null&&r.labMeta.TSH.ref==='0.27-4.20'&&r.labMeta.TSH.unit==='μIU/mL'&&r.shot.n===1&&r.shot.promptVer==='d2'&&r.shot.tier==='default'&&r.interval===6,r);
     await page.evaluate(()=>{openHist.add('thy_lab');renderExams()});await wait(100);
     const cell=await page.evaluate(()=>[...document.querySelectorAll('.labtable td')].map(t=>t.textContent));
-    const ab=await page.evaluate(()=>[...document.querySelectorAll('.labtable td.lab-ab .lab-flag')].map(x=>x.getAttribute('role')+'|'+x.getAttribute('aria-label')));
+    const ab=await page.evaluate(()=>[...document.querySelectorAll('.labtable td .lab-ab .lab-flag')].map(x=>x.getAttribute('role')+'|'+x.getAttribute('aria-label')));
     check('歷史表格：異常值寫成「5.2 ↑ H」，標記有「偏高」的 aria-label；手動輸入的照舊',cell.includes('5.2 ↑ H')&&cell.includes('2.1')&&ab.join()==='img|偏高',{cell,ab});
     /* 編輯：改過的檢驗不留原文與單位，參考值與標記照表單；沒改的保留 */
     await page.click(`[data-edit="${r.id}"]`);await wait(100);

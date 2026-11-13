@@ -40,8 +40,8 @@ const card=(page,id)=>page.evaluate(id=>{const a=document.querySelector(`[data-a
 const openHistOf=async(page,id)=>{await page.evaluate(id=>{openHist.add(id);renderExams()},id);await wait(120)};
 const table=(page,id)=>page.evaluate(id=>{const a=document.querySelector(`[data-add="${id}"]`).closest('article'),t=a.querySelector('.labtable');if(!t)return null;
   return{head:[...t.querySelectorAll('thead th')].map(th=>th.innerText.replace(/\s+/g,' ').trim()),rows:[...t.querySelectorAll('tbody tr')].map(tr=>[...tr.querySelectorAll('td')].map(td=>td.textContent)),
-    aria:[...t.querySelectorAll('.lab-flag')].map(x=>x.getAttribute('role')+'|'+x.getAttribute('aria-label')),abCells:[...t.querySelectorAll('td.lab-ab')].map(td=>td.textContent),noMark:[...t.querySelectorAll('td.lab-ab')].filter(td=>!td.querySelector('.lab-flag')?.textContent.trim()).length,
-    lines:[...a.querySelectorAll('.hist li')].map(li=>li.querySelector('.labline')?.textContent||''),color:t.querySelector('td.lab-ab')?getComputedStyle(t.querySelector('td.lab-ab')).color:null,plain:getComputedStyle(t.querySelector('td:not(.lab-ab)')).color}},id);
+    aria:[...t.querySelectorAll('.lab-flag')].map(x=>x.getAttribute('role')+'|'+x.getAttribute('aria-label')),abCells:[...t.querySelectorAll('td .lab-ab')].map(td=>td.textContent),noMark:[...t.querySelectorAll('td .lab-ab')].filter(td=>!td.querySelector('.lab-flag')?.textContent.trim()).length,
+    lines:[...a.querySelectorAll('.hist li')].map(li=>li.querySelector('.labline')?.textContent||''),color:t.querySelector('td .lab-ab')?getComputedStyle(t.querySelector('td .lab-ab')).color:null,plain:getComputedStyle(t.querySelector('tbody td')).color}},id);
 const lab=(date,labs,labMeta,o={})=>({exam:'thy_lab',cat:'thyroid',date,preset:null,interval:6,nextDue:null,report:'',place:'',doctor:'',note:'',labs,...(labMeta?{labMeta}:{}),createdAt:10,updatedAt:10,...o});
 const other=(date,labs,labMeta,o={})=>lab(date,labs,labMeta,{exam:'lab_other',cat:'lab',interval:null,...o});
 /* 合成截圖 */
@@ -50,6 +50,7 @@ async function shotFile(page){const b64=await page.evaluate(()=>{const c=documen
 async function pick(page,files){const [fc]=await Promise.all([page.waitForEvent('filechooser',{timeout:3000}),page.click('#shotBox label')]);await fc.setFiles(files)}
 const drafted=page=>until(page,()=>!document.querySelector('#shotBar').hidden);
 const barIs=(page,s)=>until(page,s=>document.querySelector('#shotBar').textContent.startsWith(s),4000,s);
+const fieldNote=(page,k)=>page.evaluate(k=>document.querySelector(`[data-lab="${k}"]`).closest('[data-labbox]').querySelector('[data-flagnote]')?.textContent||null,k);
 const sform=page=>page.evaluate(()=>({bar:document.querySelector('#shotBar').hidden?null:document.querySelector('#shotBar').textContent,exam:document.querySelector('#fExam').value,date:document.querySelector('#fDate').value,place:document.querySelector('#fPlace').value,report:document.querySelector('#fReport').value,
   split:document.querySelector('#shotSplitRow').hidden?null:document.querySelector('#shotSplitLbl').textContent,splitOn:document.querySelector('#fSplit').checked,examNote:document.querySelector('#shotExamNote').hidden?null:document.querySelector('#shotExamNote').textContent,
   reread:!!document.querySelector('#shotBar [data-shot="reread"]'),open:document.querySelector('#dlgRec').open}));
@@ -119,12 +120,12 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
       /* 生殖軸激素：5 項異常 → 卡片列 3 項加「另 2 項」 */
       'records/g1':lab('2026-10-10',{E2:'10',P4:'0.1',FSH:'60',LH:'50',AMH:'0.01',PRL:'10'},{E2:{flag:'L',flagSrc:'report'},P4:{ref:'0.2-25',flag:'L',flagSrc:'ref'},FSH:{flag:'H',flagSrc:'manual'},LH:{flag:'H',flagSrc:'report'},AMH:{ref:'>1.0'}},{exam:'gyn_horm',cat:'gyn'}),
       /* 其他抽血：剛好 3 項異常 */
-      'records/o1':other('2026-10-05',{Hb:'10.0',MCV:'61.0',WBC:'6.5',PLT:'620'},{Hb:{unit:'g/dL',ref:'12.0-16.0',flag:'L',flagSrc:'ref'},MCV:{unit:'fL',ref:'80-100',flag:'L',flagSrc:'report'},WBC:{unit:'10^3/uL',ref:'4.0-10.0'},PLT:{unit:'10^3/uL',flag:'HH',flagSrc:'report'}})};
+      'records/o1':other('2026-10-05',{Hb:'10.0',MCV:'61.0',WBC:'6.5',PLT:'620'},{Hb:{unit:'g/dL',ref:'12.0-16.0',flag:'L',flagSrc:'ref'},MCV:{unit:'fL',ref:'80-100',flag:'L',flagSrc:'report'},WBC:{unit:'10^3/uL',ref:'4.0-10.0'},PLT:{unit:'10^3/uL',flag:'H',mark:'HH',flagSrc:'report'}})};
     const {page,errors}=await start({seed},{scheme});
     const c=await card(page,'thy_lab'),g=await card(page,'gyn_horm'),o=await card(page,'lab_other');
     check(`${scheme} 卡片（沒有展開）：甲狀腺抽血列出最近一筆的異常項目「TSH 5.2 ↑、Free T4 0.80 ↓」，箭頭有偏高、偏低的 aria-label`,!c.open&&c.abn==='TSH 5.2 ↑、Free T4 0.80 ↓'&&same(c.abnAria,['img|偏高','img|偏低']),c);
     check(`${scheme} 卡片：5 項異常時列 3 項，其餘寫「另 2 項」`,g.abn==='E2 10 ↓、P4 0.1 ↓、FSH 60 ↑、另 2 項',g.abn);
-    check(`${scheme} 卡片：剛好 3 項異常時全部列出，不寫「另」（報告上的 HH 在卡片上是 ↑）`,o.abn==='Hb 10.0 ↓、MCV 61.0 ↓、PLT 620 ↑',o.abn);
+    check(`${scheme} 卡片：剛好 3 項異常時全部列出，不寫「另」（報告上的 HH 存成 flag H、mark HH，在卡片上是 ↑）`,o.abn==='Hb 10.0 ↓、MCV 61.0 ↓、PLT 620 ↑',o.abn);
     check(`${scheme} 卡片：沒有異常項目的檢查沒有這一行`,(await card(page,'thy_us')).abn===null&&(await card(page,'breast_us')).abn===null);
     await openHistOf(page,'thy_lab');const t=await table(page,'thy_lab');
     check(`${scheme} 歷史表格：異常值寫成「數值 ↑ H」「數值 ↓ L」「數值 *」；HH 照報告寫；手動設成沒有標記的 2.5、剛好在上限的 1.70、沒有 labMeta 的舊紀錄都照常顯示`,
@@ -215,12 +216,27 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
       'records/o2':other('2026-08-01',{'hb ':'9.8',Glucose:'95',CRP:'<0.5'},{'hb ':{unit:'g/dL',flag:'L'},Glucose:{unit:'mg/dL',ref:'70-99'}}),
       'records/o3':other('2026-07-01',{Hb:'12.5'},null)};
     const {page,errors}=await start({seed});await openHistOf(page,'lab_other');const t=await table(page,'lab_other');
-    check('歷史表格：Hb、ＨＢ、「hb 」是同一欄，MCV 與 mcv 是同一欄；欄名與單位用最新一筆的寫法；最新一筆沒有的 CRP 另成一欄',t&&same(t.head,['日期','Hb g/dL','MCV fL','Glucose mg/dL','CRP']),t&&t.head);
-    check('歷史表格：跨次比較。沒有標記但有參考值的 11.2 由參考值算出 ↓ L；單位不同的 5.4 帶著自己的單位；沒有的寫 —；沒有 labMeta 的舊紀錄照常顯示',
-      t&&same(t.rows,[['2026/10/01','10.0 ↓ L','61.0 ↓ L','98','—'],['2026/09/01','11.2 ↓ L','70.5','5.4 mmol/L','—'],['2026/08/01','9.8 ↓ L','—','95','<0.5'],['2026/07/01','12.5','—','—','—']]),t&&t.rows);
+    check('歷史表格：Hb、ＨＢ、「hb 」是同一欄，MCV 與 mcv 是同一欄，欄名用最新一筆的寫法；整欄單位都相同（MCV）才把單位寫在欄名，有不同或有沒填的（Hb、Glucose）就不寫',t&&same(t.head,['日期','Hb','MCV fL','Glucose','CRP']),t&&t.head);
+    check('歷史表格：跨次比較。沒有標記但有參考值的 11.2 由參考值算出 ↓ L；單位不一致的欄每格帶自己的單位（98 mg/dL、5.4 mmol/L），沒填單位的 12.5 不借別筆的單位；沒有的寫 —；沒有 labMeta 的舊紀錄照常顯示',
+      t&&same(t.rows,[['2026/10/01','10.0 g/dL ↓ L','61.0 ↓ L','98 mg/dL','—'],['2026/09/01','11.2 g/dL ↓ L','70.5','5.4 mmol/L','—'],['2026/08/01','9.8 g/dL ↓ L','—','95 mg/dL','<0.5'],['2026/07/01','12.5','—','—','—']]),t&&t.rows);
     const w=await page.evaluate(()=>{const a=document.querySelector('[data-add="lab_other"]').closest('article'),x=a.querySelector('.labtable');return{ox:getComputedStyle(x).overflowX,page:document.documentElement.scrollWidth-document.documentElement.clientWidth}});
     check('歷史表格：欄位多的時候在自己的容器內水平捲動，頁面不捲',w.ox==='auto'&&w.page<=0,w);
     check('同名比較：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 只會來自匯入：同一筆裡兩個 key 只差大小寫。兩個都要看得到，不能任選一個 */
+  {const seed={...sampleSeed(T),'records/d1':other('2026-10-01',{Hb:'12',hb:'7'},{hb:{flag:'L',flagSrc:'report'}}),'records/d2':other('2026-09-01',{Hb:'11'},null)};
+    const {page,errors}=await start({seed});await openHistOf(page,'lab_other');const t=await table(page,'lab_other');
+    check('同一筆裡有 Hb 與 hb（匯入）：同一格列出兩個，各帶原本的名稱，異常的照標',t&&same(t.head,['日期','Hb'])&&same(t.rows,[['2026/10/01','Hb 12、hb 7 ↓ L'],['2026/09/01','11']])&&same(t.lines,['hb 7 ↓ L','']),t);
+    await page.click('[data-edit="d1"]');await wait(150);await save(page);const rs=await rows(page);
+    check('編輯這筆：存檔被「名稱和上面的列重複」擋下，資料不動',rs[1].err==='名稱和上面的列重複'&&same((await stored(page,'d1')).labs,{Hb:'12',hb:'7'}),rs);
+    check('同筆重複名稱：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 很長的名稱、數值、單位、參考值 */
+  {const {page,errors}=await start();await newRec(page,'lab_other');const L=n=>'W'.repeat(n);
+    await fillRow(page,0,{n:L(40),v:L(40),u:L(20),r:L(40)});await page.click(rowSel(0,'.flagbtn'));
+    check('380 寬：名稱 40 字、數值 40 字、單位 20 字、參考值 40 字的列，表單沒有水平捲動',(await overflow(page))<=0&&(await dlgOverflow(page))<=0,[await overflow(page),await dlgOverflow(page)]);
+    await save(page);await saved(page);await openHistOf(page,'lab_other');
+    const w=await page.evaluate(()=>{const a=document.querySelector('[data-add="lab_other"]').closest('article');return{page:document.documentElement.scrollWidth-document.documentElement.clientWidth,card:a.scrollWidth-a.clientWidth,abn:a.querySelector('.abn').textContent.length}});
+    check('380 寬：存好後卡片的異常項目、歷史表格與歷次紀錄都不讓頁面水平捲動（卡片內換行、表格在自己的容器內捲）',w.page<=0&&w.abn>80,w);
+    check('長內容：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
 
   /* ================= 從截圖填入：沒有對應欄位的檢驗另存成「其他抽血」 ================= */
   {const {page,errors}=await shotStart('unmapped');const BLK='其他檢驗（沒有對應的欄位）：\nFT3 3.1 pg/mL（參考值 2.0-4.4）\nFree testosterone 0.9 pg/mL';
@@ -231,10 +247,11 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
     await page.fill('#fReport','醫師說三個月後再抽\n'+BLK);await page.click('#fSplit');f=await sform(page);check('報告內容有自己打的字時：只拿掉那幾行，自己打的留著',f.report==='醫師說三個月後再抽',f.report);
     await page.click('#btnSave');await barIs(page,'截圖 2/3');f=await sform(page);let rs=await rows(page);
     const r1=(await newRecs(page))[0];
-    check('存檔：甲狀腺抽血的報告內容沒有那幾行；接著多一筆草稿「截圖 2/3・其他抽血」，日期與醫院照剛存的那筆，不能重讀',r1.exam==='thy_lab'&&r1.report==='醫師說三個月後再抽'&&same(r1.labs,{TSH:'1.80'})&&f.exam==='lab_other'&&f.bar.startsWith('截圖 2/3・其他抽血・10/20')&&f.date==='2026-10-20'&&f.place==='測試醫院'&&f.report===''&&!f.reread&&f.split===null,{r1,f});
+    check('存檔：甲狀腺抽血那筆這時仍然帶著那幾行（另存的那筆存好之前，讀到的東西不會兩邊都沒有）；接著多一筆草稿「截圖 2/3・其他抽血」，日期與醫院照剛存的那筆，不能重讀',r1.exam==='thy_lab'&&r1.report==='醫師說三個月後再抽\n'+BLK&&same(r1.labs,{TSH:'1.80'})&&f.exam==='lab_other'&&f.bar.startsWith('截圖 2/3・其他抽血・10/20')&&f.date==='2026-10-20'&&f.place==='測試醫院'&&f.report===''&&!f.reread&&f.split===null,{r1,f});
     check('另存的草稿：兩項各一列，讀到的單位與參考值都在；3.1 在 2.0-4.4 內沒有標記',same(brief(rs),[['FT3','3.1','pg/mL','2.0-4.4','—',''],['Free testosterone','0.9','pg/mL','','—','']]),brief(rs));
     await page.click('#btnSave');await barIs(page,'截圖 3/3');const r2=(await newRecs(page)).find(x=>x.exam==='lab_other'),N=null;
     check('另存的那筆：是一筆「其他抽血」，labMeta 保留原文、單位與參考值，也有 shot',r2&&same(r2.labs,{FT3:'3.1','Free testosterone':'0.9'})&&same(r2.labMeta,{FT3:{raw:'3.1',unit:'pg/mL',ref:'2.0-4.4',flag:N,flagSrc:N},'Free testosterone':{raw:'0.9',unit:'pg/mL',ref:N,flag:N,flagSrc:N}})&&r2.date==='2026-10-20'&&r2.shot?.n===1&&r2.interval===null,r2);
+    await wait(200);const r1b=await stored(page,r1.id);check('另存的那筆存好後：原本那筆的報告內容才拿掉那幾行，自己打的字留著',r1b.report==='醫師說三個月後再抽'&&same(r1b.labs,{TSH:'1.80'})&&r1b.updatedAt>=r1.updatedAt,r1b);
     /* 第 3 筆：只有對不到的那天，項目待選 → 選「其他抽血」 */
     f=await sform(page);check('只有對不到的那天：仍然是項目待選、寫在報告內容，這時沒有另存的選項',f.exam===''&&f.report.includes('LDL-C H 135 mg/dL（參考值 <130）')&&f.split===null,f);
     await page.selectOption('#fExam','lab_other');await wait(80);f=await sform(page);rs=await rows(page);
@@ -248,15 +265,62 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
     await page.click('#btnSave');await barIs(page,'截圖 2/2');const r=(await newRecs(page))[0];
     check('不開選項：和以前一樣，那幾行存在報告內容，只有 2 筆草稿',r.report==='其他檢驗（沒有對應的欄位）：\nFT3 3.1 pg/mL（參考值 2.0-4.4）\nFree testosterone 0.9 pg/mL'&&(await newRecs(page)).length===1,r.report);
     check('不開選項：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 另存的草稿被略過：那幾行留在原本那筆，沒有哪一筆都不在的情形（GLM 審查） */
+  {const {page,errors}=await shotStart('unmapped');const BLK='其他檢驗（沒有對應的欄位）：\nFT3 3.1 pg/mL（參考值 2.0-4.4）\nFree testosterone 0.9 pg/mL';
+    await page.click('#fSplit');await page.click('#btnSave');await barIs(page,'截圖 2/3');const r=(await newRecs(page))[0];
+    await page.click('[data-shot="skip"]');await barIs(page,'截圖 3/3');await wait(200);
+    check('打開選項存檔後略過另存的草稿：那幾行仍在原本那筆的報告內容，沒有多存一筆',(await stored(page,r.id)).report===BLK&&(await newRecs(page)).length===1,await stored(page,r.id));
+    check('略過另存：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 使用者改過那幾行：不是原本的字就不動（GPT 審查：原本用子字串比對，會把改過的字刪掉） */
+  {const {page,errors}=await shotStart('unmapped');const EDIT='其他檢驗（沒有對應的欄位）：\nFT3 3.1 pg/mL（參考值 2.0-4.4）\nFree testosterone 0.9 pg/mL（空腹）'; // 在最後一行後面加字：原本那幾行仍是它的子字串
+    await page.fill('#fReport',EDIT);await page.click('#fSplit');let f=await sform(page);
+    check('在最後一行後面加了「（空腹）」再打開選項：報告內容一個字都不動（不會只剩「（空腹）」）',f.splitOn&&f.report===EDIT,f.report);
+    await page.click('#fSplit');f=await sform(page);check('再關掉選項：不會又補一份原本的那幾行',f.report===EDIT,f.report);
+    await page.click('#fSplit');await page.click('#btnSave');await barIs(page,'截圖 2/3');const r=(await newRecs(page))[0];
+    await page.click('#btnSave');await barIs(page,'截圖 3/3');await wait(200);const rb=await stored(page,r.id);
+    check('存檔：原本那筆的報告內容就是使用者改過的字；另存的那筆存好後也不去動它',r.report===EDIT&&rb.report===EDIT&&(await newRecs(page)).length===2,{r:r.report,rb:rb.report});
+    check('改過的報告：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
   /* 換了檢查項目之後，不屬於新項目的檢驗 */
   {const {page,errors}=await shotStart('multi');
     await page.selectOption('#fExam','gyn_horm');await wait(80);let f=await sform(page);
     check('換項目：原本的 TSH、Free T4 會放進報告內容；多一個另存的選項',f.examNote==='換成這個項目後，TSH、Free T4 會放進報告內容'&&f.split==='其他 2 項檢驗另存成一筆「其他抽血」',f);
     await page.click('#fSplit');f=await sform(page);check('打開選項：提示改成「會另存成「其他抽血」」',f.examNote==='換成這個項目後，TSH、Free T4 會另存成「其他抽血」',f.examNote);
     await page.click('#btnSave');await barIs(page,'截圖 2/3');f=await sform(page);const rs=await rows(page),r=(await newRecs(page))[0];
-    check('存檔：生殖軸那筆的報告內容沒有「截圖讀到的其他檢驗」；下一筆是其他抽血，TSH、Free T4 各一列，單位與參考值照截圖',r.exam==='gyn_horm'&&!r.report.includes('截圖讀到的其他檢驗')&&f.exam==='lab_other'&&same(brief(rs),[['TSH','2.30','uIU/mL','0.27-4.20','—',''],['Free T4','1.25','ng/dL','0.93-1.70','—','']]),{r:r.report,rs});
-    await page.click('[data-shot="skip"]');await barIs(page,'截圖 3/3');check('另存的草稿可以略過：不存，接著是原本的下一筆',(await newRecs(page)).length===1&&(await sform(page)).exam==='gyn_horm');
+    check('存檔：生殖軸那筆這時仍帶著「截圖讀到的其他檢驗」那幾行；下一筆是其他抽血，TSH、Free T4 各一列，單位與參考值照截圖',r.exam==='gyn_horm'&&r.report.includes('截圖讀到的其他檢驗：\nTSH 2.30 uIU/mL（參考值 0.27-4.20）\nFree T4 1.25 ng/dL（參考值 0.93-1.70）')&&f.exam==='lab_other'&&same(brief(rs),[['TSH','2.30','uIU/mL','0.27-4.20','—',''],['Free T4','1.25','ng/dL','0.93-1.70','—','']]),{r:r.report,rs});
+    await page.click('#btnSave');await barIs(page,'截圖 3/3');await wait(200);const rb=await stored(page,r.id),ro=(await newRecs(page)).find(x=>x.exam==='lab_other');
+    check('另存的那筆存好後：生殖軸那筆的報告內容拿掉那幾行；其他抽血那筆有 TSH、Free T4 與讀到的單位、參考值',!rb.report.includes('截圖讀到的其他檢驗')&&!rb.report.includes('TSH')&&ro&&same(ro.labs,{TSH:'2.30','Free T4':'1.25'})&&ro.labMeta.TSH.unit==='uIU/mL'&&ro.labMeta.TSH.ref==='0.27-4.20'&&ro.labMeta.TSH.raw==='2.30'&&(await sform(page)).exam==='gyn_horm',{rb:rb.report,ro});
     check('換項目另存：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 在「其他抽血」的列上改過的東西，換成別的項目再另存，不會變回截圖原本讀到的（GPT 審查） */
+  {const {page,errors}=await shotStart('cbc');await page.selectOption('#fExam','lab_other');await wait(80);
+    await fillRow(page,0,{v:'13.0'});await page.click(rowSel(1,'[data-rdel]'));await wait(60);for(let i=0;i<3;i++)await page.click(rowSel(2,'.flagbtn'));
+    let rs=await rows(page);check('列上的修改：Hb 改成 13.0（回到範圍內）、刪掉 MCV、PLT 的 ↑ HH 手動點成 —',same(brief(rs).map(x=>[x[0],x[1],x[4],x[5]]),[['Hb','13.0','—',''],['WBC','6.5','—',''],['PLT','620','—','manual'],['Ferritin','4','↓ L','ref']]),brief(rs));
+    await page.selectOption('#fExam','thy_us');await wait(80);let f=await sform(page);const NEW='其他檢驗（沒有對應的欄位）：\nHb 13.0 g/dL（參考值 12.0-16.0）\nWBC 6.5 10^3/uL（參考值 4.0-10.0）\nPLT 620 10^3/uL（參考值 150-400）\nFerritin 4 ng/mL（參考值 >13） L';
+    check('換成甲狀腺超音波：放回報告內容的是改過之後的樣子（Hb 13.0、沒有 MCV、PLT 沒有標記），選項寫其他 4 項',f.report===NEW&&f.split==='其他 4 項檢驗另存成一筆「其他抽血」',f);
+    await page.selectOption('#fExam','lab_other');await wait(80);rs=await rows(page);
+    check('再換回其他抽血：列還是改過之後的樣子，報告內容清掉',(await sform(page)).report===''&&same(brief(rs).map(x=>[x[0],x[1],x[4],x[5]]),[['Hb','13.0','—',''],['WBC','6.5','—',''],['PLT','620','—','manual'],['Ferritin','4','↓ L','ref']]),brief(rs));
+    await page.selectOption('#fExam','thy_us');await wait(80);await page.click('#fSplit');await page.click('#btnSave');await barIs(page,'截圖 2/2');rs=await rows(page);
+    check('打開選項存檔：另存的草稿是改過之後的 4 列，不是截圖原本的 5 列',(await sform(page)).exam==='lab_other'&&same(brief(rs),[['Hb','13.0','g/dL','12.0-16.0','—',''],['WBC','6.5','10^3/uL','4.0-10.0','—',''],['PLT','620','10^3/uL','150-400','—','manual'],['Ferritin','4','ng/mL','>13','↓ L','ref']]),brief(rs));
+    await page.click('#btnSave');await until(page,()=>!document.querySelector('#dlgRec').open);await wait(200);const all=await newRecs(page),ro=all.find(x=>x.exam==='lab_other'),ru=all.find(x=>x.exam==='thy_us'),N=null;
+    check('兩筆都存好：其他抽血那筆的 Hb 是改過的 13.0（不留原文）、PLT 是手動的沒有標記（原文仍在）；甲狀腺超音波那筆的報告內容不再有那幾行',ro&&same(ro.labs,{Hb:'13.0',WBC:'6.5',PLT:'620',Ferritin:'4'})&&same(ro.labMeta.Hb,{raw:N,unit:'g/dL',ref:'12.0-16.0',flag:N,flagSrc:N})&&same(ro.labMeta.PLT,{raw:'HH 620',unit:'10^3/uL',ref:'150-400',flag:N,flagSrc:'manual'})&&ru&&ru.report==='',{ro,ru:ru&&ru.report});
+    check('列上的修改不回復：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 單位和表單不同的檢驗：參考值跟著讀到的那個數值，數值一改（多半是自己換算）就不能再拿舊單位的參考值來算（GPT 審查） */
+  {const {page,errors}=await shotStart('unit');let b=await box(page,'Free T4');
+    check('unit：Free T4 讀到 15.4 pmol/L（和表單的 ng/dL 不同），欄位是「15.4 pmol/L」、參考值 12-22，帶單位的值不拿來算',b.v==='15.4 pmol/L'&&b.ref==='12-22'&&b.flag==='—',b);
+    await page.fill('[data-lab="Free T4"]','1.2');b=await box(page,'Free T4');check('把數值改成 1.2（換算成表單的單位）：舊單位的參考值自動拿掉，不會算出偏低',b.ref===''&&b.flag==='—'&&b.src==='',b);
+    await page.fill('[data-lab="Free T4"]','15.4 pmol/L');b=await box(page,'Free T4');check('改回讀到的值：參考值跟著回來',b.ref==='12-22',b);
+    await page.fill('[data-ref="Free T4"]','0.93-1.70');await page.fill('[data-lab="Free T4"]','0.5');b=await box(page,'Free T4');check('自己填了參考值 0.93-1.70 之後再改數值：自己填的不會被拿掉，0.5 算出 ↓ L',b.ref==='0.93-1.70'&&b.flag==='↓ L'&&b.src==='ref',b);
+    await page.fill('[data-lab="TSH"]','2.0');await page.click('#btnSave');await wait(400);const r=(await newRecs(page))[0],N=null;
+    check('存檔：改過的 Free T4 不留原文與舊單位，參考值是自己填的',r&&same(r.labMeta['Free T4'],{raw:N,unit:N,ref:'0.93-1.70',flag:'L',flagSrc:'ref'}),r&&r.labMeta);
+    check('unit：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 報告上的標記留在改過的數值旁邊時，欄位上要說出來 */
+  {const {page,errors}=await shotStart('single');
+    await page.fill('[data-ref="TSH"]','0.27-4.20 uIU/mL');let b=await box(page,'TSH');check('single：參考值改成解析不了的寫法，報告上的 ↑ H 還在；數值沒改，不用提醒',b.flag==='↑ H'&&b.src==='report'&&(await fieldNote(page,'TSH'))===null,b);
+    await page.fill('[data-lab="TSH"]','3.0');b=await box(page,'TSH');check('再把數值改成 3.0：算不出來，報告上的 ↑ H 保留，欄位下方提醒「標記是報告上原本數值的，請確認」',b.flag==='↑ H'&&b.src==='report'&&(await fieldNote(page,'TSH'))==='標記是報告上原本數值的，請確認',{b,n:await fieldNote(page,'TSH')});
+    await page.click('#dlgRec [data-close]');await wait(150);await page.click('#btnAdd');await wait(150);await page.click('[data-shot="go"]');await wait(150);
+    check('關掉面板再繼續：標記與提醒都還在',(await box(page,'TSH')).flag==='↑ H'&&(await fieldNote(page,'TSH'))==='標記是報告上原本數值的，請確認');
+    await tapFlag(page,'TSH');b=await box(page,'TSH');check('手動點過標記之後提醒消失（現在是使用者自己設的）',b.src==='manual'&&(await fieldNote(page,'TSH'))===null,b);
+    await page.fill('[data-ref="TSH"]','0.27-4.20');for(let i=0;i<3;i++)await tapFlag(page,'TSH');
+    check('提醒：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
   /* 截圖讀到的 ref 與 flag：全部沒有對應欄位的一批 */
   {const {page,errors}=await shotStart('cbc');let f=await sform(page);
     check('cbc：全部對不到，項目待選，5 項寫在報告內容',f.exam===''&&f.report.startsWith('其他檢驗（沒有對應的欄位）：\nHb L 10.0 g/dL（參考值 12.0-16.0）'),f);
@@ -267,7 +331,7 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
     await fillRow(page,2,{v:'6.6'});await page.click(rowSel(4,'.flagbtn'));await page.click('#dlgRec [data-close]');await wait(150);await page.click('#btnAdd');await wait(150);await page.click('[data-shot="go"]');await wait(150);rs=await rows(page);
     check('關掉面板再繼續：改過的數值與手動的標記都還在（WBC 6.6、Ferritin 手動的 *）',(await sform(page)).exam==='lab_other'&&same(brief(rs).map(x=>[x[0],x[1],x[4],x[5]]),[['Hb','10.0','↓ L','report'],['MCV','61.0','↓ L','report'],['WBC','6.6','—',''],['PLT','620','↑ HH','report'],['Ferritin','4','*','manual']]),brief(rs));
     await page.click('#btnSave');await until(page,()=>!document.querySelector('#dlgRec').open);const r=(await newRecs(page))[0],N=null;
-    check('存檔：讀到的 flag 與 ref 保留（HH 照原樣）；改過的 WBC 不留原文；手動的標記存 manual',r&&same(r.labMeta,{Hb:{raw:'L 10.0',unit:'g/dL',ref:'12.0-16.0',flag:'L',flagSrc:'report'},MCV:{raw:'61.0',unit:'fL',ref:'80-100',flag:'L',flagSrc:'report'},WBC:{raw:N,unit:'10^3/uL',ref:'4.0-10.0',flag:N,flagSrc:N},PLT:{raw:'HH 620',unit:'10^3/uL',ref:'150-400',flag:'HH',flagSrc:'report'},Ferritin:{raw:'4',unit:'ng/mL',ref:'>13',flag:'A',flagSrc:'manual'}}),r&&r.labMeta);
+    check('存檔：讀到的 flag 與 ref 保留（HH 存成 flag H，原本的 HH 在 mark）；改過的 WBC 不留原文；手動的標記存 manual',r&&same(r.labMeta,{Hb:{raw:'L 10.0',unit:'g/dL',ref:'12.0-16.0',flag:'L',flagSrc:'report'},MCV:{raw:'61.0',unit:'fL',ref:'80-100',flag:'L',flagSrc:'report'},WBC:{raw:N,unit:'10^3/uL',ref:'4.0-10.0',flag:N,flagSrc:N},PLT:{raw:'HH 620',unit:'10^3/uL',ref:'150-400',flag:'H',flagSrc:'report',mark:'HH'},Ferritin:{raw:'4',unit:'ng/mL',ref:'>13',flag:'A',flagSrc:'manual'}}),r&&r.labMeta);
     const c=await card(page,'lab_other');check('存好後卡片列出異常項目：Hb 10.0 ↓、MCV 61.0 ↓、PLT 620 ↑、另 1 項',c.abn==='Hb 10.0 ↓、MCV 61.0 ↓、PLT 620 ↑、另 1 項',c.abn);
     check('cbc：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
   /* 固定欄位的草稿：參考值與標記的修改不因換項目而消失 */
@@ -280,7 +344,7 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
     check('存檔：TSH 是手動的 L（原文 H 5.2 仍留著）；Free T4 是由改過的參考值算出的 L',r&&same(r.labMeta,{TSH:{raw:'H 5.2',unit:'μIU/mL',ref:'0.27-4.20',flag:'L',flagSrc:'manual'},'Free T4':{raw:'1.10',unit:'ng/dL',ref:'1.20-1.70',flag:'L',flagSrc:'ref'}}),r&&r.labMeta);
     check('single 草稿：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
 
-  /* ================= 匯出匯入往返 ================= */
+  /* ================= 只改備註再存：labs 與 labMeta 不動 ================= */
   {const seed={...sampleSeed(T),'records/o1':other('2026-10-05',{Hb:'10.0','T.Bil':'1.9'},{Hb:{raw:'L 10.0',unit:'g/dL',ref:'12.0-16.0',flag:'L',flagSrc:'report'},'T.Bil':{raw:null,unit:'mg/dL',ref:'<1.2',flag:'H',flagSrc:'ref'}})};
     const {page,errors}=await start({seed});await openHistOf(page,'lab_other');const t=await table(page,'lab_other');
     check('名稱裡有句點（T.Bil）也照常存取與顯示',t&&same(t.rows,[['2026/10/05','10.0 ↓ L','1.9 ↑ H']]),t&&t.rows);

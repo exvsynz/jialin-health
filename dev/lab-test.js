@@ -4,7 +4,7 @@
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(process.env.SRC?path.resolve(process.env.SRC):path.join(__dirname,'../src/index.html'),'utf8');
 const block=n=>{const m=html.match(new RegExp('\\/\\* ---- '+n+' helpers: begin[^*]*\\*\\/([\\s\\S]*?)\\/\\* ---- '+n+' helpers: end ---- \\*\\/'));if(!m){console.error('找不到 '+n+' helpers 區塊');process.exit(1)}return m[1]};
-const H=new Function(block('shot')+block('lab')+';return{flagKind,flagMark,flagArrow,labNum,parseRef,refFlag,labFlagOf,labNameKey,labAbnormal,labSummary,otherItem,parseShot,groupShot,LAB_FLAG_TXT}')();
+const H=new Function(block('shot')+block('lab')+';return{flagKind,flagMark,flagArrow,labNum,parseRef,refFlag,labFlagOf,labNameKey,labAbnormal,cutBlock,otherItem,parseShot,groupShot,LAB_FLAG_TXT}')();
 const FX=require('./shot-fixtures.js');
 let fail=0,n=0;
 const eq=(name,got,want)=>{n++;const ok=JSON.stringify(got)===JSON.stringify(want);if(!ok)fail++;console.log((ok?'  ok   ':'  FAIL ')+name+(ok?'':' → '+JSON.stringify(got)+'（應為 '+JSON.stringify(want)+'）'))};
@@ -45,16 +45,21 @@ eq('沒有 flagSrc 的舊紀錄：flag 當作報告上標的，照顯示（H、H
 eq('報告上的標記和參考值算出來的不同時，以報告為準',[OF('2.0',{ref:'0.27-4.20',flag:'H',flagSrc:'report'}),OF('9.9',{ref:'0.27-4.20',flag:'L',flagSrc:'report'})],['H','L']);
 eq('沒有標記但有參考值的舊紀錄：顯示時由參考值算',[OF('5.2',{raw:'5.2',unit:null,ref:'0.27-4.20',flag:null}),OF('0.1',{ref:'0.27-4.20',flag:null}),OF('2.0',{ref:'0.27-4.20',flag:null}),OF('4.20',{ref:'0.27-4.20'})],['H','L',null,null]);
 eq('手動設成沒有標記：就算超出參考值也不顯示；手動的 H、L、A 照顯示',[OF('5.2',{ref:'0.27-4.20',flag:null,flagSrc:'manual'}),OF('2.0',{ref:'0.27-4.20',flag:'H',flagSrc:'manual'}),OF('2.0',{flag:'L',flagSrc:'manual'}),OF('2.0',{flag:'A',flagSrc:'manual'})],[null,'H','L','A']);
+eq('新格式：flag 存 H／L，報告印的 HH／LL 另存在 mark，顯示時照 mark；mark 和 flag 方向不合、或只有 mark 沒有 flag 時不採用 mark',[OF('620',{flag:'H',mark:'HH',flagSrc:'report'}),OF('1',{flag:'L',mark:'LL',flagSrc:'report'}),OF('1',{flag:'L',mark:'HH'}),OF('1',{flag:null,mark:'HH'}),OF('1',{flag:'H',mark:7})],['HH','LL','L',null,'H']);
 eq('存的 flag 不是 H／L／A 之類時當作沒有，再看參考值',[OF('5.2',{ref:'0.27-4.20',flag:'N'}),OF('5.2',{flag:'N'}),OF('5.2',{ref:'0.27-4.20',flag:7})],['H',null,'H']);
 
-/* ---- 卡片摘要 ---- */
+/* ---- 一筆紀錄的異常項目（卡片與歷次紀錄都從這裡來；最多 3 項與「另 N 項」在 lab-page-test 對著畫面檢查） ---- */
 const rec=(labs,labMeta)=>({labs,labMeta});
-const five=rec({Hb:'10.0',MCV:'61.0',WBC:'6.5',PLT:'620',Ferritin:'4',CRP:'1.2',ANA:'1:80'},{Hb:{ref:'12.0-16.0',flag:'L',flagSrc:'report'},MCV:{ref:'80-100',flag:null},WBC:{ref:'4.0-10.0'},PLT:{flag:'HH',flagSrc:'report'},Ferritin:{ref:'>13'},CRP:{ref:'<0.5',flag:'H',flagSrc:'ref'},ANA:{flag:'A',flagSrc:'manual'}});
+const five=rec({Hb:'10.0',MCV:'61.0',WBC:'6.5',PLT:'620',Ferritin:'4',CRP:'1.2',ANA:'1:80'},{Hb:{ref:'12.0-16.0',flag:'L',flagSrc:'report'},MCV:{ref:'80-100',flag:null},WBC:{ref:'4.0-10.0'},PLT:{flag:'H',mark:'HH',flagSrc:'report'},Ferritin:{ref:'>13'},CRP:{ref:'<0.5',flag:'H',flagSrc:'ref'},ANA:{flag:'A',flagSrc:'manual'}});
 eq('異常項目：依紀錄自己的順序，只列有標記的（含由參考值算出的 MCV、Ferritin），在範圍內的 WBC 不列',H.labAbnormal(five).map(x=>x.name+' '+x.value+' '+x.flag),['Hb 10.0 L','MCV 61.0 L','PLT 620 HH','Ferritin 4 L','CRP 1.2 H','ANA 1:80 A']);
-eq('卡片摘要最多 3 項，其餘寫「另 N 項」',H.labSummary(H.labAbnormal(five),3),'Hb 10.0 ↓、MCV 61.0 ↓、PLT 620 ↑、另 3 項');
-eq('剛好 3 項不寫「另」；2 項就是 2 項；沒有異常是空的',[H.labSummary(H.labAbnormal(five).slice(0,3),3),H.labSummary(H.labAbnormal(five).slice(0,2),3),H.labSummary([],3)],['Hb 10.0 ↓、MCV 61.0 ↓、PLT 620 ↑','Hb 10.0 ↓、MCV 61.0 ↓','']);
-eq('不給上限時全部列出，帶字母（歷次紀錄用）',H.labSummary(H.labAbnormal(five)),'Hb 10.0 ↓ L、MCV 61.0 ↓ L、PLT 620 ↑ HH、Ferritin 4 ↓ L、CRP 1.2 ↑ H、ANA 1:80 *');
 eq('有固定欄位的檢查照欄位的順序；空的值、沒有 labs 的紀錄都不出錯',[H.labAbnormal(rec({'Free T4':'0.5',TSH:'9.9'},{TSH:{flag:'H'},'Free T4':{flag:'L'}}),['TSH','Free T4','T3']).map(x=>x.name),H.labAbnormal(rec({TSH:''},{TSH:{flag:'H'}})),H.labAbnormal({}),H.labAbnormal(null),H.labAbnormal({labs:'x',labMeta:5})],[['TSH','Free T4'],[],[],[],[]]);
+
+/* ---- 從文字裡拿掉一整塊（截圖讀到的那幾行）：只有整行都相同才拿 ---- */
+{const B='其他檢驗（沒有對應的欄位）：\nALT 4',C=(t,b=B)=>H.cutBlock(t,b);
+  eq('整塊都在：開頭、中間、結尾都拿得掉，其餘文字不動',[C(B),C('醫師說再追蹤\n'+B),C(B+'\n後面的字'),C('前\n'+B+'\n後')],['','醫師說再追蹤','後面的字','前\n後']);
+  eq('使用者把最後一行改成 ALT 40（比原本長）：不是同一塊，不拿（GPT 審查：原本會把報告刪到只剩 0）',[C('其他檢驗（沒有對應的欄位）：\nALT 40'),C('其他檢驗（沒有對應的欄位）：\nALT 4 U/L'),C('x'+B),C('其他檢驗（沒有對應的欄位）： \nALT 4')],[null,null,null,null]);
+  eq('中間插了一行、少了一行、完全沒有、空的區塊：都不拿',[C('其他檢驗（沒有對應的欄位）：\n另外\nALT 4'),C('ALT 4'),C('別的內容'),C(''),C(B,''),C(null)],[null,null,null,null,null,null]);
+  eq('同一塊出現兩次只拿第一次',C(B+'\n'+B),B)}
 
 /* ---- 名稱比對 ---- */
 eq('名稱：大小寫、全形半形、前後與中間多的空白不算不同',['Hb','HB','ｈｂ',' hb ','Ｈb'].map(H.labNameKey).every(k=>k==='hb')&&H.labNameKey('Free  T4')===H.labNameKey('free t4')&&H.labNameKey('ＬＤＬ－Ｃ')===H.labNameKey('ldl-c'),true);
