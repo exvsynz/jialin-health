@@ -84,8 +84,17 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
   eq('interval null、沒有設定：用預設間隔（甲狀腺抽血 6 個月）',await ev({records:[rec('thy_lab','2026-05-03',{interval:null})]}),'家琳今天還沒記：晚上體重；甲狀腺抽血 11/3 到期');
   eq('interval 是字串（匯入資料）：當作沒有，用預設',await ev({records:[rec('thy_lab','2026-05-03',{interval:'6'})]}),'家琳今天還沒記：晚上體重；甲狀腺抽血 11/3 到期');
   eq('nextDue 優先',await ev({records:[rec('gi_colo','2016-01-01',{interval:120,nextDue:'2026-11-02'})]}),'家琳今天還沒記：晚上體重；大腸鏡 11/2 到期');
-  eq('骨密度：分類帶入的 12 個月照算',await ev({records:[rec('bone_dxa','2025-11-05',{preset:'low',interval:12})]}),'家琳今天還沒記：晚上體重；骨密度 DXA 11/5 到期');
-  eq('骨密度「正常（未使用荷爾蒙治療）」不是不追蹤：interval null 時用預設 12 個月',await ev({records:[rec('bone_dxa','2025-11-03',{preset:'norm',interval:null})]}),'家琳今天還沒記：晚上體重；骨密度 DXA 11/3 到期');
+  eq('骨密度：POI 分類帶入的 12 個月照算',await ev({records:[rec('bone_dxa','2025-11-05',{preset:'poiLow',interval:12})]}),'家琳今天還沒記：晚上體重；骨密度 DXA 11/5 到期');
+  eq('骨密度：interval 0 是待安排',await ev({records:[rec('bone_dxa','2026-10-20',{preset:'zok',interval:0})]}),'家琳今天還沒記：晚上體重；骨密度 DXA待安排');
+  eq('骨密度沒有預設間隔：interval null 是待安排，不會消失，也不套 12 個月',await ev({records:[rec('bone_dxa','2025-11-03',{preset:null,interval:null})]}),'家琳今天還沒記：晚上體重；骨密度 DXA待安排');
+  eq('骨密度：interval 不存在、設定裡有這個代號的固定間隔，也是待安排（不看 settings/intervals）',await ev({records:[{exam:'bone_dxa',date:'2025-11-03',preset:'tlow',createdAt:1}],intervals:{bone_dxa:12}}),'家琳今天還沒記：晚上體重；骨密度 DXA待安排');
+  eq('骨密度 preset 是 none（未提供 Z 值）：不是甲狀腺的「不追蹤」，照樣列待安排',await ev({records:[rec('bone_dxa','2026-10-20',{preset:'none',interval:null})]}),'家琳今天還沒記：晚上體重；骨密度 DXA待安排');
+  eq('骨密度：有醫師指定日期就照日期',await ev({records:[rec('bone_dxa','2025-11-03',{preset:'zlow',interval:0,nextDue:'2026-11-06'})]}),'家琳今天還沒記：晚上體重；骨密度 DXA 11/6 到期');
+  for(const [name,iv] of [['-1',-1],['1.5',1.5],['121',121],['1e12',1e12]])
+    eq(`interval 是 ${name}（無效）：待安排，不算日期、不消失`,await ev({records:[rec('thy_lab','2026-05-07',{interval:iv})]}),'家琳今天還沒記：晚上體重；甲狀腺抽血待安排');
+  eq('interval 是 120：照算',await ev({records:[rec('gi_colo','2016-11-05',{interval:120})]}),'家琳今天還沒記：晚上體重；大腸鏡 11/5 到期');
+  eq('nextDue 不是合法日期：不採用，照 interval 算',await ev({records:[rec('thy_lab','2026-05-07',{interval:6,nextDue:'2026-13-40'})]}),'家琳今天還沒記：晚上體重；甲狀腺抽血 11/7 到期');
+  eq('設定的固定間隔大到算不出日期：待安排',await ev({records:[rec('thy_lab','2026-05-07',{interval:null})],intervals:{thy_lab:1e12}}),'家琳今天還沒記：晚上體重；甲狀腺抽血待安排');
   eq('只看最新一筆：舊的逾期紀錄不列入',await ev({records:[rec('thy_lab','2025-04-01',{interval:6}),rec('thy_lab','2026-10-01',{interval:6})]}),'家琳今天還沒記：晚上體重');
   eq('同一天取 createdAt 最大',await ev({records:[rec('thy_lab','2026-05-01',{interval:6,createdAt:1}),rec('thy_lab','2026-05-01',{interval:12,createdAt:2})]}),'家琳今天還沒記：晚上體重');
   eq('沒有缺、只有檢查到期：不推播（8.2）',(await run('evening',E(),st({[SAT]:day(full)},{records:[rec('thy_lab','2026-05-07',{interval:6})]}))).push,null);
@@ -356,23 +365,27 @@ const eq=(name,got,want)=>check(name,JSON.stringify(got)===JSON.stringify(want),
 
   /* 檢查表和 src/index.html 一致：名稱、預設間隔、不追蹤的分類 */
   const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');
-  const fromPage=[...html.matchAll(/\{id:'([a-z_]+)',cat:'[a-z]+',name:'([^']+)',def:(\d+)/g)].map(x=>[x[1],x[2],+x[3]]);
+  const fromPage=[...html.matchAll(/\{id:'([a-z_]+)',cat:'[a-z]+',name:'([^']+)',def:(\d+|null)/g)].map(x=>[x[1],x[2],x[3]==='null'?null:+x[3]]);
   eq('參考實作的檢查表（代號、名稱、預設間隔）和 EXAMS 一致',EXAMS,fromPage);
   const nf=[];let curExam=null;for(const line of html.split('\n')){const e=line.match(/\{id:'([a-z_]+)',cat:/);if(e)curExam=e[1];for(const p of line.matchAll(/\{k:'([^']+)',[^}]*noFollow:true/g))nf.push([curExam,p[1]])}
   eq('不追蹤的分類和頁面一致',NO_FOLLOW,nf);
 
   /* 到期日：參考實作和頁面 dueOf 一致 */
   const T='2026-10-30';
-  const extra={'records/m1':rec('gyn_horm','2026-01-31',{interval:1}),'records/m2':rec('gi_egd','2025-08-31',{interval:6}),'records/m3':rec('gi_colo','2020-01-01',{interval:120,nextDue:'2027-03-01'}),'records/m4':rec('thy_us','2026-10-01',{preset:'none',interval:null}),'records/m5':rec('breast_ct','2026-10-01',{interval:0}),'records/m6':rec('thy_lab','2026-07-01',{interval:null}),'records/m7':rec('breast_mammo','2025-12-31',{interval:null}),'records/m8':rec('lung_ldct','2026-03-31',{interval:'6'})};
+  const extra={'records/m1':rec('gyn_horm','2026-01-31',{interval:1}),'records/m2':rec('gi_egd','2025-08-31',{interval:6}),'records/m3':rec('gi_colo','2020-01-01',{interval:120,nextDue:'2027-03-01'}),'records/m4':rec('thy_us','2026-10-01',{preset:'none',interval:null}),'records/m5':rec('breast_ct','2026-10-01',{interval:0}),'records/m6':rec('thy_lab','2026-07-01',{interval:null}),'records/m7':rec('breast_mammo','2025-12-31',{interval:null}),'records/m8':rec('lung_ldct','2026-03-31',{interval:'6'}),
+    'records/m9':rec('bone_dxa','2026-10-01',{preset:'none',interval:null}),'records/n1':rec('breast_us','2026-10-02',{interval:-1}),'records/n2':rec('breast_us','2026-10-03',{interval:1.5}),'records/n3':rec('breast_us','2026-10-04',{interval:121}),
+    'records/n4':rec('breast_us','2026-10-05',{interval:1e12}),'records/n5':rec('breast_us','2026-10-06',{interval:120}),'records/n6':rec('breast_us','2026-10-07',{interval:6,nextDue:'not-a-date'}),'records/n7':rec('bone_dxa','2026-10-08',{preset:'poiNormHT',interval:60})};
   const ivs={thy_lab:3};
   const {page}=await open({hash:'exams',cfg:{latencyComp:true,seed:{...sampleSeed(T),...extra,'settings/intervals':ivs}}});await wait(500);
-  const pageDue=await page.evaluate(()=>records.map(r=>['records/'+r.id,r.interval===0&&!r.nextDue?'asap':dueOf(r)]));
+  const pageDue=await page.evaluate(()=>records.map(r=>{const p=planR(r);return['records/'+r.id,p.asap?'asap':p.due]}));
   await page.context().close();
   const {dueOf:refDue}=require('./remind-ref');
   const recs=[...Object.entries(sampleSeed(T)).filter(([k])=>k.startsWith('records/')),...Object.entries(extra)];
   const refMap=Object.fromEntries(recs.map(([id,r])=>{const d=refDue(r,ivs);return[id,d?(d.asap?'asap':d.due):null]}));
   const sorted=o=>Object.fromEntries(Object.entries(o).sort());
-  eq('到期日：參考實作和頁面 dueOf 一致（11 筆，含 interval null 用設定與預設、字串 interval、月底、nextDue、待安排、不追蹤）',sorted(Object.fromEntries(pageDue)),sorted(refMap));
+  eq('到期日：參考實作和頁面 planOf 一致（19 筆，含 interval null 用設定與預設、字串 interval、月底、nextDue、待安排、不追蹤、沒有預設間隔的骨密度、無效的 interval 與 nextDue）',sorted(Object.fromEntries(pageDue)),sorted(refMap));
+  eq('到期日：這 19 筆裡沒有算出 NaN 或不合法的日期',Object.values(refMap).filter(v=>v!==null&&v!=='asap'&&!/^\d{4}-\d\d-\d\d$/.test(v)),[]);
+  eq('到期日：無效的 interval 與沒有間隔的骨密度都是待安排',['m9','n1','n2','n3','n4'].map(k=>refMap['records/'+k]),['asap','asap','asap','asap','asap']);
 
   await close();
   process.exit(summary()?1:0);

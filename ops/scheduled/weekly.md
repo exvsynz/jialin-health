@@ -115,15 +115,18 @@
 | `gyn_horm` | 生殖軸激素 | 6 |
 | `gi_egd` | 上消化道內視鏡（胃鏡） | 24 |
 | `gi_colo` | 大腸鏡 | 120 |
-| `bone_dxa` | 骨密度 DXA | 12 |
+| `bone_dxa` | 骨密度 DXA | 沒有 |
 
 到期日依序判斷：
 
-1. 有 `nextDue`（`YYYY-MM-DD`）→ 到期日就是 `nextDue`。
-2. `interval` 是 `0` →「待安排」，視為已到期。
-3. `interval` 是數字 → `date` 加 `interval` 個月。
-4. `interval` 不是數字（`null`、不存在、字串都算），而且是「不追蹤」的分類 → 不列入。「不追蹤」的分類只有：`exam` 是 `thy_us`，`preset` 是 `none` 或 `vlowSmall`。
-5. 其他 `interval` 不是數字的紀錄 → `date` 加「固定間隔」個月。固定間隔：`settings/intervals` 裡這個代號的值是數字就用它，否則用上表的預設間隔。
+1. 有合法的 `nextDue`（`YYYY-MM-DD`）→ 到期日就是 `nextDue`。
+2. `interval` 是數字，但不是 1–120 的整數（`0`、負數、小數、超過 120 都算）→「待安排」，視為已到期。不要拿這種數字去算日期。
+3. `interval` 是 1–120 的整數 → `date` 加 `interval` 個月。
+4. `interval` 不是數字（`null`、不存在、字串都算），而且是「不追蹤」的分類 → 不列入。「不追蹤」的分類只有：`exam` 是 `thy_us`，`preset` 是 `none` 或 `vlowSmall`。其他檢查的 `preset` 就算也叫 `none`，都不是「不追蹤」。
+5. 其他 `interval` 不是數字的紀錄：
+   - 上表的預設間隔是「沒有」（`bone_dxa`）→「待安排」，視為已到期。不看 `settings/intervals`。
+   - 其餘 → `date` 加「固定間隔」個月。固定間隔：`settings/intervals` 裡這個代號的值是數字就用它，否則用上表的預設間隔。
+6. 第 3、5 步算不出合法日期（`date` 不是合法日期，或間隔大到超出日期範圍）→「待安排」。
 
 加月份時，日期超過那個月的天數，就取那個月最後一天，例如 1/31 加 1 個月是 2/28、5/31 加 5 個月是 10/31。
 

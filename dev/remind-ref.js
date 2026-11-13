@@ -13,7 +13,7 @@ const D=new Function('Date',m[1]+';return{tpeNow,logicalToday,addDays,addMonths,
 const clock=ms=>{fake=ms;return{date:D.logicalToday(),h:D.tpeNow().h}};
 
 /* 代號、名稱、預設間隔（月）；和 src/index.html 的 EXAMS 一致（測試會比對） */
-const EXAMS=[['breast_us','乳房超音波',12],['breast_mammo','乳房X光攝影',24],['breast_ct','乳房電腦斷層',12],['thy_us','甲狀腺超音波',12],['thy_lab','甲狀腺抽血',6],['lung_ldct','低劑量電腦斷層 LDCT',12],['gyn_horm','生殖軸激素',6],['gi_egd','上消化道內視鏡（胃鏡）',24],['gi_colo','大腸鏡',120],['bone_dxa','骨密度 DXA',12]];
+const EXAMS=[['breast_us','乳房超音波',12],['breast_mammo','乳房X光攝影',24],['breast_ct','乳房電腦斷層',12],['thy_us','甲狀腺超音波',12],['thy_lab','甲狀腺抽血',6],['lung_ldct','低劑量電腦斷層 LDCT',12],['gyn_horm','生殖軸激素',6],['gi_egd','上消化道內視鏡（胃鏡）',24],['gi_colo','大腸鏡',120],['bone_dxa','骨密度 DXA',null]]; // null：沒有預設間隔，沒有 interval 時是待安排
 const EXAM_NAMES=Object.fromEntries(EXAMS.map(([id,n])=>[id,n])),EXAM_DEF=Object.fromEntries(EXAMS.map(([id,,d])=>[id,d]));
 const NO_FOLLOW=[['thy_us','none'],['thy_us','vlowSmall']]; // 「不追蹤」的分類
 const ITEMS=[['am','早上體重'],['med','服藥'],['pm','晚上體重']];
@@ -58,13 +58,16 @@ function mergeRecent(entry,old){
   const all=[entry,...old.filter(x=>!(entry.run&&x.run===entry.run))];
   return all.sort((a,b)=>atMs(b.at)-atMs(a.at)).slice(0,RECENT_MAX);
 }
-/* 頁面 dueOf 的同一套規則 */
+/* 頁面 planOf 的同一套規則（提示詞「到期日依序判斷」的 1–6） */
 function dueOf(r,intervals={}){
-  if(r.nextDue)return{due:r.nextDue};
-  if(r.interval===0)return{asap:true};
-  if(!Number.isFinite(r.interval)&&NO_FOLLOW.some(([e,p])=>e===r.exam&&p===r.preset))return null;
-  const mo=Number.isFinite(r.interval)?r.interval:Number.isFinite(intervals?.[r.exam])?intervals[r.exam]:EXAM_DEF[r.exam];
-  return{due:D.addMonths(r.date,mo)};
+  if(validDate(r.nextDue))return{due:r.nextDue};
+  let mo;
+  if(typeof r.interval==='number'){if(!(Number.isInteger(r.interval)&&r.interval>=1&&r.interval<=120))return{asap:true};mo=r.interval}
+  else{if(NO_FOLLOW.some(([e,p])=>e===r.exam&&p===r.preset))return null;
+    if(EXAM_DEF[r.exam]==null)return{asap:true};
+    mo=Number.isFinite(intervals?.[r.exam])?intervals[r.exam]:EXAM_DEF[r.exam]}
+  const due=validDate(r.date)?D.addMonths(r.date,mo):null;
+  return validDate(due)?{due}:{asap:true};
 }
 function latestByExam(records){const o={};for(const r of records||[]){if(!EXAM_NAMES[r.exam])continue;const c=o[r.exam];if(!c||r.date>c.date||(r.date===c.date&&(r.createdAt||0)>(c.createdAt||0)))o[r.exam]=r}return o}
 function examsWithin(records,intervals,date,days){

@@ -54,11 +54,15 @@ for(const [kind,spec] of Object.entries(KINDS)){
   if(kind==='weekly')check('weekly：服藥分母和頁面一致（追蹤起點、今天還沒服藥先不算、還沒有紀錄的寫法）',s.includes('| `days`，本週一之前最早的 31 筆 |')&&s.includes('**追蹤起點**')&&s.includes('今天（週日）而且 `med.taken` 不是 `true` → 先不算')&&s.includes('「、服藥還沒有紀錄」'));
   if(kind==='weekly')check('weekly：本週 7 天依日期 ID 讀；days 只有本週一之前那一次查詢',s.includes('各做一次 `get`，collection `days`')&&s.split('collection `days`，`query').length===2&&s.includes('`query.where` `[["date","<",週一]]`'));
   const tbl=(s.split('| 代號 | 名稱 | 預設間隔（月） |')[1]||'').split(/\n\s*\n/)[0];
-  const rows=[...tbl.matchAll(/^\| `([a-z_]+)` \| ([^|]+?) \| (\d+) \|$/gm)].map(x=>[x[1],x[2],+x[3]]);
+  const rows=[...tbl.matchAll(/^\| `([a-z_]+)` \| ([^|]+?) \| (\d+|沒有) \|$/gm)].map(x=>[x[1],x[2],x[3]==='沒有'?null:+x[3]]); // 「沒有」：沒有預設間隔
   if(spec.exams){
     check(`${kind}：檢查表（代號、名稱、預設間隔）和參考實作一致（${EXAMS.length} 項）`,JSON.stringify(rows)===JSON.stringify(EXAMS),{rows});
     check(`${kind}：不追蹤的分類和參考實作一致`,NO_FOLLOW.every(([e,p])=>s.includes('`exam` 是 `'+e+'`')&&s.includes('`'+p+'`'))&&s.includes('`settings/intervals` 裡這個代號的值'));
     check(`${kind}：interval 0 寫「待安排」，不寫急迫性`,s.includes('「名稱待安排」')&&!s.includes('需盡快'));
+    check(`${kind}：到期日六步（合法的 nextDue、不是 1–120 整數的數字是待安排、沒有預設間隔的檢查是待安排、算不出日期是待安排）`,
+      s.includes('1. 有合法的 `nextDue`（`YYYY-MM-DD`）')&&s.includes('2. `interval` 是數字，但不是 1–120 的整數（`0`、負數、小數、超過 120 都算）→「待安排」')&&s.includes('3. `interval` 是 1–120 的整數 → `date` 加 `interval` 個月')
+      &&s.includes('上表的預設間隔是「沒有」（`bone_dxa`）→「待安排」')&&s.includes('不看 `settings/intervals`')&&s.includes('6. 第 3、5 步算不出合法日期')&&s.includes('其他檢查的 `preset` 就算也叫 `none`，都不是「不追蹤」'));
+    check(`${kind}：骨密度沒有預設間隔`,rows.some(r=>r[0]==='bone_dxa'&&r[2]===null),rows.find(r=>r[0]==='bone_dxa'));
     check(`${kind}：TSH 複查的算法（明確連結、手動日期、週數）`,s.includes('### TSH 複查（劑量或製劑變更後）')&&s.includes('`drawCtx.recheckOf` 等於對象的文件 id')&&s.includes('`recheckDue`')&&s.includes('`tshRecheckWeeks` 是 1–52 的整數'));
     check(`${kind}：meddose 要記下文件 id`,s.includes('每份文件都記下回傳的文件 id'));
   }else check(`${kind}：沒有檢查表`,!rows.length&&!s.includes('| 代號 |'));

@@ -13,7 +13,7 @@
   --w-am:#23507e; --w-pm:#8a9aa3; --band:#f4e1e8;
   --st-late:#b4302a; --st-late-bg:#fbe9e7; --st-soon:#9a6400; --st-soon-bg:#fdf1d8; --st-ok:#2c7a4b; --st-ok-bg:#e4f3ea; --st-none:#5b6870; --st-none-bg:#edf1f2;
   --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif; --f-num:"IBM Plex Sans","Noto Sans TC",system-ui,sans-serif; --f-mono:"IBM Plex Sans",system-ui,sans-serif;
-  --r:16px; --tabbar-h:58px;
+  --r:16px; --tabbar-h:59px; --tabbar-space:calc(var(--tabbar-h) + env(safe-area-inset-bottom,0px));
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0f1517; --surface:#172126; --sunk:#131c20; --ink:#e6ecef; --on-ink:#0f1517; --muted:#9aabb3; --faint:#5f6f77; --line:#26343b; --grid:#1f2c32;
@@ -46,8 +46,9 @@ h3{font-size:1rem}
 .num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
 .muted{color:var(--muted)}
 .small{font-size:.85rem}
-main{padding-block:14px calc(var(--tabbar-h) + 88px)}
-:root{scroll-padding-bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom,0px) + 12px)}
+/* --tabbar-h is the bar's whole height, its top border included; --tabbar-space adds the bottom safe area. The bar itself, the room main keeps under its last card, focus scrolling and the toast all use that one value */
+main{padding-block:14px calc(var(--tabbar-space) + 87px)}
+:root{scroll-padding-bottom:calc(var(--tabbar-space) + 11px)}
 .panel{display:flex;flex-direction:column;gap:14px}
 button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 14px;min-height:44px;-webkit-tap-highlight-color:transparent}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.ruler:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -247,19 +248,22 @@ dialog.sheet[open]{animation:up .24s ease-out}
 .menu .chev{color:var(--faint)}
 .menu button[aria-current]{font-weight:700}
 /* tab bar: fixed to the bottom edge, its own padding takes the safe area; a modal dialog sits in the top layer, above it */
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:8;box-sizing:border-box;min-height:var(--tabbar-space);background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
 .tabbar-in{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));max-width:560px;margin:0 auto}
-.tabbar button{position:relative;border:0;border-radius:0;background:transparent;color:var(--muted);min-height:var(--tabbar-h);padding:7px 2px 6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:.72rem;line-height:1.2}
+.tabbar button{position:relative;border:0;border-radius:0;background:transparent;color:var(--muted);min-height:calc(var(--tabbar-h) - 1px);padding:11px 2px 5px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:.72rem;line-height:1.2}
 .tabbar button:focus-visible{outline-offset:-3px}
 .tabbar svg{width:24px;height:24px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .tabbar svg .solid{fill:currentColor;stroke:none}
 .tabbar button[aria-current]{color:var(--ink);font-weight:700}
-.tabbar button[aria-current]::before{content:"";position:absolute;top:-1px;left:24%;right:24%;height:3px;border-radius:0 0 3px 3px;background:var(--ink)}
+/* the mark of the page in view sits inside the button, clear of the bar's top edge and of whatever scrolls behind it */
+.tabbar button[aria-current]::before{content:"";position:absolute;top:5px;left:50%;width:28px;margin-left:-14px;height:3px;border-radius:2px;background:var(--ink)}
 
 /* subpage bar */
 .subbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
 .subbar .inner{display:flex;align-items:center;gap:8px;min-height:52px}
 .subbar h1{font-size:1.05rem}
+/* a page change moves the focus to the page's title; the ring shows for keyboard use only */
+#subTitle:focus-visible,#tDate:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 
 /* charts */
 .chart{width:100%;min-height:200px}
@@ -343,6 +347,8 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
 .field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .field label{font-size:.85rem;font-weight:500}
 .field .hint,.hint{font-size:.8rem;color:var(--muted)}
+.ferr{font-size:.8rem;color:var(--st-late)}
+input[aria-invalid="true"]{border-color:var(--st-late)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .labs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .preview{background:var(--accent-soft);border-radius:8px;padding:8px 12px;font-size:.9rem}
@@ -371,7 +377,7 @@ details.refbox summary{cursor:pointer;font-weight:700;padding:11px 0}
 .hbwarn{color:var(--warn);font-size:.85rem;margin:0}
 
 /* toast */
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--on-ink);padding:6px 6px 6px 16px;border-radius:14px;font-size:.92rem;z-index:20;display:flex;align-items:center;gap:4px;width:max-content;max-width:calc(100vw - 32px)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabbar-space) + 11px);background:var(--ink);color:var(--on-ink);padding:6px 6px 6px 16px;border-radius:14px;font-size:.92rem;z-index:20;display:flex;align-items:center;gap:4px;width:max-content;max-width:calc(100vw - 32px)}
 dialog .toast{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
 .toast button{background:transparent;border:0;color:var(--on-ink);font-weight:700;min-height:44px;padding:0 10px;text-decoration:underline;text-underline-offset:3px}
 @media (max-width:520px){.grid2{grid-template-columns:1fr}.exam-main{grid-template-columns:1fr}.exam-side{align-items:flex-start;flex-direction:row;flex-wrap:wrap}}
@@ -379,7 +385,7 @@ dialog .toast{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
 </style>
 
 <div class="subbar gutter" id="subbar" hidden>
-  <div class="inner"><button type="button" class="ghost" id="backBtn">‹ 今天</button><h1 class="grow" id="subTitle"></h1></div>
+  <div class="inner"><button type="button" class="ghost" id="backBtn">‹ 今天</button><h1 class="grow" id="subTitle" tabindex="-1"></h1></div>
 </div>
 
 <main class="gutter" id="main">
@@ -389,7 +395,7 @@ dialog .toast{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
   <!-- TODAY -->
   <section class="panel" id="p-today">
     <div>
-      <div class="tbar"><div class="tdate" id="tDate"></div></div>
+      <div class="tbar"><div class="tdate" id="tDate" tabindex="-1"></div></div>
       <div class="week" id="week"></div>
     </div>
     <div>
@@ -487,9 +493,9 @@ dialog .toast{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
       <p class="muted" style="font-size:.82rem;margin:10px 0 0">指引區間取下限作為預設值，以免延遲。這些是一般族群的建議；家琳若有個人病史、家族史或醫師另有安排，請以主治醫師的建議為準，並在紀錄中直接改寫間隔或指定日期。</p>
       <div class="ref refs" id="boneRef" style="margin-top:14px">
         <p><b>骨密度 DXA</b></p>
-        <p>出處：ESHRE 2024 POI guideline（Panay N, et al. Hum Reprod Open 2024;2024(4):hoae065，doi:10.1093/hropen/hoae065）與 ISCD 2023 Adult Official Positions。骨密度的間隔來自早發性卵巢功能不全（POI）的指引，不是一般族群的建議。</p>
-        <p>間隔：骨密度正常、規律使用荷爾蒙治療時，5 年內重測的價值低；骨質疏鬆或骨密度低，依個人風險每 1–3 年重測，這裡取下限 12 個月（ESHRE 2024）。重測間隔要依年齡、基準值、用藥與骨流失風險個別決定，沒有固定間隔（ISCD 2023），所以「正常（未使用荷爾蒙治療）」不給預設值。</p>
-        <p>判讀：停經前女性以 Z 值判讀，不用 T 值；WHO 分類只適用停經後與更年期過渡期（ISCD 2023）。</p>
+        <p>停經前優先以 Z 值判讀；只有 T 值可先記錄，不自動分類。停經後採 T／WHO；更年期過渡期是否採用由醫師判定。分類與追蹤間隔各有適用條件。</p>
+        <p>出處：ESHRE 2024 POI guideline（Panay N, et al. Hum Reprod Open 2024;2024(4):hoae065，doi:10.1093/hropen/hoae065）與 ISCD 2023 Adult Official Positions。</p>
+        <p>間隔：只有 POI 確診的兩個分類帶入間隔。骨密度低或骨質疏鬆，依個人風險每 1–3 年，這裡取下限 12 個月（ESHRE 2024 建議 69）。骨密度正常且持續足量全身性荷爾蒙治療，5 年內重測價值低（建議 68）；60 個月是本工具換算的提醒日期，不是指引規定的重測時間。其他分類與未分類沒有固定間隔，重測時間依個別臨床條件決定（ISCD 2023），先列為待安排，醫師指定後再填間隔或日期。</p>
         <p>追蹤比較：看同一台機器的 BMD（g/cm²）變化（ISCD 2023）。</p>
       </div>
     </details>
@@ -729,8 +735,8 @@ dialog .toast{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
       <div class="field"><label for="fDate">檢查日期</label><input type="date" id="fDate" required><span class="shotnote warn" id="dupNote" hidden></span></div>
       <div class="field" id="presetField"><label for="fPreset">報告分類</label><select id="fPreset"></select><span class="hint" id="presetHint"></span></div>
       <div class="grid2">
-        <div class="field"><label for="fInterval">下次追蹤間隔（月）</label><input type="number" id="fInterval" min="0" max="240" step="1" inputmode="numeric"><span class="hint">0 = 待安排（依報告處置），不排定期追蹤</span></div>
-        <div class="field"><label for="fDue">或直接指定下次日期</label><input type="date" id="fDue"><span class="hint">醫師有給日期時填這裡，會優先採用</span></div>
+        <div class="field"><label for="fInterval">下次追蹤間隔（月）</label><input type="number" id="fInterval" min="0" max="120" step="1" inputmode="numeric" aria-describedby="fIntervalErr"><span class="ferr" id="fIntervalErr" role="alert" hidden></span><span class="hint">0–120 的整數。0 = 待安排，不排定期追蹤</span></div>
+        <div class="field"><label for="fDue">或直接指定下次日期</label><input type="date" id="fDue" aria-describedby="fDueErr"><span class="ferr" id="fDueErr" role="alert" hidden></span><span class="hint">醫師有給日期時填這裡，會優先採用</span></div>
       </div>
       <div class="preview" id="duePreview"></div>
       <div id="labWrap" hidden><span class="field"><label>檢驗數值</label></span><span class="hint" style="display:block;margin-bottom:6px">單位以報告為準，沒做的項目留空</span><div class="labs" id="labs"></div></div>
@@ -841,10 +847,20 @@ function recheckState(list,recs,today,weeks){let target=null;for(const m of sort
 const MED_MODES=[['fasting_am','早餐前空腹'],['bedtime','睡前'],['with_food','隨餐'],['unsure','不確定']];
 const MED_INTF=[['coffee','咖啡'],['calcium','鈣片'],['iron','鐵劑'],['ppi','胃藥（PPI）'],['soy','豆漿／大豆'],['fiber','高纖']];
 const CTX_LABEL={yes:'是',no:'否',unsure:'不確定'};
-/* next due date of an exam record: doctor's date, interval 0 (to arrange), interval in months, no-follow class, else the fixed interval */
-function dueWith(r,info,ivs){if(r.nextDue)return r.nextDue;if(r.interval===0)return r.date;const e=info[r.exam];
-  if(!Number.isFinite(r.interval)&&e?.noFollow?.includes(r.preset))return null;
-  return addMonths(r.date,Number.isFinite(r.interval)?r.interval:Number.isFinite(ivs?.[r.exam])?ivs[r.exam]:e.def)}
+/* a follow-up interval is whole months, 0–120; 0 means to arrange. The form's field: '' is no interval, anything else has to be such a number */
+const IV_MAX=120;
+const validInterval=v=>Number.isInteger(v)&&v>=0&&v<=IV_MAX;
+function parseInterval(s){s=String(s??'').trim();if(s==='')return{ok:true,v:null};const v=/^\d{1,3}$/.test(s)?Number(s):NaN;return v<=IV_MAX?{ok:true,v}:{ok:false,v:null}}
+/* the follow-up plan of an exam record: {due, asap}. asap is 「待安排」: listed first, as already due, with the exam date standing in for the due date.
+   In order: the doctor's date; a stored interval, where 0 and any number that is not whole months 0–120 are to arrange (an invalid one is never turned into a date);
+   a no-follow class (due null); an exam with no fixed interval is to arrange; else the fixed interval. A date that cannot be computed is to arrange as well */
+function planOf(r,info,ivs){const e=info[r.exam],iv=r.interval,arrange={due:r.date,asap:true};
+  if(validDate(r.nextDue))return{due:r.nextDue,asap:false};
+  let m;
+  if(typeof iv==='number'){if(iv===0||!validInterval(iv))return arrange;m=iv}
+  else{if(e?.noFollow?.includes(r.preset))return{due:null,asap:false};if(e?.def==null)return arrange;const f=ivs?.[r.exam];m=Number.isFinite(f)?f:e.def}
+  const d=validDate(r.date)?addMonths(r.date,m):null;return validDate(d)?{due:d,asap:false}:arrange}
+const dueWith=(r,info,ivs)=>planOf(r,info,ivs).due;
 /* visit summary: facts only, every section present, nothing after `to` used. c = { days, exercise, records, meddose, settingDose, pause, weeks, info, intervals } */
 function summarize(c,from,to,today){
   if(!validDate(from)||!validDate(to))return{error:'請填開始日和結束日。'};
@@ -903,8 +919,9 @@ function summarize(c,from,to,today){
     for(const r of recs){const p=latest[r.exam];if(!p||r.date>p.date||(r.date===p.date&&(r.createdAt||0)>(p.createdAt||0)))latest[r.exam]=r}
     const pend=[],next=[],lim=addDays(to,180);
     for(const r of Object.values(latest)){const name=c.info[r.exam].name;
-      if(r.interval===0&&!r.nextDue){pend.push(['',name+' 待安排']);continue} // to-arrange first, as on the page
-      const due=dueWith(r,c.info,c.intervals);if(!due)continue;
+      const {due,asap}=planOf(r,c.info,c.intervals);
+      if(asap){pend.push(['',name+' 待安排']);continue} // to-arrange first, as on the page
+      if(!due)continue;
       if(due<=to)pend.push([due,`${name} ${fmt(due)} 到期`]);else if(due<=lim)next.push([due,`${name} ${fmt(due)}`])}
     const rc=recheckState((c.meddose||[]).filter(m=>validDate(m.date)&&m.date<=to),recs,to,c.weeks);
     if(rc.st==='manual'||rc.st==='auto'){if(rc.due<=to)pend.push([rc.due,`TSH 複查（劑量變更後）${fmt(rc.due)} 到期`]);else if(rc.due<=lim)next.push([rc.due,`TSH 複查（劑量變更後）${fmt(rc.due)}`])}
@@ -1212,8 +1229,9 @@ function isPaused(date){const f=profile.pauseFrom,t=profile.pauseTo;return !!(f&
 /* ================= navigation ================= */
 const PAGES={today:'',weight:'體重與體脂',exercise:'運動紀錄',meals:'飲食',exams:'定期檢查',meds:'用藥',summary:'回診摘要',setup:'設定與備份'};
 let cur='today';
-function show(p){
+function show(p,focus=true){
   if(!(p in PAGES))p='today';
+  if($('#moreSheet').open)$('#moreSheet').close(); // a page change, the browser's back included, never leaves the sheet over the new page
   if(p==='setup'&&cur!=='setup'){formDirty.profForm=false;formDirty.ivForm=false}
   if(p==='summary'&&cur!=='summary')smUser=false; // each visit starts from the default period
   cur=p;
@@ -1221,6 +1239,8 @@ function show(p){
   $('#subbar').hidden=p==='today';$('#subTitle').textContent=PAGES[p];
   document.body.classList.toggle('wide',p==='exams'||p==='weight'||p==='exercise');
   renderTabs();window.scrollTo({top:0});renderCur();
+  /* the bar is last in the document: after a page change the focus goes to the new page's title, so the next Tab is in its content */
+  if(focus)(p==='today'?$('#tDate'):$('#subTitle')).focus({preventScroll:true});
 }
 /* the tab of the page in view is marked; a page reached through the sheet marks 「更多」 and its own row there */
 const MORE_PAGES=['exercise','meals','summary','setup'];
@@ -1230,11 +1250,12 @@ function renderTabs(){
 }
 function go(p){if(location.hash!=='#'+p)location.hash=p;else show(p)}
 window.addEventListener('hashchange',()=>show(location.hash.slice(1)));
-$('#backBtn').addEventListener('click',()=>go('today'));
+/* 「今天」, on the bar or at the top of a page, is today's page on today's date in one press; the browser's back keeps the day being filled in */
+function goToday(){if(viewDate!==logicalToday())setView(logicalToday());go('today')}
+$('#backBtn').addEventListener('click',goToday);
 $('#tabbar').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;const t=b.dataset.tab;
   if(t==='more'){$('#dPick').value=viewDate;$('#dPick').max=logicalToday();$('#moreSheet').showModal();return}
-  if(t==='today'&&cur==='today'&&viewDate!==logicalToday())setView(logicalToday()); // the 今天 tab pressed while another day is shown goes back to today
-  go(t)});
+  if(t==='today')goToday();else go(t)});
 $$('[data-nav]').forEach(b=>b.addEventListener('click',()=>{$('#moreSheet').close();go(b.dataset.nav)}));
 $('#dPick').addEventListener('change',e=>{if(e.target.value){$('#moreSheet').close();setView(e.target.value);go('today')}});
 function renderCur(){({today:renderToday,weight:renderWeight,exercise:renderExercise,meals:renderMeals,exams:renderExams,meds:renderMeds,summary:renderSummary,setup:renderSetup})[cur]()}
@@ -1331,7 +1352,7 @@ function renderSpark(){
 }
 function renderExamSlot(){
   const latest=latestByExam(),today=logicalToday();
-  const urgent=Object.values(latest).map(r=>{const asap=r.interval===0&&!r.nextDue,due=dueOf(r);return{name:EX[r.exam].name,color:CAT[EX[r.exam].cat].color,asap,dd:asap?-Infinity:due==null?Infinity:daysFrom(today,due)}});
+  const urgent=Object.values(latest).map(r=>{const {asap,due}=planR(r);return{name:EX[r.exam].name,color:CAT[EX[r.exam].cat].color,asap,dd:asap?-Infinity:due==null?Infinity:daysFrom(today,due)}});
   const rc=recheckState(meddose,records,today,profile.tshRecheckWeeks);
   if(rc.st==='manual'||rc.st==='auto')urgent.push({name:'TSH 複查（劑量變更後）',color:CAT.thyroid.color,asap:false,dd:daysFrom(today,rc.due),recheck:true});
   const due=urgent.filter(x=>x.dd<=60).sort((a,b)=>a.dd-b.dd);
@@ -1838,14 +1859,19 @@ const EXAMS=[
     {k:'gt10',label:'>10 顆腺瘤',m:12,src:'USMSTF 2020：1 年，並考慮遺傳諮詢'},
     {k:'pm',label:'分片切除 ≥20 mm',m:6,src:'USMSTF 2020：6 個月'}
   ]},
-  /* ask: no default interval for this class; the form is left empty and the user fills the interval or a date (not a no-follow class).
+  /* bone density has no fixed interval (def null): only the two classes for confirmed POI carry one; every other class, and no class, is to arrange (0)
+     until the doctor's interval or date is filled in. The class is always picked by hand: nothing is derived from the T or Z values typed below.
      lab options: row starts a new row in the form, so each site's BMD and scores stay side by side;
      signed opens the full keyboard, because a T or Z score is usually negative and the iOS decimal pad has no minus key */
-  {id:'bone_dxa',cat:'bone',name:'骨密度 DXA',def:12,defSrc:'ESHRE 2024 POI：骨密度低每 1–3 年，取下限；其他情況依醫囑',presets:[
-    {k:'low',label:'骨量較低（T −1.0 ～ −2.5）',m:12,src:'ESHRE 2024 POI：骨密度低或骨質疏鬆，依風險每 1–3 年，取下限'},
-    {k:'op',label:'骨質疏鬆（T ≤ −2.5）',m:12,src:'ESHRE 2024 POI：骨密度低或骨質疏鬆，依風險每 1–3 年，取下限'},
-    {k:'normHT',label:'正常，且規律使用荷爾蒙治療',m:60,src:'ESHRE 2024 POI：骨密度正常且規律荷爾蒙治療，5 年內重測價值低'},
-    {k:'norm',label:'正常（未使用荷爾蒙治療）',m:null,ask:true,src:'ISCD 2023：無固定間隔，依年齡、基準值與風險個別決定，請依醫囑填寫'}
+  {id:'bone_dxa',cat:'bone',name:'骨密度 DXA',def:null,defSrc:'沒有固定間隔：只有 POI 確診的分類帶入間隔，其他先列待安排，依醫囑填寫',presets:[
+    {k:'none',label:'未分類：報告未提供 Z 值（T 值僅記錄）',m:0,src:'ISCD 2023：停經前優先用 Z；現有資料不足以依 Z 分類。請補 Z 值報告或依醫師評估指定追蹤日期。'},
+    {k:'zlow',label:'停經前 Z ≤ −2.0（低於同齡預期）',m:0,src:'ISCD 2023 分類；分類本身不提供重測間隔，請依醫囑。'},
+    {k:'zok',label:'停經前 Z > −2.0（在同齡預期範圍內）',m:0,src:'ISCD 2023 分類；分類本身不提供重測間隔，請依醫囑。'},
+    {k:'poiLow',label:'POI 確診，骨密度低（Z ≤ −2.0）或骨質疏鬆',m:12,src:'ESHRE 2024 POI 建議 69：依個人風險每 1–3 年，本工具取下限 12 個月。'},
+    {k:'poiNormHT',label:'POI 確診，骨密度正常，且持續足量全身性荷爾蒙治療',m:60,src:'ESHRE 2024 POI 建議 68：5 年內重測價值低。60 個月是本工具換算的提醒日期，不是指引規定的重測時間。'},
+    {k:'tnorm',label:'停經後 T ≥ −1.0（WHO 正常）',m:0,src:'ISCD 2023／WHO 分類；重測間隔依個別臨床條件，請依醫囑。'},
+    {k:'tlow',label:'停經後 −2.5 < T < −1.0（WHO 低骨量）',m:0,src:'ISCD 2023／WHO 分類；重測間隔依個別臨床條件，請依醫囑。'},
+    {k:'top',label:'停經後 T ≤ −2.5，或醫師判定骨質疏鬆',m:0,src:'ISCD 2023／WHO 分類；重測間隔依個別臨床條件，請依醫囑。'}
   ],labs:[['L1–L4 BMD','g/cm²',{row:1}],['L1–L4 T','',{signed:1}],['L1–L4 Z','',{signed:1}],
     ['左股骨頸 BMD','g/cm²',{row:1}],['左股骨頸 T','',{signed:1}],['右股骨頸 BMD','g/cm²',{row:1}],['右股骨頸 T','',{signed:1}],
     ['左全髖 BMD','g/cm²',{row:1}],['左全髖 T','',{signed:1}],['右全髖 BMD','g/cm²',{row:1}],['右全髖 T','',{signed:1}]]}
@@ -1854,28 +1880,30 @@ const EX=Object.fromEntries(EXAMS.map(e=>[e.id,e]));
 const CAT=Object.fromEntries(CATS.map(c=>[c.id,c]));
 function daysFrom(a,b){return dnum(b)-dnum(a)}
 function intervalText(m){if(m===0)return'待安排';if(m==null)return'—';if(m%12===0)return(m/12)+' 年';return m+' 個月'}
-function defInterval(id){const v=intervals[id];return Number.isFinite(v)?v:EX[id].def}
+/* the fixed interval of an exam: the setting, else its default; null for an exam that has none (to arrange until a class or the doctor gives one) */
+function defInterval(id){if(EX[id].def==null)return null;const v=intervals[id];return Number.isFinite(v)?v:EX[id].def}
 const EXINFO=Object.fromEntries(EXAMS.map(e=>[e.id,{name:e.name,def:e.def,noFollow:(e.presets||[]).filter(p=>p.noFollow).map(p=>p.k)}]));
-function dueOf(r){return dueWith(r,EXINFO,intervals)}
+const planR=r=>planOf(r,EXINFO,intervals);
+function dueOf(r){return planR(r).due}
 function statusOf(due){if(due==null)return{c:'none',t:'不需例行追蹤',d:Infinity};const d=daysFrom(logicalToday(),due);if(d<0)return{c:'late',t:'已逾期 '+(-d)+' 天',d};if(d<=60)return{c:'soon',t:d===0?'今天到期':d+' 天後到期',d};return{c:'ok',t:'還有 '+Math.round(d/30.4)+' 個月',d}}
 function presetOf(r){const e=EX[r.exam];return e&&e.presets?e.presets.find(p=>p.k===r.preset):null}
 function latestByExam(){const m={};for(const r of records){if(!EX[r.exam])continue;if(!m[r.exam]||r.date>m[r.exam].date||(r.date===m[r.exam].date&&(r.createdAt||0)>(m[r.exam].createdAt||0)))m[r.exam]=r}return m}
 function renderExams(){
   const latest=latestByExam();
-  const items=Object.values(latest).map(r=>{const due=dueOf(r);return{r,due,st:r.interval===0&&!r.nextDue?{c:'late',t:'待安排',d:-1}:statusOf(due)}}).sort((a,b)=>a.due==null?1:b.due==null?-1:a.due<b.due?-1:1);
+  const items=Object.values(latest).map(r=>{const {due,asap}=planR(r);return{r,due,asap,st:asap?{c:'late',t:'待安排',d:-1}:statusOf(due)}}).sort((a,b)=>a.due==null?1:b.due==null?-1:a.due<b.due?-1:1);
   const late=items.filter(i=>i.st.c==='late').length, soon=items.filter(i=>i.st.c==='soon').length;
   $('#tally').textContent=items.length?`逾期 ${late}・60 天內 ${soon}・已追蹤 ${items.length}/${EXAMS.length} 項`:'';
-  $('#nextList').innerHTML=items.length?items.slice(0,6).map(({r,due,st})=>{const e=EX[r.exam];return`<li style="--cat:${CAT[e.cat].color}"><span class="dot"></span><div><div>${esc(e.name)}</div><div class="when num"><span class="nw">${fmt(due)}</span> <span class="nw">上次 ${fmt(r.date)}</span></div></div><span class="pill ${st.c}">${st.t}</span></li>`}).join(''):'<li class="empty">還沒有任何紀錄。按「新增檢查紀錄」輸入最近一次檢查，這裡就會依到期日排出順序。</li>';
+  $('#nextList').innerHTML=items.length?items.slice(0,6).map(({r,due,asap,st})=>{const e=EX[r.exam];return`<li style="--cat:${CAT[e.cat].color}"><span class="dot"></span><div><div>${esc(e.name)}</div><div class="when num">${asap?'':`<span class="nw">${fmt(due)}</span> `}<span class="nw">上次 ${fmt(r.date)}</span></div></div><span class="pill ${st.c}">${st.t}</span></li>`}).join(''):'<li class="empty">還沒有任何紀錄。按「新增檢查紀錄」輸入最近一次檢查，這裡就會依到期日排出順序。</li>';
   $('#cats').innerHTML=CATS.map(c=>`<section class="cat" style="--cat:${c.color}" aria-labelledby="h-${c.id}"><div class="cat-head"><span class="bar"></span><h3 id="h-${c.id}">${c.name}</h3><span class="en">${c.en}</span></div>${EXAMS.filter(e=>e.cat===c.id).map(e=>examCard(e,latest[e.id])).join('')}</section>`).join('');
   if($('#refTable').childElementCount===0)renderRef();
   $('#btnAdd').disabled=!canWrite;
 }
 function examCard(e,r){
   const hist=records.filter(x=>x.exam===e.id).sort((a,b)=>a.date<b.date?1:-1);let side,facts;
-  if(!r){side=`<span class="pill none">尚無紀錄</span>`;facts=`<div class="facts"><span><span class="k">固定間隔</span>${intervalText(defInterval(e.id))}</span></div>`}
-  else{const due=dueOf(r);const st=r.interval===0&&!r.nextDue?{c:'late',t:'待安排'}:statusOf(due);const p=presetOf(r);
+  if(!r){side=`<span class="pill none">尚無紀錄</span>`;facts=`<div class="facts"><span><span class="k">固定間隔</span>${e.def==null?'沒有，依分類或醫囑':intervalText(defInterval(e.id))}</span></div>`}
+  else{const {due,asap}=planR(r);const st=asap?{c:'late',t:'待安排'}:statusOf(due);const p=presetOf(r);
     side=`<span class="pill ${st.c}">${st.t}</span>${p?`<span class="chip">${esc(p.label.split('　')[0])}</span>`:''}`;
-    facts=`<div class="facts"><span><span class="k">上次</span><span class="num">${fmt(r.date)}</span></span><span><span class="k">下次</span><span class="num">${fmt(due)}</span></span><span><span class="k">間隔</span>${r.nextDue?'醫師指定日期':due==null?'不排例行追蹤':intervalText(Number.isFinite(r.interval)?r.interval:defInterval(e.id))}</span></div>`}
+    facts=`<div class="facts"><span><span class="k">上次</span><span class="num">${fmt(r.date)}</span></span><span><span class="k">下次</span>${asap?'待安排':`<span class="num">${fmt(due)}</span>`}</span>${asap?'':`<span><span class="k">間隔</span>${validDate(r.nextDue)?'醫師指定日期':due==null?'不排例行追蹤':intervalText(validInterval(r.interval)?r.interval:defInterval(e.id))}</span>`}</div>`}
   const open=openHist.has(e.id);
   return`<article class="exam"><div class="exam-main"><div><div class="exam-name">${esc(e.name)}</div><div class="exam-sub">${hist.length?'共 '+hist.length+' 筆紀錄':esc(e.defSrc)}</div></div><div class="exam-side">${side}</div>${facts}</div>
   <div class="exam-foot"><button type="button" class="ghost" data-add="${e.id}" ${canWrite?'':'disabled'}>＋ 記錄這次檢查</button>${hist.length?`<button type="button" class="ghost" data-hist="${e.id}" aria-expanded="${open}">${open?'收起歷史':'看歷史報告'}</button>`:''}</div>
@@ -1884,9 +1912,9 @@ function examCard(e,r){
 function labTable(e,hist){const cols=e.labs.filter(([n])=>hist.some(h=>h.labs&&h.labs[n]));if(!cols.length)return'';
   return`<div class="labtable"><table><thead><tr><th>日期</th>${cols.map(([n,u])=>`<th>${esc(n)}<br><span style="font-size:.75rem">${esc(u)}</span></th>`).join('')}</tr></thead><tbody>${hist.map(h=>`<tr><td class="num">${fmt(h.date)}</td>${cols.map(([n])=>`<td class="num">${esc((h.labs&&h.labs[n])||'—')}${h.labs&&h.labs[n]&&h.labMeta?.[n]?.flag?' '+esc(h.labMeta[n].flag):''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
 function histItem(r){const p=presetOf(r);
-  return`<li><div class="row1"><strong class="num">${fmt(r.date)}</strong>${p?`<span class="chip">${esc(p.label)}</span>`:''}<span class="meta">下次 ${fmt(dueOf(r))}</span><span style="flex:1"></span><button type="button" class="ghost" data-edit="${esc(r.id)}" ${canWrite?'':'disabled'}>編輯</button></div>
+  return`<li><div class="row1"><strong class="num">${fmt(r.date)}</strong>${p?`<span class="chip">${esc(p.label)}</span>`:''}<span class="meta">下次 ${planR(r).asap?'待安排':fmt(dueOf(r))}</span><span style="flex:1"></span><button type="button" class="ghost" data-edit="${esc(r.id)}" ${canWrite?'':'disabled'}>編輯</button></div>
   ${r.report?`<div class="report">${esc(r.report)}</div>`:''}${(r.place||r.doctor||r.note)?`<div class="meta">${[r.place,r.doctor&&('醫師 '+r.doctor),r.note].filter(Boolean).map(esc).join('・')}</div>`:''}</li>`}
-function renderRef(){const rows=[];for(const e of EXAMS){if(e.presets){for(const p of e.presets)rows.push([e.name,p.label,p.noFollow?'不排':p.ask?'自行填寫':p.m==null?'用預設':intervalText(p.m),p.src])}else rows.push([e.name,'—',intervalText(e.def),e.defSrc])}
+function renderRef(){const rows=[];for(const e of EXAMS){if(e.presets){for(const p of e.presets)rows.push([e.name,p.label,p.noFollow?'不排':p.m==null?'用預設':intervalText(p.m),p.src])}else rows.push([e.name,'—',intervalText(e.def),e.defSrc])}
   $('#refTable').innerHTML=`<div style="overflow-x:auto;margin-top:10px"><table><thead><tr><th>檢查</th><th>報告分類</th><th>預設</th><th>依據</th></tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
 /* screenshot drafts (docs/specs/phase-D.md): the queue, the one in the form, and the category waiting for confirmation */
 let recEpoch=0,shotQ=[],shotCur=null,shotCls=null,shotPos=0,shotSavedN=0,shotSaved=[],shotLast=null,shotSt={phase:'idle'},recDirty=false;
@@ -1909,16 +1937,30 @@ $('#fRecheck').addEventListener('change',()=>{rcTouched=true;recDirty=true});
 $('#fExam').innerHTML='<option value="" disabled hidden>請選擇檢查項目</option>'+CATS.map(c=>`<optgroup label="${c.name}">${EXAMS.filter(e=>e.cat===c.id).map(e=>`<option value="${e.id}">${e.name}</option>`).join('')}</optgroup>`).join('');
 function fillPresets(examId,keep){const e=EX[examId];if(!e){$('#presetField').hidden=true;$('#labWrap').hidden=true;$('#labs').innerHTML='';$('#fPreset').innerHTML='';$('#fInterval').value='';$('#presetHint').textContent='';return}
   $('#presetField').hidden=!e.presets;
-  if(e.presets)$('#fPreset').innerHTML='<option value="">（未分類）</option>'+e.presets.map(p=>`<option value="${p.k}">${p.label}</option>`).join('');
+  if(e.presets)$('#fPreset').innerHTML='<option value="">（未分類）</option>'+e.presets.map(p=>`<option value="${p.k}">${esc(p.label)}</option>`).join('');
   $('#labWrap').hidden=!e.labs;
   $('#labs').innerHTML=e.labs?e.labs.map(([n,u,o],i)=>`<div class="field"${o?.row?' style="grid-column-start:1"':''}><label for="lab${i}">${esc(n)} <span class="muted" style="font-weight:400">${esc(u)}</span></label><input id="lab${i}" data-lab="${esc(n)}" ${o?.signed?'autocapitalize="off" autocorrect="off" spellcheck="false"':'inputmode="decimal"'} autocomplete="off"></div>`).join(''):'';
-  if(!keep){$('#fPreset').value='';$('#fInterval').value=defInterval(examId);$('#presetHint').textContent='選擇後會自動帶入建議間隔'}}
-function applyPreset(){const e=EX[$('#fExam').value];if(!e)return;const p=e.presets&&e.presets.find(x=>x.k===$('#fPreset').value);
-  if(p){$('#fInterval').value=p.noFollow||p.ask?'':p.m==null?defInterval(e.id):p.m;$('#presetHint').textContent=p.src}else{$('#fInterval').value=defInterval(e.id);$('#presetHint').textContent='未分類時使用固定間隔：'+intervalText(defInterval(e.id))}updatePreview()}
+  if(!keep){$('#fPreset').value='';$('#fInterval').value=defInterval(examId)??0;$('#presetHint').textContent=e.def==null?NODEF_HINT:'選擇後會自動帶入建議間隔'}}
+/* an exam with no fixed interval starts at 0, to arrange, with or without a class; the user then fills what the doctor gave */
+const NODEF_HINT='這個檢查沒有固定間隔：先列為待安排，醫師指定後再填間隔或日期';
 const pickedPreset=()=>EX[$('#fExam').value]?.presets?.find(x=>x.k===$('#fPreset').value);
 const noFollowPicked=()=>!!pickedPreset()?.noFollow;
-function updatePreview(){const date=$('#fDate').value,due=$('#fDue').value,m=$('#fInterval').value;let t;
-  if(!date)t='填入檢查日期後會顯示下次日期';else if(due)t='下次檢查：'+fmt(due)+'（醫師指定）';else if(m==='')t=noFollowPicked()?'不排例行追蹤；醫師有安排再填間隔或日期':pickedPreset()?.ask?'這個分類沒有預設間隔，請依醫囑填間隔或指定日期':'請填追蹤間隔';else if(Number(m)===0)t='待安排（依報告處置），不排定期追蹤';else t='下次檢查：'+fmt(addMonths(date,Number(m)))+'（'+intervalText(Number(m))+'後）';
+function applyPreset(){const e=EX[$('#fExam').value];if(!e)return;const p=pickedPreset();
+  if(p){$('#fInterval').value=p.noFollow?'':p.m==null?defInterval(e.id)??0:p.m;$('#presetHint').textContent=p.src}
+  else{$('#fInterval').value=defInterval(e.id)??0;$('#presetHint').textContent=e.def==null?NODEF_HINT:'未分類時使用固定間隔：'+intervalText(defInterval(e.id))}updatePreview()}
+/* the plan as the form holds it: the interval (null when empty) and the doctor's date, with what is wrong with either field.
+   The same check runs for the preview and for saving; a wrong value is shown on its field and never written */
+const IV_ERR='間隔請填 0–120 的整數（月）；0 是待安排';
+function recPlan(){const i=$('#fInterval'),d=$('#fDue'),p=i.validity.badInput?{ok:false,v:null}:parseInterval(i.value),bad=d.validity.badInput||(d.value!==''&&!validDate(d.value));
+  return{iv:p.v,ivErr:p.ok?'':IV_ERR,due:bad?'':d.value,dueErr:bad?'請填完整、有效的日期':''}}
+function showPlanErr(pl){for(const [id,msg] of [['fInterval',pl.ivErr],['fDue',pl.dueErr]]){const er=$('#'+id+'Err');er.textContent=msg;er.hidden=!msg;if(msg)$('#'+id).setAttribute('aria-invalid','true');else $('#'+id).removeAttribute('aria-invalid')}}
+function updatePreview(){const date=$('#fDate').value,e=EX[$('#fExam').value],pl=recPlan();let t;showPlanErr(pl);
+  if(!date)t='填入檢查日期後會顯示下次日期';else if(!validDate(date))t='檢查日期不是有效的日期';
+  else if(pl.ivErr||pl.dueErr)t='先修正上面標出的欄位';
+  else if(pl.due)t='下次檢查：'+fmt(pl.due)+'（醫師指定）';
+  else if(pl.iv==null)t=noFollowPicked()?'不排例行追蹤；醫師有安排再填間隔或日期':'請填追蹤間隔';
+  else if(pl.iv===0)t=e&&e.def==null?'待安排：還沒有追蹤計畫，醫師指定後再填間隔或日期':'待安排（依報告處置），不排定期追蹤';
+  else t='下次檢查：'+fmt(addMonths(date,pl.iv))+'（'+intervalText(pl.iv)+'後）';
   $('#duePreview').textContent=t+(shotCls?.pending&&date?'（分類待確認）':'')}
 $('#fExam').addEventListener('change',()=>{fillPresets($('#fExam').value);updatePreview();
   if($('#fExam').value!=='thy_lab'){formCtx={};rcTouched=false;rcTargetId=null;$('#fRecheck').checked=false} // the draw context does not survive a switch to another exam
@@ -1926,6 +1968,7 @@ $('#fExam').addEventListener('change',()=>{fillPresets($('#fExam').value);update
     shotCls=shotClsOf(d);shotFillLabs();renderShotCls();updatePreview()}renderCtx();renderDup()});
 $('#fPreset').addEventListener('change',()=>{if(shotCur){shotCur.clsOk=true;shotCls=shotClsOf(shotCur)}applyPreset();renderShotCls()}); // choosing any category oneself is a confirmation
 ['#fDate','#fDue','#fInterval'].forEach(s=>$(s).addEventListener('input',updatePreview));
+['#fDue','#fInterval'].forEach(s=>$(s).addEventListener('blur',updatePreview)); // a half-typed date or number fires no input event: it is checked on leaving the field
 $('#fDate').addEventListener('input',()=>{renderCtx();renderDup()});
 function openRecord(examId,rec){if(shotCur)shotStash();editing=rec||null;recEpoch++;$('#recTitle').textContent=rec?'編輯檢查紀錄':'新增檢查紀錄';
   $('#fExam').value=rec?rec.exam:(examId||EXAMS[0].id);$('#fExam').disabled=!!rec;fillPresets($('#fExam').value,!!rec);$('#fDate').value=rec?rec.date:logicalToday();
@@ -1949,11 +1992,14 @@ $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
   if(recSaving)return; // one save at a time
   if(shotCur?.stale){toast('這批截圖已經重讀，請用新的草稿');return}
   if(shotCls?.pending||(shotCur&&shotCur.cls.preset&&!shotCur.clsOk)){toast('先確認報告分類');return}
-  if(!$('#fDate').value){$('#fDate').focus();toast('請填檢查日期');return}
-  if(!$('#fDue').value&&$('#fInterval').value===''&&!noFollowPicked()){$('#fInterval').focus();toast('請填追蹤間隔或指定日期');return}
+  if(!validDate($('#fDate').value)){$('#fDate').focus();toast('請填檢查日期');return}
+  const pl=recPlan();showPlanErr(pl);
+  if(pl.ivErr){$('#fInterval').focus();return}
+  if(pl.dueErr){$('#fDue').focus();return}
+  if(!pl.due&&pl.iv==null&&!noFollowPicked()){showPlanErr({...pl,ivErr:'請填追蹤間隔或指定日期'});$('#fInterval').focus();toast('請填追蹤間隔或指定日期');return}
   if(!db){toast('資料庫未連線，無法儲存');return}
   const labs={};$$('[data-lab]').forEach(i=>{if(i.value.trim())labs[i.dataset.lab]=i.value.trim()});const exam=$('#fExam').value;
-  const body={exam,cat:EX[exam].cat,date:$('#fDate').value,preset:$('#fPreset').value||null,interval:$('#fInterval').value===''?null:Number($('#fInterval').value),nextDue:$('#fDue').value||null,report:$('#fReport').value.trim(),place:$('#fPlace').value.trim(),doctor:$('#fDoctor').value.trim(),note:$('#fNote').value.trim(),labs,createdAt:editing?.createdAt||Date.now(),updatedAt:Date.now()};
+  const body={exam,cat:EX[exam].cat,date:$('#fDate').value,preset:$('#fPreset').value||null,interval:pl.iv,nextDue:pl.due||null,report:$('#fReport').value.trim(),place:$('#fPlace').value.trim(),doctor:$('#fDoctor').value.trim(),note:$('#fNote').value.trim(),labs,createdAt:editing?.createdAt||Date.now(),updatedAt:Date.now()};
   /* fields this form does not show are kept; the draw context exists only on thyroid draws */
   const {id:_omit,...kept}=editing?(records.find(x=>x.id===editing.id)||editing):{};const full={...kept,...body};
   /* nested objects too: only the keys this form manages change; a lab the user emptied is removed, others stay */
@@ -2242,7 +2288,7 @@ function renderSetup(){
   if(!formDirty.profForm&&!typingIn($('#profForm'))){$('#sMed').value=prof('medName');$('#sDose').value=prof('medDose');$('#sMedNote').value=prof('medNote');$('#sYoga').value=prof('yogaMin');$('#sPil').value=prof('pilatesMin');
     $('#sPFrom').value=profile.pauseFrom||'';$('#sPTo').value=profile.pauseTo||'';$('#sPNote').value=profile.pauseNote||''}
   if(!formDirty.ivForm&&!typingIn($('#ivForm'))){
-    $('#setRows').innerHTML=EXAMS.map(e=>`<div class="set-row"><label for="iv-${e.id}"><span style="color:${CAT[e.cat].color}" aria-hidden="true">●</span> ${esc(e.name)}<br><span class="muted" style="font-size:.8rem">${esc(e.defSrc)}</span></label><div style="display:flex;align-items:center;gap:6px"><input type="number" id="iv-${e.id}" min="1" max="240" value="${defInterval(e.id)}" inputmode="numeric"><span class="muted" style="font-size:.85rem">月</span></div></div>`).join('')}
+    $('#setRows').innerHTML=EXAMS.filter(e=>e.def!=null).map(e=>`<div class="set-row"><label for="iv-${e.id}"><span style="color:${CAT[e.cat].color}" aria-hidden="true">●</span> ${esc(e.name)}<br><span class="muted" style="font-size:.8rem">${esc(e.defSrc)}</span></label><div style="display:flex;align-items:center;gap:6px"><input type="number" id="iv-${e.id}" min="1" max="240" value="${defInterval(e.id)}" inputmode="numeric"><span class="muted" style="font-size:.85rem">月</span></div></div>`).join('')}
   /* a form opens for editing only once its saved values have arrived from the server */
   $$('#p-setup input,#p-setup button').forEach(x=>{if(x.id==='btnExport'||x.id==='impCancel')return;const f=x.closest('#profForm,#remindSect')?loaded.profile:x.closest('#ivForm')?loaded.intervals:true;x.disabled=!canWrite||!f});
   renderRemind();
@@ -2281,7 +2327,7 @@ $('#sDoseGo').addEventListener('click',()=>go('meds'));
 $('#sPClear').addEventListener('click',async()=>{if(await saveProfile({pauseFrom:null,pauseTo:null,pauseNote:''})){$('#sPFrom').value='';$('#sPTo').value='';$('#sPNote').value='';toast('已清除暫停')}});
 $('#ivForm').addEventListener('submit',async ev=>{ev.preventDefault();if(!canSave())return;if(!loaded.intervals){toast('資料還在載入，請稍候');return}
   /* merge: keys this form does not show are kept; an emptied field goes back to the default */
-  const next={};for(const e of EXAMS){const v=Number($('#iv-'+e.id).value);next[e.id]=Number.isFinite(v)&&v>0?Math.round(v):null}
+  const next={};for(const e of EXAMS){if(e.def==null)continue;const v=Number($('#iv-'+e.id).value);next[e.id]=Number.isFinite(v)&&v>0?Math.round(v):null}
   const ver=formEdits.ivForm;
   try{await queued('settings/intervals',()=>mergeDoc('settings/intervals',next));if(formEdits.ivForm===ver){formDirty.ivForm=false;document.activeElement&&document.activeElement.blur()}toast('間隔已儲存')}catch(e){writeErr(e)}});
 async function readAll(col){const s=await db.collection(col).get();const o={};s.docs.forEach(d=>o[d.id]=d.data());return o}
@@ -2346,7 +2392,7 @@ $('#impGo').addEventListener('click',async()=>{if(!pendingImport||!db)return;con
   toast(fail?`匯入完成 ${n} 筆，${fail} 筆失敗`:`匯入完成，共 ${n} 筆`);b.disabled=false;$('#impCancel').click()});
 
 /* ================= boot ================= */
-show(location.hash.slice(1)||'today');
+show(location.hash.slice(1)||'today',false);
 let rT;window.addEventListener('resize',()=>{clearTimeout(rT);rT=setTimeout(()=>{if(cur==='weight')renderWeight();if(cur==='exercise')renderExercise()},200)});
 /* a page left open still turns the day at 04:00 and asks for the evening weight at 18:00 */
 let lastLogical=logicalToday(),lastEvening=isAfterEvening(lastLogical);
