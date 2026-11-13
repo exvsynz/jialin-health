@@ -13,10 +13,10 @@
 | 體重與體脂 | 早上 7 日平均、單日早晚點、月經色帶；30／90／365 天 |
 | 運動紀錄 | 近 12 週每週分鐘數、月曆、最近紀錄 |
 | 飲食 | 每餐縮圖、餐別、時間、熱量範圍與當日合計；單餐可補充份量重新估算、手動改熱量、填秤重參考值；從相簿加入 |
-| 定期檢查 | 乳房、甲狀腺、肺 LDCT、生殖軸激素、腸胃鏡、骨密度 DXA；依報告分類自動算下次日期（骨密度沒有固定間隔：只有 POI 確診的兩個分類帶入 12／60 個月，其他分類與未分類先列「待安排」，可以再填醫師指定的間隔或日期）；間隔只收 0–120 的整數月；甲狀腺抽血可記抽血情境與「變更後複查」；新增時可「從截圖填入」（健康存摺等截圖由 Claude 抄錄，拆成多筆逐筆確認後才存，截圖不存） |
+| 定期檢查 | 乳房、甲狀腺、肺 LDCT、生殖軸激素、腸胃鏡、骨密度 DXA；依報告分類自動算下次日期（骨密度沒有固定間隔：只有 POI 確診的兩個分類帶入 12／60 個月；其他分類與未分類是「還沒有追蹤計畫」，列為待安排、不算逾期，可以再填醫師指定的間隔或日期；醫師表示不需例行追蹤時可以手選不追蹤）；間隔只收 0–120 的整數月，0 是依報告盡快處理；甲狀腺抽血可記抽血情境與「變更後複查」；新增時可「從截圖填入」（健康存摺等截圖由 Claude 抄錄，拆成多筆逐筆確認後才存，截圖不存） |
 | 用藥 | 目前劑量、近 30／90 天已記錄服藥、TSH 複查（週數由使用者設定）、劑量與製劑變更和抽血的時間軸、依據 |
 | 回診摘要 | 選期間，複製文字或存成 .md／.html |
-| 設定與備份 | 提醒開關與上次檢查狀態、藥名劑量（有劑量紀錄後改在用藥頁變更）、運動預設時間、暫停模式、檢查固定間隔、JSON 匯出與匯入 |
+| 設定與備份 | 提醒開關與上次檢查狀態、藥名劑量（有劑量紀錄後改在用藥頁變更）、運動預設時間、暫停模式、檢查固定間隔（1–120 的整數月）、JSON 匯出與匯入 |
 
 導覽：底部固定的分頁列有今天、體重、檢查、用藥、更多五個分頁，目前所在的頁會標示出來。「更多」打開面板，裡面是運動紀錄、飲食、回診摘要、設定與備份，以及「選擇日期補登」。對話框都用 `showModal()` 開在最上層，不會被分頁列蓋住。按「今天」（分頁列或頁面上方的「‹ 今天」）一次就回到今天的日期；瀏覽器的返回不重設補登的日期。換頁後焦點移到新頁的標題；hash 改變時「更多」面板會關閉，其他對話框不關。
 
@@ -31,14 +31,19 @@ records/{autoId}       { exam, cat, date, preset, interval, nextDue, report, pla
 meddose/{autoId}       { kind:"dose"|"product", date, dose, tablet, brand, reason, note, recheckDue, noRecheck, createdAt, updatedAt, deleted }
 mealthumbs/{mealId}    { date, at, thumb:"data:image/jpeg;base64,…", w, h, createdAt }
 settings/profile       { medName, medDose, medNote, yogaMin, pilatesMin, pauseFrom, pauseTo, pauseNote, lastExport, remind, tshRecheckWeeks, lastVisit }
-settings/intervals     { <examId>: months }
+settings/intervals     { <examId>: months }   months 是 1–120 的整數；其他值當作沒有設定
 system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shouldPush, delivery, msg, recent:[…最多 21 筆], sent:{…7 天內可能已送出的通知} }
 ```
 
 - 服藥成立的條件是 `med.taken === true`；只有細節、沒有 `taken` 的物件不算服藥。`interfere` 每項 `true`／`false`，不存在就是未填。`drawCtx` 的情境用 `"yes"`／`"no"`／`"unsure"`，不存在就是未填。格式與規則見 `docs/specs/phase-B.md`。
 - `labMeta`、`shot`（選填）：從截圖填入的紀錄才有。`labMeta[檢驗名]` 是截圖上的原文 `{ raw, unit, ref, flag }`，只保留儲存時沒改過的檢驗；`labs` 照舊存文字（旗標拆掉，單位和表單不同時值後面加單位、不換算）。格式與規則見 `docs/specs/phase-D.md`。
-- `records` 的 `interval` 是 0–120 的整數月，`0` 是「待安排」；`null` 或不存在是沒有填，照固定間隔算（`settings/intervals`，否則預設值）。骨密度沒有固定間隔，沒有 `interval` 時也是待安排。已存的 `interval` 是數字、但不是 0–120 的整數時，頁面顯示成待安排，不拿去算日期，也不改資料；`nextDue` 要是合法的 `YYYY-MM-DD` 才採用。規則在 `med helpers` 的 `planOf`，排程提示詞是同一套。
-- `records` 的 `exam` 是檢查代號（`src/index.html` 的 `EXAMS`）。新增代號不需要遷移資料；頁面不認得的代號會略過。`bone_dxa`（骨密度 DXA，`cat: "bone"`）的 `preset` 是 `none`、`zlow`、`zok`、`poiLow`、`poiNormHT`、`tnorm`、`tlow`、`top`（定義與依據見 `docs/exam-intervals.md`；分類一律手選，不從數值推）；`labs` 和抽血一樣存文字，key 是 `L1–L4 BMD`、`L1–L4 T`、`L1–L4 Z`，以及 `左股骨頸`、`右股骨頸`、`左全髖`、`右全髖` 各自的 `BMD` 與 `T`（例如 `左股骨頸 BMD`）。
+- `records` 的 `interval` 是 0–120 的整數月，`null` 或不存在是沒有填。每筆紀錄的追蹤計畫是四種之一，規則在 `med helpers` 的 `planOf`，回診摘要、`dev/remind-ref.js` 與排程提示詞是同一套：
+  - **有到期日**：合法的 `nextDue`（`YYYY-MM-DD`）優先；否則 `date` 加 `interval`（1–120）個月；沒有填 `interval` 時加固定間隔。
+  - **依報告盡快處理**：`interval` 是 `0`。列表寫「待安排」，算逾期、排最前。已存的 `interval` 是數字但不是 0–120 的整數、或算不出合法日期時也歸在這裡，不拿去算日期，也不改資料。
+  - **還沒有追蹤計畫**：沒有固定間隔的檢查（骨密度）沒有 `interval`。列表同樣寫「待安排」，但不算逾期，排在有日期的項目之後；今天頁、定期檢查頁、回診摘要、晚上提醒、週報都仍然列出。
+  - **不追蹤**：沒有 `interval`，而且 `preset` 是不追蹤的分類（甲狀腺超音波的 `none`、`vlowSmall`，骨密度的 `nofollow`）。不列入到期與提醒。
+- 固定間隔：`settings/intervals` 裡這個檢查的值是 1–120 的整數就用它，否則用預設值。設定頁存檔時用同一個檢查，不合格的值顯示在欄位上、不寫入；已存的不合格值讀取時當作沒有設定，不改資料。
+- `records` 的 `exam` 是檢查代號（`src/index.html` 的 `EXAMS`）。新增代號不需要遷移資料；頁面不認得的代號會略過。`bone_dxa`（骨密度 DXA，`cat: "bone"`）的 `preset` 是 `none`、`zlow`、`zok`、`poiLow`、`poiNormHT`、`tnorm`、`tlow`、`top`、`nofollow`（定義與依據見 `docs/exam-intervals.md`；分類一律手選，不從數值推；`nofollow` 是醫師表示目前不需例行追蹤，不會是預設值，也不會從截圖帶入）。選單找不到已存的 `preset` 時，編輯後原樣存回；`labs` 和抽血一樣存文字，key 是 `L1–L4 BMD`、`L1–L4 T`、`L1–L4 Z`，以及 `左股骨頸`、`右股骨頸`、`左全髖`、`右全髖` 各自的 `BMD` 與 `T`（例如 `左股骨頸 BMD`）。
 - `meddose`：劑量或製劑變更，軟刪除。沒有任何有效紀錄時，劑量依 `settings/profile.medDose` 推定。
 - `meals`：每餐 `{ at, meal, src, thumb, thumbBytes, thumbCleared, note, attempts:{<attemptId>:{…}}, manual, ref, deleted, createdAt }`。每次估算只寫自己的 `attempts` key，手動熱量另存 `manual`，畫面取手動值，否則取最新開始的成功估算。格式與規則見 `docs/specs/phase-C.md`。
 - `mealthumbs`：縮圖（長邊 320、≤32 KiB），頁面只依 id 讀，不監聽也不查詢。設定頁可以清除舊縮圖。
@@ -68,9 +73,9 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 - `dev/bf-test.js`：體重與體脂在同一個面板（兩把刻度尺各自捲動、體脂未記／已記與「不記」、儲存鈕、鍵盤兩欄）、一位小數、體脂圖、最近紀錄三欄，以及 380×820、380×667 深淺色的版面與截圖。
 - `dev/heartbeat-test.js`：從 `src/index.html` 抽出 `heartbeat helpers` 區塊，測試「上次檢查」的文字與 26 小時警示的邊界。
 - `dev/remind-test.js`：設定頁提醒區塊（開關寫入、撤銷、多裝置、停用狀態、寫入失敗）、心跳即時更新、今天頁的「提醒可能停了」、版面與截圖。
-- `dev/remind-ref.js`、`dev/fake-artifact-data.js`、`dev/remind-ref-test.js`：照排程提示詞的步驟，對 ArtifactData 測試替身（參數照工具 schema 檢查、版本條件、分頁、失敗注入、推播工具）實際執行的參考實作與情境測試，並和頁面的 `dueOf` 比對。
+- `dev/remind-ref.js`、`dev/fake-artifact-data.js`、`dev/remind-ref-test.js`：照排程提示詞的步驟，對 ArtifactData 測試替身（參數照工具 schema 檢查、版本條件、分頁、失敗注入、推播工具）實際執行的參考實作與情境測試（含晚上與週報的兩種待安排、不追蹤、不合格的固定間隔），並和頁面的 `planOf` 逐筆比對。
 - `dev/prompt-test.js`：檢查 `ops/scheduled/*.md` 寫到規格要求的每一項，檢查名稱表和頁面一致，範例推播句和參考實作的輸出一字不差（情境在 `dev/prompt-cases.js`）。
-- `dev/med-test.js`：從 `src/index.html` 抽出 `med helpers` 區塊，測試劑量、可計日、TSH 複查狀態、到期算法（`planOf`：待安排、無效的間隔、沒有固定間隔的檢查）、間隔欄位的解析、回診摘要與三種輸出的跳脫。
+- `dev/med-test.js`：從 `src/index.html` 抽出 `med helpers` 區塊，測試劑量、可計日、TSH 複查狀態、到期算法（`planOf` 的四種結果：盡快處理、有到期日、還沒有追蹤計畫、不追蹤；無效的間隔、不合格的固定間隔、不合法的檢查日期）、間隔欄位的解析、回診摘要與三種輸出的跳脫。`planOf` 的測試用的是從 `src/index.html` 取出的 `EXAMS` 與 `EXINFO`，不另外抄一份檢查表。
 - `dev/meal-test.js`：從 `src/index.html` 抽出 `meal helpers` 區塊，測試餐別、邏輯日加時間（`atOf`）、估算回覆的解析、目前採用的值、當日合計、試用對照；也在非台北時區再跑一次。
 - `dev/meal-page-test.js`：飲食照片的頁面行為（能力檢查、拍一餐的寫入順序、縮圖預算、送出的估算、存檔失敗與「再存一次」）。照片都是測試裡用 canvas 畫的合成圖。
 - `dev/meal-page2-test.js`：飲食頁與單餐畫面（每一種估算錯誤的文字與按鈕、再估一次、快取、停止、很久沒有更新、跨裝置競爭、手動值、5 次上限、截斷、刪除與撤銷、跳脫、凌晨的時間、相簿、試用對照）、版面與截圖。
@@ -78,7 +83,7 @@ system/heartbeat       { run, at, kind, date, missing, paused, ok, skipped, shou
 - `dev/shot-page-test.js`：從截圖填入檢查紀錄的頁面行為（能力檢查、送出的圖片、張數上限、停止、讀取中關掉面板、每個截圖情境、分類確認、重複提示、略過與丟棄、存檔失敗、編輯時 `labMeta` 的保留、每一種錯誤碼）、版面與截圖。截圖是 canvas 畫的合成圖。
 - `dev/review-d-test.js`：D 階段程式審查 D-01–D-13 的重現（草稿的生命週期與存檔、修正保留、分類與去重規則、去個資、重讀），加上匯出匯入往返與點擊命中。
 - `dev/review-d2-test.js`：D 階段複核 R1–R7、C1、C2 的回歸測試（複製自 GPT 的 `docs/reviews/2026-11-02-phase-D-code-fix-recheck.test.js`，檔頭註明改了哪三處）。
-- `dev/bone-test.js`：骨密度 DXA 與檢查表單的間隔驗證。八個分類的標籤、間隔與依據；T／Z 的邊界不重疊；只填 T 值不會被自動分類；待安排在定期檢查頁、今天頁、回診摘要都看得到；間隔 −1、1.5、121、1e12 等無效值顯示在欄位上、寫入 0 次；已存的無效間隔讀成待安排；沒有 `cat`、舊的 preset 代號、表單沒有的 labs key、已存的醫師指定間隔、匯出匯入往返與舊備份；歷次表格在自己的容器內水平捲動；`--c-bone`；380 寬深淺色的版面與截圖。
+- `dev/bone-test.js`：骨密度 DXA、檢查表單與設定頁的間隔驗證。九個分類的標籤、間隔與依據；T／Z 的邊界不重疊；只填 T 值不會被自動分類；兩種待安排的排序（盡快處理最前、還沒有追蹤計畫排在有日期的項目之後、不算逾期）在定期檢查頁、「接下來」、今天頁、回診摘要都看得到；不追蹤只能手選，選了不列入；間隔 −1、1.5、121、1e12 等無效值顯示在欄位上、寫入 0 次；設定頁的固定間隔只收 1–120，舊的不合格值改用預設值；已存的無效間隔讀成待安排；360／380／412 寬時最長的分類標籤在選單下方看得到；改分類不洗掉醫師指定的間隔；必填的錯誤不因離開欄位而消失；選單沒有的分類代號原樣存回；指定日期不能早於檢查日；沒有 `cat`、舊的 preset 代號、表單沒有的 labs key、已存的醫師指定間隔、匯出匯入往返與舊備份；歷次表格在自己的容器內水平捲動；`--c-bone`；380 寬深淺色的版面與截圖。
 - `dev/tabbar-test.js`：底部分頁列。五個分頁的圖示、文字、目前頁的標示與觸控目標；每個分頁到對應頁；「更多」面板；補登後從任何頁按「今天」一次回到今天；換頁後焦點在頁面標題（含真的用鍵盤 Tab、Enter）；瀏覽器返回時關閉「更多」、不關還沒存的檢查紀錄；指示線在分頁列內；380×667 深淺色下沒有水平捲動、內容與 toast 不被分頁列擋住、對話框的儲存鍵按得到；用 Chromium 的安全區模擬（底部 34px）量分頁列與底部預留；今天畫面的點擊次數；截圖。
 - `dev/shot-fixtures.js`：mock 讀截圖時的假資料回覆（`cfg.sample.shot`）。
 - `dev/review-c-test.js`：C 階段程式審查 C1、C3–C8 的重現（縮圖旗標與備份、估算中的備份、補充說明、時間推移、mock 的同意視窗、訊息、出處）。

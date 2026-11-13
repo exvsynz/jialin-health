@@ -10,8 +10,8 @@ const ROOT=path.join(__dirname,'..');
 const read=f=>fs.readFileSync(path.join(ROOT,f),'utf8');
 
 const KINDS={morning:{docs:['settings/profile','system/heartbeat','days/{今天}'],cases:['m-both','m-med','err'],exams:false},
-  evening:{docs:['settings/profile','system/heartbeat','days/{今天}','records','settings/intervals','meddose'],cases:['e-pm','e-exam','e-many','e-recheck','e-legacy','e-food','err'],exams:true},
-  weekly:{docs:['settings/profile','system/heartbeat','days','exercise','records','settings/intervals','meddose'],cases:['w-full','w-empty','err'],exams:true}};
+  evening:{docs:['settings/profile','system/heartbeat','days/{今天}','records','settings/intervals','meddose'],cases:['e-pm','e-exam','e-many','e-plan','e-nofollow','e-recheck','e-legacy','e-food','err'],exams:true},
+  weekly:{docs:['settings/profile','system/heartbeat','days','exercise','records','settings/intervals','meddose'],cases:['w-full','w-plan','w-empty','err'],exams:true}};
 const COMMON=[
   ['artifact 網址','https://claude.ai/artifact/LJViyfLqXv2VdD5krdJahh'],
   ['台北時區','Asia/Taipei'],['UTC+8','UTC+8'],['凌晨 4 點換日','04:00 之前算前一天'],
@@ -58,10 +58,15 @@ for(const [kind,spec] of Object.entries(KINDS)){
   if(spec.exams){
     check(`${kind}：檢查表（代號、名稱、預設間隔）和參考實作一致（${EXAMS.length} 項）`,JSON.stringify(rows)===JSON.stringify(EXAMS),{rows});
     check(`${kind}：不追蹤的分類和參考實作一致`,NO_FOLLOW.every(([e,p])=>s.includes('`exam` 是 `'+e+'`')&&s.includes('`'+p+'`'))&&s.includes('`settings/intervals` 裡這個代號的值'));
-    check(`${kind}：interval 0 寫「待安排」，不寫急迫性`,s.includes('「名稱待安排」')&&!s.includes('需盡快'));
-    check(`${kind}：到期日六步（合法的 nextDue、不是 1–120 整數的數字是待安排、沒有預設間隔的檢查是待安排、算不出日期是待安排）`,
-      s.includes('1. 有合法的 `nextDue`（`YYYY-MM-DD`）')&&s.includes('2. `interval` 是數字，但不是 1–120 的整數（`0`、負數、小數、超過 120 都算）→「待安排」')&&s.includes('3. `interval` 是 1–120 的整數 → `date` 加 `interval` 個月')
-      &&s.includes('上表的預設間隔是「沒有」（`bone_dxa`）→「待安排」')&&s.includes('不看 `settings/intervals`')&&s.includes('6. 第 3、5 步算不出合法日期')&&s.includes('其他檢查的 `preset` 就算也叫 `none`，都不是「不追蹤」'));
+    check(`${kind}：兩種待安排在訊息裡都寫「名稱待安排」，不寫急迫性`,s.includes('盡快處理、還沒有追蹤計畫：都寫「名稱待安排」')&&!s.includes('需盡快'));
+    check(`${kind}：到期日六步（合法的 nextDue、不是 1–120 整數的數字是盡快處理、沒有預設間隔的檢查是還沒有追蹤計畫、算不出日期是盡快處理）`,
+      s.includes('1. 有合法的 `nextDue`（`YYYY-MM-DD`）')&&s.includes('2. `interval` 是數字，但不是 1–120 的整數（`0`、負數、小數、超過 120 都算）→「盡快處理」，視為已到期')&&s.includes('3. `interval` 是 1–120 的整數 → `date` 加 `interval` 個月')
+      &&s.includes('上表的預設間隔是「沒有」（`bone_dxa`）→「還沒有追蹤計畫」。不算已到期，但仍然列出。不看 `settings/intervals`')&&s.includes('6. 第 3、5 步算不出合法日期（`date` 不是合法日期，或加完月份超出日期範圍）→「盡快處理」')&&s.includes('其他檢查的 `preset` 就算也叫 `none`，都不是「不追蹤」'));
+    check(`${kind}：四種結果與排序（盡快處理 → 有到期日，依到期日 → 還沒有追蹤計畫）；兩種待安排不受天數限制`,
+      s.includes('每一筆的結果是四種之一：有到期日、「盡快處理」、「還沒有追蹤計畫」、不列入')&&s.includes('排序：「盡快處理」最前面；接著是有到期日的，依到期日先後（TSH 複查也在這一段一起排）；「還沒有追蹤計畫」排最後。')
+      &&s.includes('「盡快處理」和「還沒有追蹤計畫」沒有剩餘天數，不受天數限制，一定列出')&&s.includes(`列出三種項目：「盡快處理」、剩餘天數 ≤ ${kind==='weekly'?30:7}（含已逾期）、「還沒有追蹤計畫」`)&&!s.includes('「待安排」最前面'));
+    check(`${kind}：設定的固定間隔要是 1–120 的整數，否則用預設`,s.includes('`settings/intervals` 裡這個代號的值是 1–120 的整數就用它；其他情況（不存在、`0`、負數、小數、超過 120、不是數字）都用上表的預設間隔')&&!s.includes('的值是數字就用它'));
+    check(`${kind}：骨密度的 nofollow 是「不追蹤」`,s.includes('`exam` 是 `bone_dxa`，`preset` 是 `nofollow`'));
     check(`${kind}：骨密度沒有預設間隔`,rows.some(r=>r[0]==='bone_dxa'&&r[2]===null),rows.find(r=>r[0]==='bone_dxa'));
     check(`${kind}：TSH 複查的算法（明確連結、手動日期、週數）`,s.includes('### TSH 複查（劑量或製劑變更後）')&&s.includes('`drawCtx.recheckOf` 等於對象的文件 id')&&s.includes('`recheckDue`')&&s.includes('`tshRecheckWeeks` 是 1–52 的整數'));
     check(`${kind}：meddose 要記下文件 id`,s.includes('每份文件都記下回傳的文件 id'));

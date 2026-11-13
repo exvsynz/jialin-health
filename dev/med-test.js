@@ -3,7 +3,7 @@
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(process.env.SRC?path.resolve(process.env.SRC):path.join(__dirname,'../src/index.html'),'utf8');
 const block=n=>{const m=html.match(new RegExp('\\/\\* ---- '+n+' helpers: begin[^*]*\\*\\/([\\s\\S]*?)\\/\\* ---- '+n+' helpers: end ---- \\*\\/'));if(!m){console.error('找不到 '+n+' helpers 區塊標記');process.exit(2)}return m[1]};
-const H=new Function(block('date')+block('med')+';return{tookMed,validDate,validDose,sortMeddose,doseOn,hasResult,trackStart,countable,recheckState,dueWith,validInterval,parseInterval,planOf,summarize,summaryText,summaryMd,summaryHtml}')();
+const H=new Function(block('date')+block('med')+';return{tookMed,validDate,validDose,sortMeddose,doseOn,hasResult,trackStart,countable,recheckState,dueWith,validInterval,validFixed,parseInterval,planOf,summarize,summaryText,summaryMd,summaryHtml}')();
 let fail=0;
 const eq=(name,got,want)=>{const ok=JSON.stringify(got)===JSON.stringify(want);if(!ok)fail++;console.log((ok?'  ok   ':'  FAIL ')+name+(ok?'':' → '+JSON.stringify(got)+'（應為 '+JSON.stringify(want)+'）'))};
 const md=(id,date,dose,o={})=>({id,date,dose,kind:'dose',createdAt:1,...o});
@@ -135,19 +135,41 @@ eq('validInterval：0–120 的整數才算',[0,1,12,120,121,-1,1.5,1e12,NaN,Inf
 eq('parseInterval：空白是沒有間隔；0–120 的整數照收（前後空白、前導 0 可以）',['','  ','0','12','120','012',' 6 '].map(H.parseInterval),[{ok:true,v:null},{ok:true,v:null},{ok:true,v:0},{ok:true,v:12},{ok:true,v:120},{ok:true,v:12},{ok:true,v:6}]);
 {const bad=['-1','1.5','121','1e12','1000000000000','abc','12a','+5','１２','0x10','1e2','NaN','Infinity','−1','1 2','.5'];
   eq('parseInterval：負數、小數、超過範圍、極大數、非數字都不收，也不給值',bad.map(s=>H.parseInterval(s)),bad.map(()=>({ok:false,v:null})))}
-{const I2={...INFO,bone_dxa:{name:'骨密度 DXA',def:null,noFollow:[]}},P=(r,ivs={})=>H.planOf(r,I2,ivs),A=d=>({due:d,asap:true}),D=d=>({due:d,asap:false});
-  eq('planOf：interval 0 是待安排；1–120 的整數照算（含月底）',[P({exam:'thy_lab',date:'2026-10-01',interval:0}),P({exam:'thy_lab',date:'2026-01-31',interval:1}),P({exam:'thy_lab',date:'2016-10-01',interval:120})],[A('2026-10-01'),D('2026-02-28'),D('2026-10-01')]);
-  eq('planOf：-1、1.5、121、1e12、NaN、Infinity 都是待安排，不拿去算日期',[-1,1.5,121,1e12,NaN,Infinity].map(iv=>P({exam:'thy_lab',date:'2026-10-01',interval:iv})),Array(6).fill(A('2026-10-01')));
+/* 頁面自己的檢查表：直接從 src/index.html 取出 EXAMS 與 EXINFO 那一行來執行，不另外抄一份。頁面的不追蹤分類或預設間隔設錯，下面的測試就會失敗（複查報告第 5 節） */
+const PAGE=(()=>{const ex=html.match(/const BIRADS=[\s\S]*?\nconst EXAMS=\[[\s\S]*?\n\];/),info=html.match(/\nconst EXINFO=[^\n]*\n/);
+  if(!ex||!info){console.error('找不到 EXAMS 或 EXINFO');process.exit(2)}return new Function(ex[0]+info[0]+';return{EXAMS,EXINFO}')()})();
+const PI=PAGE.EXINFO;
+eq('頁面的 EXINFO：十項檢查；不追蹤的分類只有甲狀腺超音波的 none、vlowSmall 與骨密度的 nofollow；只有骨密度沒有固定間隔',[Object.keys(PI).length,Object.entries(PI).filter(([,v])=>v.noFollow.length).map(([k,v])=>[k,v.noFollow]),Object.entries(PI).filter(([,v])=>v.def==null).map(([k])=>k)],[10,[['thy_us',['none','vlowSmall']],['bone_dxa',['nofollow']]],['bone_dxa']]);
+eq('頁面的 EXAMS：骨密度的分類只有 POI 兩個帶入間隔，其他都沒有（不是 0）；nofollow 是唯一的不追蹤',PAGE.EXAMS.find(e=>e.id==='bone_dxa').presets.map(p=>[p.k,p.m,!!p.noFollow]),[['none',null,false],['zlow',null,false],['zok',null,false],['poiLow',12,false],['poiNormHT',60,false],['tnorm',null,false],['tlow',null,false],['top',null,false],['nofollow',null,true]]);
+eq('validFixed：固定間隔只收 1–120 的整數（0 不算）',[1,12,120,0,121,180,1200,-1,0.4,1.5,1e12,NaN,Infinity,'12',null,undefined].map(H.validFixed),[true,true,true,false,false,false,false,false,false,false,false,false,false,false,false,false]);
+/* planOf 的四種結果：A 盡快處理、D 有到期日、U 還沒有追蹤計畫、N 不追蹤 */
+{const P=(r,ivs={})=>H.planOf(r,PI,ivs),A=d=>({due:d,asap:true,unplanned:false}),D=d=>({due:d,asap:false,unplanned:false}),U={due:null,asap:false,unplanned:true},N=D(null);
+  eq('planOf：interval 0 是盡快處理；1–120 的整數照算（含月底）',[P({exam:'thy_lab',date:'2026-10-01',interval:0}),P({exam:'thy_lab',date:'2026-01-31',interval:1}),P({exam:'thy_lab',date:'2016-10-01',interval:120})],[A('2026-10-01'),D('2026-02-28'),D('2026-10-01')]);
+  eq('planOf：-1、1.5、121、1e12、NaN、Infinity 都是盡快處理，不拿去算日期',[-1,1.5,121,1e12,NaN,Infinity].map(iv=>P({exam:'thy_lab',date:'2026-10-01',interval:iv})),Array(6).fill(A('2026-10-01')));
   eq('planOf：無效的 interval 加上合法的醫師指定日期 → 照日期',P({exam:'thy_lab',date:'2026-10-01',interval:1e12,nextDue:'2027-04-01'}),D('2027-04-01'));
   eq('planOf：nextDue 不是合法日期就不採用',[P({exam:'thy_lab',date:'2026-10-01',interval:6,nextDue:'2026-13-40'}),P({exam:'thy_lab',date:'2026-10-01',interval:0,nextDue:'NaN-NaN-NaN'})],[D('2027-04-01'),A('2026-10-01')]);
-  eq('planOf：沒有固定間隔的檢查（骨密度），interval 是 null、不存在、字串時都是待安排，不看設定',[P({exam:'bone_dxa',date:'2025-11-25',interval:null}),P({exam:'bone_dxa',date:'2025-11-25'}),P({exam:'bone_dxa',date:'2025-11-25',interval:'12'}),P({exam:'bone_dxa',date:'2025-11-25',interval:null},{bone_dxa:12})],Array(4).fill(A('2025-11-25')));
-  eq('planOf：骨密度的 preset none 不是不追蹤；有 12、60 就照算',[P({exam:'bone_dxa',date:'2025-11-25',preset:'none',interval:null}),P({exam:'bone_dxa',date:'2025-11-25',preset:'poiLow',interval:12}),P({exam:'bone_dxa',date:'2025-11-25',preset:'poiNormHT',interval:60})],[A('2025-11-25'),D('2026-11-25'),D('2030-11-25')]);
-  eq('planOf：其他檢查照舊（不追蹤的分類、字串 interval 用固定間隔、設定優先於預設）',[P({exam:'thy_us',date:'2026-01-01',preset:'none',interval:null}),P({exam:'thy_lab',date:'2026-01-31',interval:'6'}),P({exam:'thy_lab',date:'2026-01-31',interval:null},{thy_lab:1})],[{due:null,asap:false},D('2026-07-31'),D('2026-02-28')]);
-  eq('planOf：設定的固定間隔大到算不出日期、或檢查日期本身不合法 → 待安排',[P({exam:'thy_lab',date:'2026-10-01',interval:null},{thy_lab:1e12}),P({exam:'thy_lab',date:'2026-02-31',interval:6})],[A('2026-10-01'),A('2026-02-31')]);
+  eq('planOf：沒有固定間隔的檢查（骨密度），interval 是 null、不存在、字串時都是還沒有追蹤計畫，不看設定',[P({exam:'bone_dxa',date:'2025-11-25',interval:null}),P({exam:'bone_dxa',date:'2025-11-25'}),P({exam:'bone_dxa',date:'2025-11-25',interval:'12'}),P({exam:'bone_dxa',date:'2025-11-25',interval:null},{bone_dxa:12})],Array(4).fill(U));
+  eq('planOf：骨密度每個沒有間隔的分類都是還沒有追蹤計畫（none 不是不追蹤）',['none','zlow','zok','tnorm','tlow','top',null,'low'].map(k=>P({exam:'bone_dxa',date:'2025-11-25',preset:k,interval:null})),Array(8).fill(U));
+  eq('planOf：骨密度的 interval 0 和其他檢查一樣是盡快處理，和還沒有追蹤計畫是兩回事；有 12、60 就照算',[P({exam:'bone_dxa',date:'2025-11-25',preset:'zok',interval:0}),P({exam:'bone_dxa',date:'2025-11-25',preset:'poiLow',interval:12}),P({exam:'bone_dxa',date:'2025-11-25',preset:'poiNormHT',interval:60})],[A('2025-11-25'),D('2026-11-25'),D('2030-11-25')]);
+  eq('planOf：骨密度 nofollow 是不追蹤；又填了間隔、0 或醫師指定日期，就照那個算',[P({exam:'bone_dxa',date:'2025-11-25',preset:'nofollow',interval:null}),P({exam:'bone_dxa',date:'2025-11-25',preset:'nofollow'}),P({exam:'bone_dxa',date:'2025-11-25',preset:'nofollow',interval:24}),P({exam:'bone_dxa',date:'2025-11-25',preset:'nofollow',interval:0}),P({exam:'bone_dxa',date:'2025-11-25',preset:'nofollow',interval:null,nextDue:'2027-01-05'})],[N,N,D('2027-11-25'),A('2025-11-25'),D('2027-01-05')]);
+  eq('planOf：其他檢查照舊（不追蹤的分類、字串 interval 用固定間隔、設定優先於預設）；別的檢查叫 nofollow 的 preset 不是不追蹤',[P({exam:'thy_us',date:'2026-01-01',preset:'none',interval:null}),P({exam:'thy_us',date:'2026-01-01',preset:'vlowSmall',interval:null}),P({exam:'thy_lab',date:'2026-01-31',interval:'6'}),P({exam:'thy_lab',date:'2026-01-31',interval:null},{thy_lab:1}),P({exam:'thy_lab',date:'2026-01-31',preset:'nofollow',interval:null})],[N,N,D('2026-07-31'),D('2026-02-28'),D('2026-07-31')]);
+  /* 2026-11-13 複查 R-02：設定的固定間隔和設定頁用同一個檢查，不合格就當作沒有設定 */
+  eq('planOf：設定的固定間隔不是 1–120 的整數（0、0.4、−1、121、180、1200、1e12、字串、NaN、null）→ 用預設值',[0,0.4,-1,121,180,1200,1e12,'3',NaN,null].map(v=>P({exam:'thy_lab',date:'2026-01-31',interval:null},{thy_lab:v})),Array(10).fill(D('2026-07-31')));
+  eq('planOf：設定的固定間隔 1 與 120 是邊界，照用',[P({exam:'thy_lab',date:'2026-01-31',interval:null},{thy_lab:1}),P({exam:'thy_lab',date:'2026-01-31',interval:null},{thy_lab:120})],[D('2026-02-28'),D('2036-01-31')]);
+  eq('planOf：檢查日期不合法或不存在 → 盡快處理；有合法的 nextDue 照日期；沒有間隔的骨密度仍是還沒有追蹤計畫',[P({exam:'thy_lab',date:'2026-02-31',interval:6}),P({exam:'thy_lab',interval:6}),P({exam:'thy_lab',date:'2026-02-31',interval:6,nextDue:'2027-01-05'}),P({exam:'bone_dxa',date:'2026-02-31',interval:null})],[A('2026-02-31'),A(undefined),D('2027-01-05'),U]);
+  /* 回診摘要的仍待處理：盡快處理 → 有到期日（依到期日）→ 還沒有追蹤計畫 */
+  const S=(records,o={})=>sec(H.summarize({...C({records,...o}),info:PI},'2026-10-01','2026-10-30','2026-10-31'),'檢查');
   const RB=[{exam:'bone_dxa',date:'2025-11-25',preset:'none',interval:null,createdAt:1},{exam:'breast_us',date:'2026-10-01',interval:1e12,createdAt:1},{exam:'thy_lab',date:'2026-07-01',interval:1.5,createdAt:1}];
-  const sb=H.summarize({...C({records:RB}),info:I2},'2026-10-01','2026-10-30','2026-10-31'),L=sec(sb,'檢查');
-  eq('摘要：沒有間隔的骨密度、無效間隔的紀錄都列在仍待處理（待安排），不會消失',L,['截至 2026/10/30 仍待處理：骨密度 DXA 待安排、乳房超音波 待安排、甲狀腺抽血 待安排','之後 180 天內到期：沒有']);
-  eq('摘要：沒有 NaN',/NaN/.test(H.summaryText(sb)),false)}
+  eq('摘要：無效間隔的紀錄是盡快處理，排最前；沒有間隔的骨密度是還沒有追蹤計畫，排最後；都寫待安排，不會消失',S(RB),['截至 2026/10/30 仍待處理：乳房超音波 待安排、甲狀腺抽血 待安排、骨密度 DXA 待安排','之後 180 天內到期：沒有']);
+  eq('摘要：沒有 NaN',/NaN/.test(H.summaryText(H.summarize({...C({records:RB}),info:PI},'2026-10-01','2026-10-30','2026-10-31'))),false);
+  eq('摘要（R-01）：骨密度還沒有追蹤計畫排在逾期的乳房超音波之後，盡快處理的甲狀腺超音波仍在最前',S([{exam:'bone_dxa',date:'2026-10-01',preset:'zok',interval:null,createdAt:1},{exam:'breast_us',date:'2025-06-01',interval:12,createdAt:1},{exam:'thy_us',date:'2026-10-05',interval:0,createdAt:1},{exam:'thy_lab',date:'2026-07-01',interval:6,createdAt:1}]),['截至 2026/10/30 仍待處理：甲狀腺超音波 待安排、乳房超音波 2026/06/01 到期、骨密度 DXA 待安排','之後 180 天內到期：甲狀腺抽血 2027/01/01']);
+  eq('摘要（R-01）：只有還沒有追蹤計畫時也列出',S([{exam:'bone_dxa',date:'2026-10-01',preset:null,interval:null,createdAt:1}]),['截至 2026/10/30 仍待處理：骨密度 DXA 待安排','之後 180 天內到期：沒有']);
+  eq('摘要（R-01b）：骨密度 nofollow 不列入',S([{exam:'bone_dxa',date:'2026-10-01',preset:'nofollow',interval:null,createdAt:1}]),['截至 2026/10/30 仍待處理：沒有','之後 180 天內到期：沒有']);
+  eq('摘要（R-02）：設定的固定間隔 1200、0.4 不合格，用預設值（甲狀腺抽血 6 個月、胃鏡 24 個月）',S([{exam:'thy_lab',date:'2026-07-01',interval:null,createdAt:1},{exam:'gi_egd',date:'2024-10-15',interval:null,createdAt:1}],{intervals:{thy_lab:1200,gi_egd:0.4}}),['截至 2026/10/30 仍待處理：上消化道內視鏡（胃鏡） 2026/10/15 到期','之後 180 天內到期：甲狀腺抽血 2027/01/01']);
+  /* 2026-11-13 複查 R-06：date 不合法或不存在的紀錄，摘要和其他三處一樣照 planOf 列出 */
+  eq('摘要（R-06）：date 是 2026-02-31 的抽血、沒有 date 的胃鏡都列為待安排，不再是「沒有」',S([{exam:'thy_lab',date:'2026-02-31',interval:6,createdAt:1},{exam:'gi_egd',interval:24,createdAt:1}]),['截至 2026/10/30 仍待處理：甲狀腺抽血 待安排、上消化道內視鏡（胃鏡） 待安排','之後 180 天內到期：沒有']);
+  eq('摘要（R-06）：date 不合法但有合法的醫師指定日期 → 照日期列；不追蹤的分類照樣不列',S([{exam:'thy_lab',date:'2026-02-31',interval:6,nextDue:'2026-12-01',createdAt:1},{exam:'thy_us',date:'not-a-date',preset:'none',interval:null,createdAt:1}]),['截至 2026/10/30 仍待處理：沒有','之後 180 天內到期：甲狀腺抽血 2026/12/01']);
+  eq('摘要（R-06）：結束日之後才做的檢查（合法日期）照舊不算',S([{exam:'thy_lab',date:'2026-10-31',interval:0,createdAt:1}]),['截至 2026/10/30 仍待處理：沒有','之後 180 天內到期：沒有'])}
 
 console.log(fail?`\n${fail} 項失敗`:'\n全部通過');
 process.exit(fail?1:0);

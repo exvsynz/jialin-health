@@ -13,9 +13,9 @@ const D=new Function('Date',m[1]+';return{tpeNow,logicalToday,addDays,addMonths,
 const clock=ms=>{fake=ms;return{date:D.logicalToday(),h:D.tpeNow().h}};
 
 /* 代號、名稱、預設間隔（月）；和 src/index.html 的 EXAMS 一致（測試會比對） */
-const EXAMS=[['breast_us','乳房超音波',12],['breast_mammo','乳房X光攝影',24],['breast_ct','乳房電腦斷層',12],['thy_us','甲狀腺超音波',12],['thy_lab','甲狀腺抽血',6],['lung_ldct','低劑量電腦斷層 LDCT',12],['gyn_horm','生殖軸激素',6],['gi_egd','上消化道內視鏡（胃鏡）',24],['gi_colo','大腸鏡',120],['bone_dxa','骨密度 DXA',null]]; // null：沒有預設間隔，沒有 interval 時是待安排
+const EXAMS=[['breast_us','乳房超音波',12],['breast_mammo','乳房X光攝影',24],['breast_ct','乳房電腦斷層',12],['thy_us','甲狀腺超音波',12],['thy_lab','甲狀腺抽血',6],['lung_ldct','低劑量電腦斷層 LDCT',12],['gyn_horm','生殖軸激素',6],['gi_egd','上消化道內視鏡（胃鏡）',24],['gi_colo','大腸鏡',120],['bone_dxa','骨密度 DXA',null]]; // null：沒有預設間隔，沒有 interval 時是「還沒有追蹤計畫」
 const EXAM_NAMES=Object.fromEntries(EXAMS.map(([id,n])=>[id,n])),EXAM_DEF=Object.fromEntries(EXAMS.map(([id,,d])=>[id,d]));
-const NO_FOLLOW=[['thy_us','none'],['thy_us','vlowSmall']]; // 「不追蹤」的分類
+const NO_FOLLOW=[['thy_us','none'],['thy_us','vlowSmall'],['bone_dxa','nofollow']]; // 「不追蹤」的分類
 const ITEMS=[['am','早上體重'],['med','服藥'],['pm','晚上體重']];
 const CHECK={morning:['am','med'],evening:['am','med','pm']};
 const KINDS=['morning','evening','weekly'],FIELDS=['run','at','kind','date','missing','paused','ok','skipped','shouldPush','delivery','msg'];
@@ -58,21 +58,27 @@ function mergeRecent(entry,old){
   const all=[entry,...old.filter(x=>!(entry.run&&x.run===entry.run))];
   return all.sort((a,b)=>atMs(b.at)-atMs(a.at)).slice(0,RECENT_MAX);
 }
-/* 頁面 planOf 的同一套規則（提示詞「到期日依序判斷」的 1–6） */
+/* 頁面 planOf 的同一套規則（提示詞「到期日依序判斷」的 1–6）。四種結果：
+   {asap:true} 盡快處理（算逾期、排最前）；{due} 有到期日；{unplanned:true} 還沒有追蹤計畫（不算逾期、排最後，仍然列出）；null 不追蹤（不列入）。
+   前兩種待安排在訊息裡都寫「名稱待安排」。間隔都要是 1–120 的整數月：紀錄的 interval 不合格是盡快處理，設定的固定間隔不合格就當作沒有設定 */
+const monthsOk=v=>Number.isInteger(v)&&v>=1&&v<=120;
 function dueOf(r,intervals={}){
   if(validDate(r.nextDue))return{due:r.nextDue};
   let mo;
-  if(typeof r.interval==='number'){if(!(Number.isInteger(r.interval)&&r.interval>=1&&r.interval<=120))return{asap:true};mo=r.interval}
+  if(typeof r.interval==='number'){if(!monthsOk(r.interval))return{asap:true};mo=r.interval}
   else{if(NO_FOLLOW.some(([e,p])=>e===r.exam&&p===r.preset))return null;
-    if(EXAM_DEF[r.exam]==null)return{asap:true};
-    mo=Number.isFinite(intervals?.[r.exam])?intervals[r.exam]:EXAM_DEF[r.exam]}
+    if(EXAM_DEF[r.exam]==null)return{unplanned:true};
+    mo=monthsOk(intervals?.[r.exam])?intervals[r.exam]:EXAM_DEF[r.exam]}
   const due=validDate(r.date)?D.addMonths(r.date,mo):null;
   return validDate(due)?{due}:{asap:true};
 }
 function latestByExam(records){const o={};for(const r of records||[]){if(!EXAM_NAMES[r.exam])continue;const c=o[r.exam];if(!c||r.date>c.date||(r.date===c.date&&(r.createdAt||0)>(c.createdAt||0)))o[r.exam]=r}return o}
+/* 排序：盡快處理（rank 0）→ 有到期日，依到期日（1）→ 還沒有追蹤計畫（2）；同一級再依名稱。兩種待安排不看天數，一定列出 */
+const byPlan=(a,b)=>a.rank-b.rank||a.dd-b.dd||(a.name<b.name?-1:1);
 function examsWithin(records,intervals,date,days){
-  return Object.values(latestByExam(records)).map(r=>{const d=dueOf(r,intervals);if(!d)return null;const dd=d.asap?-Infinity:daysFrom(date,d.due);return{name:EXAM_NAMES[r.exam],due:d.due,asap:!!d.asap,dd}})
-    .filter(x=>x&&x.dd<=days).sort((a,b)=>a.dd-b.dd||(a.name<b.name?-1:1));
+  return Object.values(latestByExam(records)).map(r=>{const d=dueOf(r,intervals);if(!d)return null;const arrange=!!(d.asap||d.unplanned);
+    return{name:EXAM_NAMES[r.exam],due:d.due,arrange,rank:d.asap?0:d.unplanned?2:1,dd:arrange?0:daysFrom(date,d.due)}})
+    .filter(x=>x&&(x.arrange||x.dd<=days)).sort(byPlan);
 }
 /* TSH 複查（B 階段 3.4，和頁面 recheckState 同一套規則）：最新一筆生效的劑量或製劑變更，沒有明確連結的完成抽血，就依手動日期或週數排出到期日 */
 const RECHECK_NAME='TSH 複查（劑量變更後）';
@@ -91,9 +97,9 @@ function recheckDue(meddose,records,date,weeks){
 function dueItems(data,date,days){
   const x=examsWithin(data.records,data.intervals,date,days);
   const due=recheckDue(data.meddose,data.records,date,data.profile?.tshRecheckWeeks);
-  if(due){const dd=daysFrom(date,due);if(dd<=days)x.push({name:RECHECK_NAME,due,asap:false,dd})}
-  return x.sort((a,b)=>a.dd-b.dd||(a.name<b.name?-1:1))}
-const examPhrase=(x,withWord)=>x.asap?x.name+'待安排':x.dd<0?x.name+'已逾期':x.name+' '+mdShort(x.due)+(withWord?' 到期':'');
+  if(due){const dd=daysFrom(date,due);if(dd<=days)x.push({name:RECHECK_NAME,due,arrange:false,rank:1,dd})}
+  return x.sort(byPlan)}
+const examPhrase=(x,withWord)=>x.arrange?x.name+'待安排':x.dd<0?x.name+'已逾期':x.name+' '+mdShort(x.due)+(withWord?' 到期':'');
 
 /* ArtifactData 呼叫，參數照工具的形狀 */
 const T={

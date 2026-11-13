@@ -16,7 +16,7 @@ const TITLES={today:'',weight:'體重與體脂',exercise:'運動紀錄',meals:'�
 const TABS=[['today','今天'],['weight','體重'],['exams','檢查'],['meds','用藥'],['more','更多']],MORE=['exercise','meals','summary','setup'];
 const tab=t=>`#tabbar [data-tab="${t}"]`;
 const LABS=['L1–L4 BMD','L1–L4 T','L1–L4 Z','左股骨頸 BMD','左股骨頸 T','右股骨頸 BMD','右股骨頸 T','左全髖 BMD','左全髖 T','右全髖 BMD','右全髖 T'];
-const bone=(date,k)=>({exam:'bone_dxa',cat:'bone',date,preset:'low',interval:12,nextDue:null,report:'',place:'測試醫院',doctor:'',note:'',labs:Object.fromEntries(LABS.map((n,i)=>[n,/BMD$/.test(n)?(0.9-i*0.01-k*0.02).toFixed(3):(-1.2-i*0.1).toFixed(1)])),createdAt:10+k,updatedAt:10});
+const bone=(date,k)=>({exam:'bone_dxa',cat:'bone',date,preset:'poiLow',interval:12,nextDue:null,report:'',place:'測試醫院',doctor:'',note:'',labs:Object.fromEntries(LABS.map((n,i)=>[n,/BMD$/.test(n)?(0.9-i*0.01-k*0.02).toFixed(3):(-1.2-i*0.1).toFixed(1)])),createdAt:10+k,updatedAt:10});
 const seed=(extra={})=>({...sampleSeed(T),'records/b1':bone('2024-11-20',0),'records/b2':bone('2025-11-25',1),
   'meddose/m1':{kind:'dose',date:'2026-09-01',dose:50,tablet:'',brand:'',reason:'',note:'',createdAt:1,updatedAt:1,deleted:false},
   ['days/'+T]:{date:T,meals:{q1:{at:Date.parse(T+'T12:00:00+08:00'),meal:'lunch',src:'camera',thumb:false,note:'',createdAt:1,attempts:{a0:{status:'done',startedAt:1,at:1001,kcalLo:400,kcalHi:600,desc:'便當',items:[],confidence:'mid',note:'',imgSrc:'photo',promptVer:1}}}},updatedAt:1},...extra});
@@ -83,6 +83,12 @@ const shot=async(page,name)=>{if(NOSHOTS)return;fs.mkdirSync(SHOTS,{recursive:tr
       await page.click(tab(t));await wait(250);const st=await state(page);
       check(`分頁列 → ${TABS.find(x=>x[0]===t)[1]}：只顯示這一頁、標題正確、只有這個分頁標示為目前的頁`,JSON.stringify(st.shown)===JSON.stringify([t])&&st.title===TITLES[t]&&onlyCur(st,t)&&!st.more,st);
       check(`分頁列 → ${TABS.find(x=>x[0]===t)[1]}：焦點移到這一頁的標題，不留在分頁列上`,st.focus===titleId(t),st.focus)}
+    /* 2026-11-13 複查第 5 節：觸控換頁時焦點同樣移到標題，但不顯示焦點框（原本只有實測，沒有測試） */
+    await page.tap(tab('weight'));await wait(250);
+    const tf=await page.evaluate(()=>{const a=document.activeElement,cs=getComputedStyle(a);return{id:a.id,visible:a.matches(':focus-visible'),outline:cs.outlineStyle}});
+    check('觸控點分頁換頁：焦點在頁面標題，但不顯示焦點框（焦點框只在鍵盤操作時出現）',tf.id==='subTitle'&&!tf.visible&&tf.outline==='none'&&JSON.stringify((await state(page)).shown)===JSON.stringify(['weight']),tf);
+    await page.tap(tab('today'));await wait(250);
+    check('觸控點「今天」：回到今天頁',JSON.stringify((await state(page)).shown)===JSON.stringify(['today']),(await state(page)).shown);
     await page.click(tab('more'));await wait(300);
     const sheet=await page.evaluate(()=>({open:document.querySelector('#moreSheet').open,items:[...document.querySelectorAll('#moreSheet .menu button')].map(b=>[b.dataset.nav,b.childNodes[0].textContent.trim()]),
       date:{label:document.querySelector('#moreSheet label[for="dPick"]')?.textContent,value:document.querySelector('#dPick').value,max:document.querySelector('#dPick').max},shown:[...document.querySelectorAll('main section.panel')].filter(s=>!s.hidden).map(s=>s.id.slice(2))}));
@@ -141,8 +147,9 @@ const shot=async(page,name)=>{if(NOSHOTS)return;fs.mkdirSync(SHOTS,{recursive:tr
     /* 還沒存的檢查紀錄不能因為返回而被關掉 */
     await page.click(tab('exams'));await wait(250);await page.click('[data-add="bone_dxa"]');await wait(300);await page.fill('#fReport','還沒存的草稿');
     await page.goBack();await wait(350);
-    const d=await page.evaluate(()=>({open:document.querySelector('#dlgRec').open,report:document.querySelector('#fReport').value,more:document.querySelector('#moreSheet').open}));
+    const d=await page.evaluate(()=>({open:document.querySelector('#dlgRec').open,report:document.querySelector('#fReport').value,more:document.querySelector('#moreSheet').open,focusIn:!!document.activeElement?.closest('#dlgRec'),focus:document.activeElement?.id||document.activeElement?.tagName}));
     check('檢查紀錄開著時按瀏覽器返回：對話框與還沒存的內容都還在',d.open&&d.report==='還沒存的草稿'&&!d.more,d);
+    check('檢查紀錄開著時按瀏覽器返回：焦點留在對話框裡，沒有被移到後面那一頁的標題（複查第 5 節）',d.focusIn,d.focus);
     await page.evaluate(()=>document.querySelector('#dlgRec').close());
     check('返回與更多：沒有 JS 錯誤',!errors.length,errors);
     await page.context().close()}
