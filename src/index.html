@@ -2419,9 +2419,10 @@ const itemPend=o=>(o.st?o.st.src==='report':!!flagKind(o.flag))&&(itemChanged(o)
 const itemFlag=o=>itemPend(o)?null:o.st?o.st.f:flagKind(o.flag)?o.flag:refFlag(o.value,o.ref)||null;
 /* the labs this record will not hold, for a record of 「其他抽血」 of their own: the ones with no field anywhere, and the fields the exam now chosen does not have */
 const shotSplitItems=d=>[...shotOth(d),...shotAwayKeys().map(k=>cellItem(d,k))];
-/* the lines those labs make in the report: exactly as read while nothing about them was changed, else written again from what the user left */
+/* the lines those labs make in the report: exactly as read while nothing about them was changed, else written again from what the user left.
+   A row with no value makes a line only when it was read that way (「看不清楚」): one the user has merely begun stays a row, and is not written as if the screenshot had been unclear */
 const othLine=o=>{const f=itemFlag(o);return`${o.name.trim()} ${String(o.value).trim()||'（看不清楚）'}${o.unit.trim()?' '+o.unit.trim():''}${o.ref.trim()?'（參考值 '+o.ref.trim()+'）':''}${f?' '+f:''}`};
-function shotBlock(d){if(!d.oth)return d.othersBlock||'';const L=shotOth(d).map(othLine);return L.length?['其他檢驗（沒有對應的欄位）：',...L].join('\n'):''}
+function shotBlock(d){if(!d.oth)return d.othersBlock||'';const L=shotOth(d).filter(o=>String(o.value).trim()||(o.unclear&&o.name.trim())).map(othLine);return L.length?['其他檢驗（沒有對應的欄位）：',...L].join('\n'):''}
 /* the labs a saved draft had no field for, as a draft of their own for 「其他抽血」, next in the queue: confirmed in the form like any other, with the date and place just saved.
    strip: the record they came from and the lines they still make in its report. It is not read again with its screenshots (the reading has no draft of this kind), and a reading again of the batch leaves it waiting */
 function shotSplit(d,full,items,strip){const i=shotQ.indexOf(d);

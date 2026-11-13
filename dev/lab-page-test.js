@@ -303,6 +303,12 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
     await page.click('#btnSave');await until(page,()=>!document.querySelector('#dlgRec').open);await wait(200);const all=await newRecs(page),ro=all.find(x=>x.exam==='lab_other'),ru=all.find(x=>x.exam==='thy_us'),N=null;
     check('兩筆都存好：其他抽血那筆的 Hb 是改過的 13.0（不留原文）、PLT 是手動的沒有標記（原文仍在）；甲狀腺超音波那筆的報告內容不再有那幾行',ro&&same(ro.labs,{Hb:'13.0',WBC:'6.5',PLT:'620',Ferritin:'4'})&&same(ro.labMeta.Hb,{raw:N,unit:'g/dL',ref:'12.0-16.0',flag:N,flagSrc:N})&&same(ro.labMeta.PLT,{raw:'HH 620',unit:'10^3/uL',ref:'150-400',flag:N,flagSrc:'manual'})&&ru&&ru.report==='',{ro,ru:ru&&ru.report});
     check('列上的修改不回復：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+  /* 只打了名稱、還沒填數值的列：換成別的項目時不寫進報告內容（不會寫成「看不清楚」），列還留著（GLM 審查） */
+  {const {page,errors}=await shotStart('cbc');await page.selectOption('#fExam','lab_other');await wait(80);await page.click('#labAddRow');await fillRow(page,5,{n:'CEA'});
+    await page.selectOption('#fExam','thy_us');await wait(80);const f=await sform(page);
+    check('加一列只打名稱 CEA，再換成甲狀腺超音波：報告內容是原本讀到的 5 行，沒有 CEA，也沒有多出「看不清楚」',f.report.split('\n').length===6&&!f.report.includes('CEA')&&!f.report.includes('看不清楚')&&f.report.includes('Ferritin 4 ng/mL（參考值 >13） L'),f.report);
+    await page.selectOption('#fExam','lab_other');await wait(80);const rs=await rows(page);check('換回其他抽血：CEA 那一列還在，等使用者填完',rs.length===6&&rs[5].n==='CEA'&&rs[5].v==='',rs.map(x=>x.n));
+    check('半成品的列：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
   /* 單位和表單不同的檢驗：參考值跟著讀到的那個數值，數值一改（多半是自己換算）就不能再拿舊單位的參考值來算（GPT 審查） */
   {const {page,errors}=await shotStart('unit');let b=await box(page,'Free T4');
     check('unit：Free T4 讀到 15.4 pmol/L（和表單的 ng/dL 不同），欄位是「15.4 pmol/L」、參考值 12-22，帶單位的值不拿來算',b.v==='15.4 pmol/L'&&b.ref==='12-22'&&b.flag==='—',b);
