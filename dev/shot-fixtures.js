@@ -60,6 +60,10 @@ const F={
     lab({name:'WBC',value:'6.5',unit:'10^3/uL',ref:'4.0-10.0'}),
     lab({name:'PLT',value:'HH 620',unit:'10^3/uL',ref:'150-400'}),
     lab({name:'Ferritin',value:'4',unit:'ng/mL',ref:'>13'})]}),
+  /* 報告沒有印標記但超出參考值的 TSH，和印了 HH 的 Free T4 */
+  noflag:J({items:[
+    lab({name:'TSH',value:'5.2',unit:'μIU/mL',ref:'0.27-4.20'}),
+    lab({name:'Free T4',value:'HH 3.0',unit:'ng/dL',ref:'0.93-1.70'})]}),
   empty:J({items:[]}),
   bad:'讀不出來，這不是 JSON',
   partial:J({items:[{type:'lab',name:'TSH',value:'1.5',unit:'μIU/mL',date:'115/10/20',place:'測試醫院'},{type:'weird'},{type:'lab',value:'3'}]}),

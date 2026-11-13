@@ -2160,22 +2160,22 @@ function labLoad(rec){const e=EX[rec.exam],L=rec.labs&&typeof rec.labs==='object
   if(!e.rows)return;$('#labs').innerHTML='';const ks=Object.keys(L).filter(k=>L[k]!=null&&L[k]!=='');
   for(const k of ks)addLabRow({name:k,value:L[k],unit:M[k]?.unit,ref:M[k]?.ref,meta:M[k],orig:{value:String(L[k]).trim(),raw:M[k]?.raw??null}});if(!ks.length)addLabRow()}
 $('#labs').addEventListener('input',e=>{const box=e.target.closest('[data-labbox]');if(!box)return;const b=box.querySelector('.flagbtn'),t=e.target;
-  if(t.matches('[data-ref],[data-rr]'))box._refT=true;
+  if(t.matches('[data-ref]'))box._refT=true;
   /* a reference range that came with a value in another unit than the field's belongs to that value: when the value is changed (converted, most likely) the range is taken out,
      and comes back with the value; one the user typed is left alone */
   if(t.matches('[data-lab]')&&box._orig?.unitDiff&&!box._refT){const r=box.querySelector('[data-ref]');if(r)r.value=t.value.trim()===box._orig.value?box._orig.ref:''}
   if(b&&t.matches('[data-lab],[data-ref],[data-rv],[data-rr]'))flagAuto(b);
   if(box.matches('.labrow')&&!box.querySelector('.ferr').hidden)labRowsCheck(); // an error on a row follows the typing
-  shotStashLabs()});
+  shotStashLabs(true)});
 /* a tap on the mark steps through none, high, low, abnormal: from then on it is the user's, and typing no longer changes it. A deleted row can be put back */
 $('#labs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
-  if(b.matches('.flagbtn')){const box=b.closest('[data-labbox]');setFlag(b,box.querySelector('[data-flagnote]')?b.dataset.f:FLAG_STEPS[(FLAG_STEPS.indexOf(flagKind(b.dataset.f))+1)%FLAG_STEPS.length],'manual');flagNote(box)}
+  if(b.matches('.flagbtn')){const box=b.closest('[data-labbox]');setFlag(b,box.querySelector('[data-flagnote]')?(b.dataset.mark||b.dataset.f):FLAG_STEPS[(FLAG_STEPS.indexOf(flagKind(b.dataset.f))+1)%FLAG_STEPS.length],'manual');flagNote(box)}
   else if(b.matches('[data-rdel]')){const d=b.closest('.labrow'),next=d.nextElementSibling,gen=labGen,had=rowHas(d);d.remove();if(!$('#labs .labrow'))addLabRow();labRowsLabel();
     if(had)toast('已刪除一列',[['撤銷',()=>{if(gen!==labGen||!dlg.open)return;const all=$$('#labs .labrow');if(all.length===1&&all[0]!==next&&!rowHas(all[0]))all[0].remove(); // the empty row that took its place
-      $('#labs').insertBefore(d,next&&next.isConnected?next:null);labRowsLabel();shotStashLabs()}]])}
+      $('#labs').insertBefore(d,next&&next.isConnected?next:null);labRowsLabel();shotStashLabs(true)}]])}
   else return;
-  recDirty=true;shotStashLabs()});
-$('#labAddRow').addEventListener('click',()=>{addLabRow().querySelector('[data-rn]').focus();recDirty=true;shotStashLabs()});
+  recDirty=true;shotStashLabs(true)});
+$('#labAddRow').addEventListener('click',()=>{addLabRow().querySelector('[data-rn]').focus();recDirty=true;shotStashLabs(true)});
 /* an exam with no fixed interval starts with an empty interval, no plan yet, with or without a class; the user then fills what the doctor gave */
 const NODEF_HINT='這個檢查沒有固定間隔，依分類或醫囑';
 const pickedPreset=()=>EX[$('#fExam').value]?.presets?.find(x=>x.k===$('#fPreset').value);
@@ -2288,8 +2288,8 @@ $('#recForm').addEventListener('submit',async ev=>{ev.preventDefault();
     if(!$('#rcRow').hidden){if(rcTargetId&&$('#fRecheck').checked&&!$('#fRecheck').disabled)c.recheckOf=rcTargetId;else delete c.recheckOf}
     if(Object.keys(c).length)full.drawCtx=c;else delete full.drawCtx}
   const fromShot=shotCur,wasEditing=!!editing,epoch=recEpoch;recSaving=true;renderShotCls();renderShotBar();
-  try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(full);openHist.add(exam);recSaving=false;
-    if(fromShot){if(fromShot.strip)shotStrip(fromShot.strip);if(split.length)shotSplit(fromShot,full,split,{id:ref.id,parts:strip});shotSaved1(fromShot,full)}else{if(dlg.open&&recEpoch===epoch)dlg.close();toast(wasEditing?'已更新':'已儲存')}/* a form opened since then stays open */if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{recSaving=false;renderShotCls();renderShotBar()}});
+  try{const ref=editing?db.doc('records/'+editing.id):db.collection('records').doc();await ref.set(full);if(fromShot?.strip)await shotStrip(fromShot.strip);openHist.add(exam);recSaving=false;
+    if(fromShot){if(split.length)shotSplit(fromShot,full,split,{id:ref.id,parts:strip});shotSaved1(fromShot,full)}else{if(dlg.open&&recEpoch===epoch)dlg.close();toast(wasEditing?'已更新':'已儲存')}/* a form opened since then stays open */if(cur==='exams')renderExams()}catch(e){writeErr(e)}finally{recSaving=false;renderShotCls();renderShotBar()}});
 $('#btnDel').addEventListener('click',async()=>{if(!editing||!canSave())return;const rec=records.find(x=>x.id===editing.id)||editing;const {id,...body}=rec;
   try{await retry1(()=>db.doc('records/'+id).delete());dlg.close();toast('已刪除 '+EX[rec.exam].name+' '+fmt(rec.date),[['撤銷',()=>retry1(()=>db.doc('records/'+id).set(body)).catch(writeErr)]])}catch(e){writeErr(e)}});
 
@@ -2374,34 +2374,38 @@ function shotMetaNotes(meta){for(const i of $$('[data-lab]')){const m=meta&&meta
 const labVal=(d,k)=>d.edits&&k in d.edits?d.edits[k]:d.labs[k]?.value;
 function shotStash(){const d=shotCur;if(!d)return;d.edits=d.edits||{};for(const i of $$('[data-lab]'))d.edits[i.dataset.lab]=i.value;shotStashLabs();
   d.form={exam:$('#fExam').value,date:$('#fDate').value,place:$('#fPlace').value,report:$('#fReport').value,note:$('#fNote').value,doctor:$('#fDoctor').value,due:$('#fDue').value,interval:$('#fInterval').value,ivAuto,preset:$('#fPreset').value,ctx:{...formCtx},rc:$('#fRecheck').checked,rcTouched,split:$('#fSplit').checked}}
-/* the reference ranges, the marks and the free rows of the draft in the form are kept on the draft like its values, at every change: switching the exam or closing never loses them.
+/* the reference ranges and the marks under the draft's fields are kept on the draft like its values, at every change: switching the exam or closing never loses them.
    Nothing is taken from a form that was not filled for this draft (#labs carries the id of the draft it shows).
-   Among the rows, one that is still a field of the draft (same name) is kept as that field (edits, refs, flags, units); every other row is a lab with no field of its own (oth).
-   A value typed in such a row is in the row's unit: when that is not the unit of the field, it goes back to the field with its unit after it, as a value read in another unit does.
-   A field whose row was deleted, or renamed into a lab of its own, is emptied */
-function shotStashLabs(){const d=shotCur;if(!d||$('#labs').dataset.draft!==d.id)return;d.edits=d.edits||{};d.refs=d.refs||{};d.flags=d.flags||{};d.refT=d.refT||{};d.units=d.units||{};
+   The rows of 「其他抽血」 only show the draft's labs until one of them is edited (edit: a row typed in, marked, added or deleted). From that edit on the rows are the draft's labs (oth),
+   and the fields they were made from (rowKeys) leave the draft's fields, with their edits, ranges and marks: no lab is kept twice, once as a field and once as a row,
+   so nothing has to be carried back and forth between the two. Such a field is then simply empty, and a value typed into it later is a new one */
+function shotStashLabs(edit){const d=shotCur;if(!d||$('#labs').dataset.draft!==d.id)return;d.edits=d.edits||{};d.refs=d.refs||{};d.flags=d.flags||{};d.refT=d.refT||{};
   for(const r of $$('[data-ref]')){const k=r.dataset.ref,box=r.closest('[data-labbox]');d.refs[k]=r.value;d.flags[k]=flagState(box.querySelector('.flagbtn'));if(box._refT)d.refT[k]=true}
-  if(!shotInRows())return;const oth=[],kept=new Set();
-  for(const x of $$('#labs .labrow')){if(!rowHas(x))continue;const q=sel=>x.querySelector(sel).value,o=x._orig||{},n=q('[data-rn]'),v=q('[data-rv]').trim(),u=q('[data-ru]').trim(),st=flagState(x.querySelector('.flagbtn'));
-    if(o.key&&n.trim()===o.key){kept.add(o.key);d.edits[o.key]=v===o.shown&&u===o.unit?o.field:v&&unitOther(u,o.key)?v+' '+u:v;d.refs[o.key]=q('[data-rr]');d.flags[o.key]=st;d.units[o.key]=u;if(x._refT)d.refT[o.key]=true}
-    else oth.push({name:n,value:v,unit:u,ref:q('[data-rr]'),st,flag:o.flag??null,raw:o.raw??null,was:o.value??null,unclear:!!x.querySelector('[data-shotn]')})}
-  for(const k of d.rowKeys||[])if(!kept.has(k))d.edits[k]='';
-  d.oth=oth}
+  if(!edit||!shotInRows())return;
+  d.oth=$$('#labs .labrow').filter(rowHas).map(x=>{const q=sel=>x.querySelector(sel).value,o=x._orig||{};
+    return{name:q('[data-rn]'),value:q('[data-rv]').trim(),unit:q('[data-ru]').trim(),ref:q('[data-rr]'),st:flagState(x.querySelector('.flagbtn')),flag:o.flag??null,raw:o.raw??null,was:o.value??null,unclear:!!x.querySelector('[data-shotn]')}});
+  for(const k of d.rowKeys||[])for(const o of [d.labs,d.edits,d.refs,d.flags,d.refT])delete o[k];d.rowKeys=[]}
 const shotInRows=()=>!!EX[$('#fExam').value]?.rows;
 const shotSplitOn=()=>!$('#shotSplitRow').hidden&&$('#fSplit').checked;
 /* the labs of a draft that have no field of their own: as read from the screenshot (others) or, once their rows have been in the form, as the user left them (oth: corrected, deleted, added).
    st is the mark as the form last held it, null while it was never shown; was is the value as read, which the original text (raw) goes with */
 const shotOth=d=>(d.oth||(d.others||[]).map(o=>({name:o.name,value:o.value,unit:o.unit,ref:o.ref,st:null,flag:o.flag,raw:o.raw,was:o.value,unclear:o.unclear}))).filter(o=>(o.name+o.value+o.unit+o.ref).trim());
-/* a field of the draft in the same shape, with what the form holds for it now. A value still as read is the number alone, with the unit it was read with;
-   a corrected one is as corrected, without the unit that follows a value in another unit than the field's. was and raw are always the reading: they count only for a value that equals it */
-function cellItem(d,k){const c=d.labs[k],f=String(labVal(d,k)??'').trim(),same=!!c&&f===c.value,u=String(d.units&&k in d.units?d.units[k]:c?(c.unit||''):(SHOT_UNITS[k]||'')).trim(),tail=unitOther(u,k)?' '+u:'';
-  return{key:k,field:f,name:k,value:same?c.num:tail&&f.endsWith(tail)?f.slice(0,-tail.length).trim():f,unit:u,ref:d.refs&&k in d.refs?d.refs[k]:(c?.ref||''),st:d.flags?.[k]||null,flag:c?.flag??null,raw:c?c.raw:null,was:c?c.num:null,unclear:same&&!!c.unclear}}
-/* such an item as a row of the form; orig is what the row came with: the field it stands for (key, and field, that field's own text), the value and unit shown, the value as read and its original text */
-const itemRow=o=>({name:o.name,value:o.value,unit:o.unit,ref:o.ref,state:o.st,meta:{flag:o.flag,flagSrc:'report'},orig:{key:o.key,field:o.field,shown:String(o.value).trim(),unit:String(o.unit).trim(),value:o.was,raw:o.raw,flag:o.flag},unclear:o.unclear});
+/* a field of the draft in the same shape, with what the form holds for it now. A value still as read is the number alone, with the unit it was read with.
+   A corrected one is as corrected: still in the unit it was read with when it carries that unit after it, else in the unit of the field it was typed in.
+   was and raw are always the reading: they count only for a value that equals it */
+function cellItem(d,k){const c=d.labs[k],f=String(labVal(d,k)??'').trim(),same=!!c&&f===c.value,cu=String(c?.unit||'').trim(),other=unitOther(cu,k),tail=other?' '+cu:'',carries=!same&&!!tail&&f.endsWith(tail);
+  return{name:k,value:same?c.num:carries?f.slice(0,-tail.length).trim():f,unit:c&&(same||carries||!other)&&cu?cu:c&&same?'':(SHOT_UNITS[k]||''),ref:d.refs&&k in d.refs?d.refs[k]:(c?.ref||''),st:d.flags?.[k]||null,flag:c?.flag??null,raw:c?c.raw:null,was:c?c.num:null,unclear:same&&!!c.unclear}}
+/* such an item as a row of the form; orig is the reading the row came from: its value, its original text, its mark */
+const itemRow=o=>({name:o.name,value:o.value,unit:o.unit,ref:o.ref,state:o.st,meta:{flag:o.flag,flagSrc:'report'},orig:{value:o.was,raw:o.raw,flag:o.flag},unclear:o.unclear});
+/* a report's mark beside a value that is no longer the one it was printed for, and that the user has not settled yet. In the form such a mark has to be confirmed before saving;
+   where the lab is only written out as a line, the mark is left out */
+const itemPend=o=>(o.st?o.st.src==='report':!!flagKind(o.flag))&&o.was!=null&&String(o.value).trim()!==String(o.was).trim();
+/* the mark an item has now: the one the form last held, else the one read, else what its reference range gives */
+const itemFlag=o=>itemPend(o)?null:o.st?o.st.f:flagKind(o.flag)?o.flag:refFlag(o.value,o.ref)||null;
 /* the labs this record will not hold, for a record of 「其他抽血」 of their own: the ones with no field anywhere, and the fields the exam now chosen does not have */
-const shotSplitItems=d=>[...shotOth(d),...shotAwayKeys().map(k=>{const {key,field,...o}=cellItem(d,k);return o})];
+const shotSplitItems=d=>[...shotOth(d),...shotAwayKeys().map(k=>cellItem(d,k))];
 /* the lines those labs make in the report: exactly as read while nothing about them was changed, else written again from what the user left */
-const othLine=o=>{const f=o.st?o.st.f:o.flag;return`${o.name.trim()} ${String(o.value).trim()||'（看不清楚）'}${o.unit.trim()?' '+o.unit.trim():''}${o.ref.trim()?'（參考值 '+o.ref.trim()+'）':''}${f?' '+f:''}`};
+const othLine=o=>{const f=itemFlag(o);return`${o.name.trim()} ${String(o.value).trim()||'（看不清楚）'}${o.unit.trim()?' '+o.unit.trim():''}${o.ref.trim()?'（參考值 '+o.ref.trim()+'）':''}${f?' '+f:''}`};
 function shotBlock(d){if(!d.oth)return d.othersBlock||'';const L=shotOth(d).map(othLine);return L.length?['其他檢驗（沒有對應的欄位）：',...L].join('\n'):''}
 /* the labs a saved draft had no field for, as a draft of their own for 「其他抽血」, next in the queue: confirmed in the form like any other, with the date and place just saved.
    strip: the record they came from and the lines they still make in its report. It is not read again with its screenshots (the reading has no draft of this kind), and a reading again of the batch leaves it waiting */
@@ -2423,7 +2427,7 @@ function shotFillLabs(){const d=shotCur;if(!d)return;
     else if(d.conflicts[k])shotNote(i,'截圖裡有不同的值：'+d.conflicts[k].map(x=>x.value+(x.unit?' '+x.unit:'')).join('、'),true)}
   /* an exam of free rows takes every lab of the draft: the ones with no field of their own, then its fields (rowKeys) */
   if(shotInRows()){$('#labs').innerHTML='';d.rowKeys=shotAwayKeys();const rows=[...shotOth(d),...d.rowKeys.map(k=>cellItem(d,k))].map(itemRow);
-    for(const x of rows)addLabRow(x)._refT=!!(x.orig.key&&d.refT?.[x.orig.key]);if(!rows.length)addLabRow()}
+    for(const x of rows)addLabRow(x);if(!rows.length)addLabRow()}
   $('#labs').dataset.draft=d.id;shotOthersUi()}
 /* labs of the draft that the exam now chosen has no field for: named under the exam, and offered as a record of 「其他抽血」 of their own (the switch under the report).
    The lines of the labs that have no field anywhere stand in the report text, except while those labs are rows of this form or are going to a record of their own.
@@ -2438,9 +2442,9 @@ function shotOthersUi(){const d=shotCur,row=$('#shotSplitRow'),note=$('#shotExam
 $('#fSplit').addEventListener('change',shotOthersUi);
 function shotAwayKeys(){const d=shotCur;if(!d)return[];const here=new Set($$('[data-lab]').map(i=>i.dataset.lab));
   return[...new Set([...Object.keys(d.labs),...Object.keys(d.edits||{})])].filter(k=>!here.has(k)&&String(labVal(d,k)??'').trim())}
-/* the line a field makes in the report when the exam now chosen has no such field: as it was read while nothing about it was changed,
-   else as the form holds it now (value, unit, reference range, mark), so a range or a mark the user corrected is not written back as read */
-function shotAway(){const d=shotCur;return shotAwayKeys().map(k=>{const c=d.labs[k],o=cellItem(d,k),asRead=!!c&&o.field===c.value&&o.ref===(c.ref||'')&&o.unit===String(c.unit||'').trim()&&o.st?.src!=='manual';
+/* the line a field makes in the report when the exam now chosen has no such field: as it was read while the form holds it exactly as read (value, reference range, and the same mark),
+   else as the form holds it now, so a range or a mark the user corrected, or one worked out since, is what gets written */
+function shotAway(){const d=shotCur;return shotAwayKeys().map(k=>{const c=d.labs[k],o=cellItem(d,k),asRead=!!c&&String(labVal(d,k)??'').trim()===c.value&&o.ref===(c.ref||'')&&o.st?.src!=='manual'&&flagNorm(itemFlag(o))===flagNorm(c.flag);
   return asRead?`${k} ${c.raw||c.value}${c.unit?' '+c.unit:''}${c.ref?'（參考值 '+c.ref+'）':''}${c.flag&&!(c.raw||'').toUpperCase().includes(c.flag)?' '+c.flag:''}`:othLine(o)})}
 const shotClsOf=d=>d.cls.preset&&!d.clsOk?{pending:true,text:d.cls.text}:d.cls.hint?{pending:false,hint:d.cls.hint}:null;
 function loadDraft(d){if(!d)return;if(shotCur&&shotCur!==d)shotStash();const f=d.form;
