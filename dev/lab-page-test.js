@@ -3,6 +3,7 @@
    - 顯示：歷史表格、歷次紀錄與卡片上的異常項目；不只靠顏色；aria-label；沒有 labMeta 或沒有 flagSrc 的舊紀錄
    - 其他抽血（lab_other）：新增多列、驗證、刪除與撤銷、編輯、同名檢驗排在同一欄、不列入到期與提醒，填了間隔才列
    - 從截圖填入：讀到的 ref 與 flag 保留；沒有對應欄位的檢驗可以另存成一筆「其他抽血」
+   - 用藥頁時間軸與回診摘要：甲狀腺抽血的 TSH、Free T4 帶標記
    - 380 寬淺色與深色：沒有水平捲動、觸控目標、對比、截圖
    執行：node dev/lab-page-test.js        略過截圖：node dev/lab-page-test.js --no-shots */
 const fs=require('fs'),path=require('path');
@@ -480,6 +481,23 @@ const shotStart=async name=>{const r=await start({sample:{shot:name}});await r.p
     await page.click('[data-edit="o1"]');await wait(150);await page.fill('#fNote','往返');await save(page);await saved(page);const r=await stored(page,'o1');
     check('只改備註再存：labs、labMeta（含報告的原文與 flagSrc）一字不變',same(r.labs,seed['records/o1'].labs)&&same(r.labMeta,seed['records/o1'].labMeta)&&r.note==='往返',r);
     check('往返：沒有 JS 錯誤',!errors.length,errors);await page.context().close()}
+
+  /* ================= 用藥頁時間軸與回診摘要：甲狀腺抽血的偏高偏低 ================= */
+  {const thy=(id,date,labs,labMeta)=>({exam:'thy_lab',cat:'thyroid',date,interval:6,preset:null,nextDue:null,report:'',place:'',doctor:'',note:'',labs,labMeta,createdAt:Date.parse(date)});
+    const seed={...sampleSeed(T),'records/t1':thy('t1','2026-10-20',{TSH:'5.2','Free T4':'0.80'},{TSH:{flag:'H',flagSrc:'report'},'Free T4':{ref:'0.93-1.70'}}),
+      'records/t2':thy('t2','2026-10-25',{TSH:'2.1','Free T4':'1.2'},{'Free T4':{ref:'0.93-1.70',flag:null,flagSrc:'manual'}})};
+    for(const scheme of ['light','dark']){const {page,errors}=await start({seed},{hash:'meds',scheme});await wait(300);
+      const tl=await page.evaluate(()=>[...document.querySelectorAll('#medTl [data-edit]')].map(b=>({id:b.dataset.edit,txt:b.querySelector('.wrapline').textContent,ab:[...b.querySelectorAll('.lab-ab')].map(x=>x.textContent),aria:[...b.querySelectorAll('.lab-flag')].map(x=>x.getAttribute('aria-label'))})));
+      const t1=tl.find(x=>x.id==='t1'),t2=tl.find(x=>x.id==='t2');
+      check(`時間軸（${scheme}）：TSH 5.2 ↑ H（報告）、Free T4 0.80 ↓ L（依參考值），用檢驗色，讀作偏高、偏低`,t1&&t1.txt.startsWith('TSH 5.2 ↑ H・Free T4 0.80 ↓ L・抽血前服藥')&&same(t1.ab,['TSH 5.2 ↑ H','Free T4 0.80 ↓ L'])&&same(t1.aria,['偏高','偏低']),t1);
+      check(`時間軸（${scheme}）：沒有標記、手動設為「無」的不標`,t2&&t2.txt.startsWith('TSH 2.1・Free T4 1.2・')&&!t2.ab.length,t2);
+      const c=await page.evaluate(()=>{const el=document.querySelector('#medTl [data-edit="t1"] .lab-ab');const st=getComputedStyle(el);return{color:st.color,bg:getComputedStyle(el.closest('.blk')||document.body).backgroundColor}});
+      check(`時間軸（${scheme}）：檢驗色不是預設文字色`,c.color!==await page.evaluate(()=>getComputedStyle(document.querySelector('#medTl [data-edit="t2"] .wrapline')).color),c);
+      check(`時間軸（${scheme}）：380 寬沒有水平捲動`,await overflow(page)<=0);
+      await go(page,'summary',500);await page.fill('#smFrom','2026-10-01');await page.dispatchEvent('#smFrom','change');await wait(200);
+      const pv=await page.evaluate(()=>[...document.querySelectorAll('#smPreview li')].map(l=>l.textContent));
+      check(`回診摘要（${scheme}）：抽血那兩行帶標記，說明行提到標記`,pv.includes('數值照輸入的原文；單位依表單欄位：TSH μIU/mL、Free T4 ng/dL；↑ H／↓ L／* 依報告的參考值或標記')&&pv.includes('10/20 TSH 5.2 ↑ H・Free T4 0.80 ↓ L・抽血前服藥：未填・近一週生物素：未填')&&pv.includes('10/25 TSH 2.1・Free T4 1.2・抽血前服藥：未填・近一週生物素：未填'),pv.filter(x=>x.includes('TSH')));
+      check(`時間軸與摘要（${scheme}）：沒有 JS 錯誤`,!errors.length,errors);await page.context().close()}}
 
   await close();
   process.exit(summary()?1:0);

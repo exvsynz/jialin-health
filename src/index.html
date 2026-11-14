@@ -936,9 +936,10 @@ function summarize(c,from,to,today){
     else L.push('期間內沒有變更');S.push(['劑量',L])}
   /* thyroid draws */
   {const L=[],labs=(c.records||[]).filter(r=>r.exam==='thy_lab'&&inR(r.date)).sort((a,b)=>cmpStr(a.date,b.date));
-    if(labs.length){L.push('數值照輸入的原文；單位依表單欄位：TSH μIU/mL、Free T4 ng/dL');
-      for(const r of labs){const x=r.labs||{},t=r.drawCtx||{};
-        L.push(`${dIn(r.date)} TSH ${x.TSH||'未填'}・Free T4 ${x['Free T4']||'未填'}・抽血前服藥：${CTX_LABEL[t.medBeforeDraw]||'未填'}・近一週生物素：${CTX_LABEL[t.biotin7d]||'未填'}${t.recheckOf?'・變更後複查':''}`)}}
+    if(labs.length){const fm=typeof c.flagOf==='function'?c.flagOf:()=>'',val=(r,k)=>{const v=(r.labs||{})[k];if(!v)return'未填';const f=fm(v,(r.labMeta||{})[k]);return f?v+' '+f:v};
+      L.push('數值照輸入的原文；單位依表單欄位：TSH μIU/mL、Free T4 ng/dL'+(typeof c.flagOf==='function'?'；↑ H／↓ L／* 依報告的參考值或標記':''));
+      for(const r of labs){const t=r.drawCtx||{};
+        L.push(`${dIn(r.date)} TSH ${val(r,'TSH')}・Free T4 ${val(r,'Free T4')}・抽血前服藥：${CTX_LABEL[t.medBeforeDraw]||'未填'}・近一週生物素：${CTX_LABEL[t.biotin7d]||'未填'}${t.recheckOf?'・變更後複查':''}`)}}
     else L.push('期間內沒有紀錄');S.push(['甲狀腺抽血',L])}
   /* exercise */
   {const ex=(c.exercise||[]).filter(e=>e&&e.deleted!==true&&inR(e.date)&&typeof e.min==='number'&&Number.isFinite(e.min)&&e.min>0),tot=ex.reduce((a,e)=>a+e.min,0);
@@ -2551,9 +2552,11 @@ function doseItem(m,effective,today){const ok=validMeddose(m),prev=ok?doseOn(add
   const detail=[m.tablet,m.brand,m.reason].filter(Boolean).map(esc).join('・');
   const flags=[ok&&!effective.has(m.id)?'同日較早的紀錄（未生效）':'',ok&&m.date>today?'預定':'',m.noRecheck?'不需要複查':''].filter(Boolean).join('・');
   return`<li><button type="button" data-dose="${esc(m.id)}" ${canWrite?'':'disabled'}><span class="when">${ok?fmt(m.date):'—'}</span><span>${esc(head)}</span>${detail?`<span class="sub wrapline">${detail}</span>`:''}${flags?`<span class="flag">${esc(flags)}</span>`:''}</button></li>`}
-function labItem(r){const L=r.labs||{},c=r.drawCtx||{};
-  const parts=[`TSH ${L.TSH||'未填'}`,`Free T4 ${L['Free T4']||'未填'}`,`抽血前服藥：${CTX_TXT[c.medBeforeDraw]||'未填'}`,`生物素：${CTX_TXT[c.biotin7d]||'未填'}`];
-  return`<li><button type="button" data-edit="${esc(r.id)}" ${canWrite?'':'disabled'}><span class="when">${fmt(r.date)}・甲狀腺抽血${c.recheckOf?'・變更後複查':''}</span><span class="wrapline">${esc(parts.join('・'))}</span></button></li>`}
+function labItem(r){const L=r.labs||{},M=r.labMeta&&typeof r.labMeta==='object'?r.labMeta:{},c=r.drawCtx||{};
+  /* a value with its mark, as on the exams page: 「TSH 5.2 ↑ H」 in the lab colour, the mark read out as 偏高, 偏低 or 異常 */
+  const val=k=>{const v=L[k];if(!v)return esc(k)+' 未填';const f=labFlagOf(v,M[k]);return f?`<span class="lab-ab">${esc(k)} <span class="num">${esc(v)}</span> ${flagHtml(f)}</span>`:`${esc(k)} ${esc(v)}`};
+  const parts=[val('TSH'),val('Free T4'),esc(`抽血前服藥：${CTX_TXT[c.medBeforeDraw]||'未填'}`),esc(`生物素：${CTX_TXT[c.biotin7d]||'未填'}`)];
+  return`<li><button type="button" data-edit="${esc(r.id)}" ${canWrite?'':'disabled'}><span class="when">${fmt(r.date)}・甲狀腺抽血${c.recheckOf?'・變更後複查':''}</span><span class="wrapline">${parts.join('・')}</span></button></li>`}
 function renderMeds(){
   $('#rcSrc').textContent='ATA 2014 指引建議 4b：任何劑量變更後 4–6 週評估 TSH。'+LABEL+' §2.4：成人原發性甲狀腺低下，劑量變更後 6–8 週監測 TSH。兩者不同，週數由你設定。';
   $('#medRef').innerHTML=refHtml(MED_REF)+'<p class="muted" style="margin:0;font-size:.8rem">服藥紀錄的暫停只看目前設定的那一段；清除或改設暫停後，過去的統計會跟著變。</p>';
@@ -2606,7 +2609,7 @@ $('#dDel').addEventListener('click',async()=>{if(!editingDose||!canSave())return
 
 /* ================= SUMMARY ================= */
 let smUser=false; // the dates stay as the user set them for this visit to the page
-function summaryCtx(){return{days,exercise:exercises,records,meddose,settingDose:prof('medDose'),pause:{from:profile.pauseFrom,to:profile.pauseTo},weeks:profile.tshRecheckWeeks,info:EXINFO,intervals}}
+function summaryCtx(){return{flagOf:(v,m)=>flagMark(labFlagOf(v,m)),days,exercise:exercises,records,meddose,settingDose:prof('medDose'),pause:{from:profile.pauseFrom,to:profile.pauseTo},weeks:profile.tshRecheckWeeks,info:EXINFO,intervals}}
 const smLoaded=()=>['days','profile','intervals','meddose','records','exercise'].every(k=>loaded[k]);
 let smCur=null;
 function renderSummary(){const today=logicalToday();

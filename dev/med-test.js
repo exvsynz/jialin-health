@@ -105,6 +105,18 @@ eq('劑量：沒有紀錄時依目前設定推定',sec(H.summarize(C(),'2026-10-
 const RL=[{exam:'thy_lab',date:'2026-10-20',labs:{'Free T4':'1.1'},drawCtx:{medBeforeDraw:'no'}},{exam:'thy_lab',date:'2026-11-02',labs:{TSH:'9'}}];
 sm=H.summarize(C({records:RL}),'2026-10-01','2026-10-30','2026-10-31');
 eq('抽血：缺 TSH 寫未填、不省略整筆；期間外不列',sec(sm,'甲狀腺抽血').slice(1),['10/20 TSH 未填・Free T4 1.1・抽血前服藥：否・近一週生物素：未填']);
+/* 偏高偏低：頁面把 lab helpers 的標記函式交給摘要（flagOf）；這裡用同一段程式碼，不複製 */
+{const LH=new Function(block('shot')+block('lab')+';return{flagMark,labFlagOf}')(),flagOf=(v,m)=>LH.flagMark(LH.labFlagOf(v,m));
+  const RF=[{exam:'thy_lab',date:'2026-10-20',labs:{TSH:'5.2','Free T4':'0.80'},labMeta:{TSH:{flag:'H',flagSrc:'report'},'Free T4':{ref:'0.93-1.70'}}},
+    {exam:'thy_lab',date:'2026-10-25',labs:{TSH:'99','Free T4':'1.2'},labMeta:{TSH:{flag:'H',mark:'HH',flagSrc:'report'},'Free T4':{ref:'0.93-1.70',flag:null,flagSrc:'manual'}}},
+    {exam:'thy_lab',date:'2026-10-28',labs:{TSH:'3.17'},labMeta:{TSH:{flag:'A',flagSrc:'report'}}}];
+  const s1=sec(H.summarize(C({records:RF,flagOf}),'2026-10-01','2026-10-30','2026-10-31'),'甲狀腺抽血');
+  eq('摘要的抽血：報告標的 H、依參考值算出的 L、HH、手動的「無」不標、A 寫 *；說明行提到標記',s1,['數值照輸入的原文；單位依表單欄位：TSH μIU/mL、Free T4 ng/dL；↑ H／↓ L／* 依報告的參考值或標記',
+    '10/20 TSH 5.2 ↑ H・Free T4 0.80 ↓ L・抽血前服藥：未填・近一週生物素：未填','10/25 TSH 99 ↑ HH・Free T4 1.2・抽血前服藥：未填・近一週生物素：未填','10/28 TSH 3.17 *・Free T4 未填・抽血前服藥：未填・近一週生物素：未填']);
+  eq('摘要的抽血：沒有交標記函式時，照舊不標、說明行不變',sec(H.summarize(C({records:RF}),'2026-10-01','2026-10-30','2026-10-31'),'甲狀腺抽血')[1],'10/20 TSH 5.2・Free T4 0.80・抽血前服藥：未填・近一週生物素：未填');
+  const smF=H.summarize(C({records:RF,flagOf}),'2026-10-01','2026-10-30','2026-10-31');
+  eq('摘要的 Markdown：* 有跳脫，箭頭照原樣',H.summaryMd(smF).includes('TSH 3.17 \\*')&&H.summaryMd(smF).includes('TSH 5.2 ↑ H'),true);
+  eq('摘要的 HTML：標記是文字，沒有標籤',H.summaryHtml(smF).includes('<li>10/20 TSH 5.2 ↑ H・Free T4 0.80 ↓ L・'),true)}
 const EXs=[{date:'2026-10-02',min:60},{date:'2026-10-03',min:30,deleted:true},{date:'2026-10-04',min:-5},{date:'2026-10-05',min:'40'},{date:'2026-11-01',min:90}];
 eq('運動：排除軟刪除與無效分鐘；7 天以上算每週平均',sec(H.summarize(C({exercise:EXs}),'2026-10-01','2026-10-14','2026-10-31'),'運動'),['每週平均 30 分（共 60 分）']);
 eq('運動：少於 7 天只寫總分鐘',sec(H.summarize(C({exercise:EXs}),'2026-10-01','2026-10-03','2026-10-31'),'運動'),['共 60 分']);
